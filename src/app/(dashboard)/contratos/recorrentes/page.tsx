@@ -16,6 +16,8 @@ interface Contrato {
   data_encerramento: string | null;
   tempo_inicial_meses: number | null;
   servico_id: string | null;
+  banco_id: string | null;
+  plano_conta_id: string | null;
   descricao: string | null;
   comentarios_extras: string | null;
   arquivo_path: string | null;
@@ -32,6 +34,8 @@ interface Contrato {
     } | null;
   } | null;
   servicos: { nome: string } | null;
+  bancos: { nome: string } | null;
+  planos_conta: { nome: string } | null;
 }
 
 interface PessoaOpcao {
@@ -43,6 +47,15 @@ interface PessoaOpcao {
 interface Servico {
   id: string;
   nome: string;
+}
+
+interface Opcao {
+  id: string;
+  nome: string;
+}
+
+interface PlanoConta extends Opcao {
+  tipo: "receita" | "despesa";
 }
 
 const FORMAS_PAGAMENTO = ["Pix", "Cartão de crédito"];
@@ -84,10 +97,12 @@ export default function ContratosRecorrentesPage() {
       .from("contratos")
       .select(
         `id, numero_contrato, status, forma_pagamento, valor_mensal, valor_entrada, data_pagamento_entrada, data_primeira_mensalidade,
-         data_encerramento, tempo_inicial_meses, servico_id, descricao, comentarios_extras,
+         data_encerramento, tempo_inicial_meses, servico_id, banco_id, plano_conta_id, descricao, comentarios_extras,
          arquivo_path, arquivo_nome, ultima_verificacao_parcelas,
          clientes ( papeis ( pessoas ( nome, razao_social, documento, email ) ) ),
-         servicos ( nome )`
+         servicos ( nome ),
+         bancos ( nome ),
+         planos_conta ( nome )`
       )
       .eq("tipo_contrato", "recorrente")
       .order("created_at", { ascending: false });
@@ -144,6 +159,8 @@ export default function ContratosRecorrentesPage() {
             valor: c.valor_mensal,
             data_vencimento: cursor.toISOString().slice(0, 10),
             servico_id: c.servico_id,
+            banco_id: c.banco_id,
+            plano_conta_id: c.plano_conta_id,
             grupo_id: ultimo.grupo_id,
             recorrencia_tipo: "mensal",
           });
@@ -474,6 +491,24 @@ function ContratoRecorrenteForm({
   const [buscaServico, setBuscaServico] = useState(contratoEditando?.servicos?.nome ?? "");
   const [mostrarSugestoesServico, setMostrarSugestoesServico] = useState(false);
 
+  const [bancos, setBancos] = useState<Opcao[]>([]);
+  const [bancoSelecionado, setBancoSelecionado] = useState<Opcao | null>(
+    contratoEditando?.banco_id && contratoEditando.bancos
+      ? { id: contratoEditando.banco_id, nome: contratoEditando.bancos.nome }
+      : null
+  );
+  const [buscaBanco, setBuscaBanco] = useState(contratoEditando?.bancos?.nome ?? "");
+  const [mostrarSugestoesBanco, setMostrarSugestoesBanco] = useState(false);
+
+  const [planosConta, setPlanosConta] = useState<PlanoConta[]>([]);
+  const [planoContaSelecionado, setPlanoContaSelecionado] = useState<PlanoConta | null>(
+    contratoEditando?.plano_conta_id && contratoEditando.planos_conta
+      ? { id: contratoEditando.plano_conta_id, nome: contratoEditando.planos_conta.nome, tipo: "receita" }
+      : null
+  );
+  const [buscaPlanoConta, setBuscaPlanoConta] = useState(contratoEditando?.planos_conta?.nome ?? "");
+  const [mostrarSugestoesPlanoConta, setMostrarSugestoesPlanoConta] = useState(false);
+
   const [numeroContrato, setNumeroContrato] = useState(contratoEditando?.numero_contrato ?? "");
   const [formaPagamento, setFormaPagamento] = useState(
     contratoEditando?.forma_pagamento ?? FORMAS_PAGAMENTO[0]
@@ -507,6 +542,8 @@ function ContratoRecorrenteForm({
   useEffect(() => {
     carregarPessoas();
     carregarServicos();
+    carregarBancos();
+    carregarPlanosConta();
     if (editando) {
       setBuscaCliente(contratoEditando?.clientes?.papeis?.pessoas?.nome ?? "");
     }
@@ -523,6 +560,18 @@ function ContratoRecorrenteForm({
     const supabase = createClient();
     const { data } = await supabase.from("servicos").select("id, nome").order("nome");
     setServicos(data ?? []);
+  }
+
+  async function carregarBancos() {
+    const supabase = createClient();
+    const { data } = await supabase.from("bancos").select("id, nome").order("nome");
+    setBancos(data ?? []);
+  }
+
+  async function carregarPlanosConta() {
+    const supabase = createClient();
+    const { data } = await supabase.from("planos_conta").select("id, nome, tipo").order("nome");
+    setPlanosConta((data as PlanoConta[]) ?? []);
   }
 
   const sugestoes = pessoas.filter((p) => p.nome.toLowerCase().includes(buscaCliente.toLowerCase()));
@@ -614,6 +663,30 @@ function ContratoRecorrenteForm({
         servicoFinalId = srv.id;
       }
 
+      let bancoFinalId = bancoSelecionado?.id ?? null;
+      if (!bancoFinalId && buscaBanco.trim()) {
+        const { data: bco, error: bcoError } = await supabase
+          .from("bancos")
+          .insert({ nome: buscaBanco.trim() })
+          .select("id")
+          .single();
+        if (bcoError) throw bcoError;
+        bancoFinalId = bco.id;
+      }
+
+      let planoContaFinalId = planoContaSelecionado?.id ?? null;
+      if (!planoContaFinalId && buscaPlanoConta.trim()) {
+        const { data: pc, error: pcError } = await supabase
+          .from("planos_conta")
+          .insert({ nome: buscaPlanoConta.trim(), tipo: "receita" })
+          .select("id")
+          .single();
+        if (pcError) throw pcError;
+        planoContaFinalId = pc.id;
+      }
+
+      const nomeServicoParaDescricao = buscaServico.trim();
+
       if (editando && contratoEditando) {
         const { error } = await supabase
           .from("contratos")
@@ -626,6 +699,8 @@ function ContratoRecorrenteForm({
             data_primeira_mensalidade: dataPrimeiraMensalidade,
             tempo_inicial_meses: tempoInicial,
             numero_contrato: numeroContrato.trim() || null,
+            banco_id: bancoFinalId,
+            plano_conta_id: planoContaFinalId,
             status,
             data_encerramento: status === "encerrado" ? dataEncerramento || null : null,
             descricao: descricao || null,
@@ -663,6 +738,8 @@ function ContratoRecorrenteForm({
             tempo_inicial_meses: tempoInicial,
             descricao: descricao || null,
             comentarios_extras: comentariosExtras || null,
+            banco_id: bancoFinalId,
+            plano_conta_id: planoContaFinalId,
             ...(numeroContrato.trim() ? { numero_contrato: numeroContrato.trim() } : {}),
           })
           .select("id")
@@ -673,9 +750,13 @@ function ContratoRecorrenteForm({
           await enviarArquivo(novoContrato.id, arquivo);
         }
 
-        // Gera os lançamentos automaticamente: entrada (se houver) + 36 meses de mensalidade
+        // Gera os lançamentos automaticamente: entrada (se houver) + 12 meses de mensalidade
         if (novoContrato) {
           const linhas: Record<string, unknown>[] = [];
+          const nomeCliente = pessoaSelecionada!.nome;
+          const descricaoPadrao = nomeServicoParaDescricao
+            ? `${nomeCliente} — ${nomeServicoParaDescricao}`
+            : nomeCliente;
 
           if (valorEntrada && Number(valorEntrada) > 0) {
             linhas.push({
@@ -684,10 +765,12 @@ function ContratoRecorrenteForm({
               pessoa_id: pessoaSelecionada!.id,
               tipo: "receita",
               situacao: "pendente",
-              descricao: `Entrada — contrato ${numeroContrato || ""}`.trim(),
+              descricao: `${descricaoPadrao} (entrada)`,
               valor: Number(valorEntrada),
               data_vencimento: dataPagamentoEntrada || dataPrimeiraMensalidade,
               servico_id: servicoFinalId,
+              banco_id: bancoFinalId,
+              plano_conta_id: planoContaFinalId,
             });
           }
 
@@ -702,12 +785,14 @@ function ContratoRecorrenteForm({
               pessoa_id: pessoaSelecionada!.id,
               tipo: "receita",
               situacao: "pendente",
-              descricao: `Mensalidade — contrato ${numeroContrato || ""}`.trim(),
+              descricao: `${descricaoPadrao} 🔁`,
               valor: Number(valorMensal),
               data_vencimento: venc.toISOString().slice(0, 10),
               servico_id: servicoFinalId,
               grupo_id: grupoId,
               recorrencia_tipo: "mensal",
+              banco_id: bancoFinalId,
+              plano_conta_id: planoContaFinalId,
             });
           }
 
@@ -838,6 +923,96 @@ function ContratoRecorrenteForm({
                   className="w-full text-left px-4 py-2.5 text-sm font-semibold text-forest hover:bg-surface"
                 >
                   + Cadastrar &ldquo;{buscaServico}&rdquo; como novo serviço
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <span className="block text-sm font-medium text-ink/70 mb-1">Banco</span>
+          <input
+            value={buscaBanco}
+            onChange={(e) => {
+              setBuscaBanco(e.target.value);
+              setBancoSelecionado(null);
+              setMostrarSugestoesBanco(true);
+            }}
+            onFocus={() => setMostrarSugestoesBanco(true)}
+            className="input"
+            placeholder="Digite o banco..."
+          />
+          {mostrarSugestoesBanco && buscaBanco && !bancoSelecionado && (
+            <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
+              {bancos.filter((b) => b.nome.toLowerCase().includes(buscaBanco.toLowerCase())).length > 0 ? (
+                bancos
+                  .filter((b) => b.nome.toLowerCase().includes(buscaBanco.toLowerCase()))
+                  .map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => {
+                        setBancoSelecionado(b);
+                        setBuscaBanco(b.nome);
+                        setMostrarSugestoesBanco(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
+                    >
+                      {b.nome}
+                    </button>
+                  ))
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMostrarSugestoesBanco(false)}
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-forest hover:bg-surface"
+                >
+                  + Cadastrar &ldquo;{buscaBanco}&rdquo; como novo banco
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <span className="block text-sm font-medium text-ink/70 mb-1">Plano de conta</span>
+          <input
+            value={buscaPlanoConta}
+            onChange={(e) => {
+              setBuscaPlanoConta(e.target.value);
+              setPlanoContaSelecionado(null);
+              setMostrarSugestoesPlanoConta(true);
+            }}
+            onFocus={() => setMostrarSugestoesPlanoConta(true)}
+            className="input"
+            placeholder="Digite o plano de conta..."
+          />
+          {mostrarSugestoesPlanoConta && buscaPlanoConta && !planoContaSelecionado && (
+            <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
+              {planosConta.filter((p) => p.tipo === "receita" && p.nome.toLowerCase().includes(buscaPlanoConta.toLowerCase())).length > 0 ? (
+                planosConta
+                  .filter((p) => p.tipo === "receita" && p.nome.toLowerCase().includes(buscaPlanoConta.toLowerCase()))
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setPlanoContaSelecionado(p);
+                        setBuscaPlanoConta(p.nome);
+                        setMostrarSugestoesPlanoConta(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
+                    >
+                      {p.nome}
+                    </button>
+                  ))
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMostrarSugestoesPlanoConta(false)}
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-forest hover:bg-surface"
+                >
+                  + Cadastrar &ldquo;{buscaPlanoConta}&rdquo; como novo plano de conta
                 </button>
               )}
             </div>
@@ -1025,6 +1200,33 @@ function ContratoRecorrenteForm({
         <button type="button" onClick={onCancel} className="text-sm font-semibold text-ink/60 hover:text-ink">
           Cancelar
         </button>
+        {editando && (
+          <button
+            type="button"
+            onClick={async () => {
+              if (!contratoEditando) return;
+              const supabase = createClient();
+              const { count } = await supabase
+                .from("lancamentos")
+                .select("id", { count: "exact", head: true })
+                .eq("contrato_id", contratoEditando.id);
+
+              if (count && count > 0) {
+                window.alert(
+                  "Esse contrato tem lançamentos vinculados no financeiro, então não pode ser excluído. Mude o status para Encerrado se quiser desativá-lo."
+                );
+                return;
+              }
+
+              if (!window.confirm("Excluir este contrato? Essa ação não pode ser desfeita.")) return;
+              await supabase.from("contratos").delete().eq("id", contratoEditando.id);
+              onSaved();
+            }}
+            className="ml-auto text-sm font-semibold text-red-500 hover:text-red-700"
+          >
+            Excluir contrato
+          </button>
+        )}
       </div>
     </form>
   );

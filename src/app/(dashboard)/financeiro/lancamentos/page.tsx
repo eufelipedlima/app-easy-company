@@ -226,6 +226,13 @@ export default function LancamentosPage() {
   const noPeriodo = (data: string) => data >= periodo.inicio && data <= periodo.fim;
 
   const lancamentosDoPeriodo = lancamentos.filter((l) => noPeriodo(l.data_vencimento));
+  async function remover(id: string) {
+    if (!window.confirm("Excluir este lançamento? Essa ação não pode ser desfeita.")) return;
+    const supabase = createClient();
+    await supabase.from("lancamentos").delete().eq("id", id);
+    carregar();
+  }
+
   const filtrados = lancamentosDoPeriodo
     .filter((l) => filtro === "todos" || l.situacao === filtro)
     .filter((l) => !filtroTipo || l.tipo === filtroTipo)
@@ -576,15 +583,23 @@ export default function LancamentosPage() {
                   </td>
                   <td className="px-4 py-3 text-ink/50 font-mono text-xs">{l.codigo_transacao ?? "—"}</td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => {
-                        setEditando(l);
-                        setPainelAberto(false);
-                      }}
-                      className="rounded-full px-3 py-1.5 text-xs font-bold bg-forest text-white hover:bg-ink transition-colors shadow-sm"
-                    >
-                      Editar
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => {
+                          setEditando(l);
+                          setPainelAberto(false);
+                        }}
+                        className="rounded-full px-3 py-1.5 text-xs font-bold bg-forest text-white hover:bg-ink transition-colors shadow-sm"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => remover(l.id)}
+                        className="rounded-full px-2.5 py-1.5 text-xs font-semibold text-ink/40 hover:text-red-600 transition-colors"
+                      >
+                        Excluir
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -669,6 +684,16 @@ export default function LancamentosPage() {
                 )}
               </SecaoDetalhe>
             )}
+
+            <button
+              onClick={() => {
+                remover(detalhe.id);
+                setDetalhe(null);
+              }}
+              className="w-full rounded-full border-2 border-red-200 text-red-600 px-5 py-2.5 text-sm font-bold hover:bg-red-50 transition-colors"
+            >
+              Excluir lançamento
+            </button>
           </div>
         </div>
       )}
