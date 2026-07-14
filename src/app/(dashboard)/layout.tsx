@@ -41,7 +41,7 @@ const MENU: Grupo[] = [
     label: "Pessoas",
     icon: <Users size={18} />,
     itens: [
-      { href: "/pessoas/clientes", label: "Clientes", icon: <UserCheck size={15} /> },
+      { href: "/pessoas/clientes", label: "Pessoas", icon: <UserCheck size={15} /> },
       { href: "/pessoas/funcionarios", label: "Funcionários", icon: <Briefcase size={15} /> },
       { href: "/pessoas/prestadores", label: "Prestadores", icon: <HardHat size={15} /> },
     ],

@@ -90,9 +90,62 @@ export default function ContratosRecorrentesPage() {
       )
       .eq("tipo_contrato", "recorrente")
       .order("created_at", { ascending: false });
-    setContratos((data as unknown as Contrato[]) ?? []);
+    const lista = (data as unknown as Contrato[]) ?? [];
+    setContratos(lista);
     setLoading(false);
+    garantirParcelasFuturas(lista);
   }, []);
+
+  // Mantém sempre pelo menos 6 meses de mensalidade gerados à frente pra cada contrato
+  // ativo; quando cai abaixo disso, completa de novo até 36 meses à frente. Roda toda
+  // vez que essa tela é aberta — como resultado, na prática nunca fica sem parcela
+  // lançada, sem precisar de um processo rodando sozinho no servidor.
+  async function garantirParcelasFuturas(lista: Contrato[]) {
+    const supabase = createClient();
+    const hoje = new Date();
+    const limiteMinimo = new Date(hoje);
+    limiteMinimo.setMonth(limiteMinimo.getMonth() + 6);
+    const alvoFinal = new Date(hoje);
+    alvoFinal.setMonth(alvoFinal.getMonth() + 36);
+
+    for (const c of lista.filter((c) => c.status === "ativo")) {
+      const { data: ultimos } = await supabase
+        .from("lancamentos")
+        .select("data_vencimento, grupo_id, cliente_id, pessoa_id, descricao")
+        .eq("contrato_id", c.id)
+        .eq("recorrencia_tipo", "mensal")
+        .order("data_vencimento", { ascending: false })
+        .limit(1);
+
+      const ultimo = ultimos?.[0];
+      if (!ultimo) continue; // contrato sem lançamentos gerados ainda (ex: criado antes dessa função existir)
+
+      const maxData = new Date(ultimo.data_vencimento + "T00:00:00");
+      if (maxData >= limiteMinimo) continue; // ainda tem margem suficiente
+
+      const linhas: Record<string, unknown>[] = [];
+      const cursor = new Date(maxData);
+      while (cursor < alvoFinal) {
+        cursor.setMonth(cursor.getMonth() + 1);
+        linhas.push({
+          contrato_id: c.id,
+          cliente_id: ultimo.cliente_id,
+          pessoa_id: ultimo.pessoa_id,
+          tipo: "receita",
+          situacao: "pendente",
+          descricao: ultimo.descricao,
+          valor: c.valor_mensal,
+          data_vencimento: cursor.toISOString().slice(0, 10),
+          servico_id: c.servico_id,
+          grupo_id: ultimo.grupo_id,
+          recorrencia_tipo: "mensal",
+        });
+      }
+      if (linhas.length > 0) {
+        await supabase.from("lancamentos").insert(linhas);
+      }
+    }
+  }
 
   useEffect(() => {
     carregar();
@@ -571,6 +624,16 @@ function ContratoRecorrenteForm({
         if (arquivo) {
           await enviarArquivo(contratoEditando.id, arquivo);
         }
+
+        // Ao encerrar, remove as parcelas futuras ainda pendentes (mantém o que já foi pago)
+        if (status === "encerrado" && dataEncerramento) {
+          await supabase
+            .from("lancamentos")
+            .delete()
+            .eq("contrato_id", contratoEditando.id)
+            .eq("situacao", "pendente")
+            .gte("data_vencimento", dataEncerramento);
+        }
       } else {
         const clienteId = await garantirClienteId(pessoaSelecionada!.id);
         const { data: novoContrato, error } = await supabase
@@ -595,6 +658,48 @@ function ContratoRecorrenteForm({
 
         if (arquivo && novoContrato) {
           await enviarArquivo(novoContrato.id, arquivo);
+        }
+
+        // Gera os lançamentos automaticamente: entrada (se houver) + 36 meses de mensalidade
+        if (novoContrato) {
+          const linhas: Record<string, unknown>[] = [];
+
+          if (valorEntrada && Number(valorEntrada) > 0) {
+            linhas.push({
+              contrato_id: novoContrato.id,
+              cliente_id: clienteId,
+              pessoa_id: pessoaSelecionada!.id,
+              tipo: "receita",
+              situacao: "pendente",
+              descricao: `Entrada — contrato ${numeroContrato || ""}`.trim(),
+              valor: Number(valorEntrada),
+              data_vencimento: dataPagamentoEntrada || dataPrimeiraMensalidade,
+              servico_id: servicoFinalId,
+            });
+          }
+
+          const grupoId = crypto.randomUUID();
+          const MESES_GERADOS = 36;
+          for (let i = 0; i < MESES_GERADOS; i++) {
+            const venc = new Date(dataPrimeiraMensalidade + "T00:00:00");
+            venc.setMonth(venc.getMonth() + i);
+            linhas.push({
+              contrato_id: novoContrato.id,
+              cliente_id: clienteId,
+              pessoa_id: pessoaSelecionada!.id,
+              tipo: "receita",
+              situacao: "pendente",
+              descricao: `Mensalidade — contrato ${numeroContrato || ""}`.trim(),
+              valor: Number(valorMensal),
+              data_vencimento: venc.toISOString().slice(0, 10),
+              servico_id: servicoFinalId,
+              grupo_id: grupoId,
+              recorrencia_tipo: "mensal",
+            });
+          }
+
+          const { error: lancError } = await supabase.from("lancamentos").insert(linhas);
+          if (lancError) throw lancError;
         }
       }
 

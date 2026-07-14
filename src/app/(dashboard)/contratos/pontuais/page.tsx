@@ -591,6 +591,16 @@ function ContratoPontualForm({
         if (arquivo) {
           await enviarArquivo(contratoEditando.id, arquivo);
         }
+
+        // Ao concluir/arquivar antes da hora, remove parcelas futuras ainda pendentes
+        if (status !== "ativo" && dataEncerramento) {
+          await supabase
+            .from("lancamentos")
+            .delete()
+            .eq("contrato_id", contratoEditando.id)
+            .eq("situacao", "pendente")
+            .gte("data_vencimento", dataEncerramento);
+        }
       } else {
         const clienteId = await garantirClienteId(pessoaSelecionada!.id);
         const { data: novoContrato, error } = await supabase
@@ -618,6 +628,62 @@ function ContratoPontualForm({
 
         if (arquivo && novoContrato) {
           await enviarArquivo(novoContrato.id, arquivo);
+        }
+
+        // Gera o(s) lançamento(s) automaticamente
+        if (novoContrato) {
+          const linhas: Record<string, unknown>[] = [];
+          const base = {
+            contrato_id: novoContrato.id,
+            cliente_id: clienteId,
+            pessoa_id: pessoaSelecionada!.id,
+            tipo: "receita" as const,
+            servico_id: servicoFinalId,
+          };
+
+          if (tipoPagamento === "avista") {
+            linhas.push({
+              ...base,
+              situacao: situacaoPagamento,
+              descricao: `Contrato ${numeroContrato || ""}`.trim(),
+              valor: Number(valorTotal),
+              data_vencimento: dataPagamento || dataInicio,
+              data_quitacao: situacaoPagamento === "pago" ? dataPagamento || null : null,
+            });
+          } else {
+            const entrada = valorEntrada ? Number(valorEntrada) : 0;
+            const n = Number(quantidadeParcelas);
+            const valorParcela = (Number(valorTotal) - entrada) / n;
+            const grupoId = crypto.randomUUID();
+
+            if (entrada > 0) {
+              linhas.push({
+                ...base,
+                situacao: "pendente",
+                descricao: `Entrada — contrato ${numeroContrato || ""}`.trim(),
+                valor: entrada,
+                data_vencimento: dataInicio,
+              });
+            }
+
+            for (let i = 0; i < n; i++) {
+              const venc = new Date(dataPrimeiraParcela + "T00:00:00");
+              venc.setMonth(venc.getMonth() + i);
+              linhas.push({
+                ...base,
+                situacao: "pendente",
+                descricao: `Parcela — contrato ${numeroContrato || ""}`.trim(),
+                valor: valorParcela,
+                data_vencimento: venc.toISOString().slice(0, 10),
+                grupo_id: grupoId,
+                numero_parcela: i + 1,
+                total_parcelas: n,
+              });
+            }
+          }
+
+          const { error: lancError } = await supabase.from("lancamentos").insert(linhas);
+          if (lancError) throw lancError;
         }
       }
 
