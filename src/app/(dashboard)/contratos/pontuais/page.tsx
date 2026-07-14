@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PessoaForm } from "@/components/pessoa-form";
 
@@ -13,6 +13,10 @@ interface Contrato {
   data_fechamento: string | null;
   data_encerramento: string | null;
   servico_id: string | null;
+  descricao: string | null;
+  comentarios_extras: string | null;
+  arquivo_path: string | null;
+  arquivo_nome: string | null;
   clientes: {
     papeis: {
       pessoas: {
@@ -72,7 +76,7 @@ export default function ContratosPontuaisPage() {
       .from("contratos")
       .select(
         `id, numero_contrato, status, forma_pagamento, valor_total, data_fechamento,
-         data_encerramento, servico_id,
+         data_encerramento, servico_id, descricao, comentarios_extras, arquivo_path, arquivo_nome,
          clientes ( papeis ( pessoas ( nome, razao_social, documento, email ) ) ),
          servicos ( nome )`
       )
@@ -280,6 +284,40 @@ export default function ContratosPontuaisPage() {
                     <DetalheLinha label="Serviço" valor={detalhe.servicos?.nome ?? "—"} />
                     <DetalheLinha label="Forma de pagamento" valor={detalhe.forma_pagamento ?? "—"} />
                   </SecaoDetalhe>
+
+                  {(detalhe.descricao || detalhe.comentarios_extras) && (
+                    <SecaoDetalhe titulo="Observações">
+                      {detalhe.descricao && (
+                        <div>
+                          <p className="text-xs text-ink/50 mb-1">Contratado pelo cliente</p>
+                          <p className="text-sm text-ink whitespace-pre-wrap">{detalhe.descricao}</p>
+                        </div>
+                      )}
+                      {detalhe.comentarios_extras && (
+                        <div>
+                          <p className="text-xs text-ink/50 mb-1">Comentários extras</p>
+                          <p className="text-sm text-ink whitespace-pre-wrap">{detalhe.comentarios_extras}</p>
+                        </div>
+                      )}
+                    </SecaoDetalhe>
+                  )}
+
+                  {detalhe.arquivo_path && (
+                    <SecaoDetalhe titulo="Arquivo">
+                      <button
+                        onClick={async () => {
+                          const supabase = createClient();
+                          const { data } = await supabase.storage
+                            .from("contratos")
+                            .createSignedUrl(detalhe.arquivo_path!, 60);
+                          if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+                        }}
+                        className="text-sm font-semibold text-forest hover:underline"
+                      >
+                        📄 {detalhe.arquivo_nome ?? "Ver arquivo do contrato"}
+                      </button>
+                    </SecaoDetalhe>
+                  )}
                 </>
               );
             })()}
@@ -343,6 +381,12 @@ function ContratoPontualForm({
   );
   const [dataEncerramento, setDataEncerramento] = useState(contratoEditando?.data_encerramento ?? "");
 
+  const [descricao, setDescricao] = useState(contratoEditando?.descricao ?? "");
+  const [comentariosExtras, setComentariosExtras] = useState(contratoEditando?.comentarios_extras ?? "");
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [arrastandoArquivo, setArrastandoArquivo] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -405,6 +449,34 @@ function ContratoPontualForm({
     return novoCliente.id;
   }
 
+  async function enviarArquivo(contratoId: string, arquivo: File) {
+    const supabase = createClient();
+    const path = `${contratoId}/${arquivo.name}`;
+    const { error: uploadError } = await supabase.storage
+      .from("contratos")
+      .upload(path, arquivo, { upsert: true });
+    if (uploadError) throw uploadError;
+
+    await supabase
+      .from("contratos")
+      .update({ arquivo_path: path, arquivo_nome: arquivo.name })
+      .eq("id", contratoId);
+  }
+
+  function handleArquivoSelecionado(file: File | undefined | null) {
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      setErro("Apenas arquivos PDF são aceitos.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setErro("O arquivo deve ter no máximo 10MB.");
+      return;
+    }
+    setErro(null);
+    setArquivo(file);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!editando && !pessoaSelecionada) {
@@ -439,21 +511,37 @@ function ContratoPontualForm({
             numero_contrato: numeroContrato.trim() || null,
             status,
             data_encerramento: status !== "ativo" ? dataEncerramento || null : null,
+            descricao: descricao || null,
+            comentarios_extras: comentariosExtras || null,
           })
           .eq("id", contratoEditando.id);
         if (error) throw error;
+
+        if (arquivo) {
+          await enviarArquivo(contratoEditando.id, arquivo);
+        }
       } else {
         const clienteId = await garantirClienteId(pessoaSelecionada!.id);
-        const { error } = await supabase.from("contratos").insert({
-          cliente_id: clienteId,
-          tipo_contrato: "pontual",
-          forma_pagamento: formaPagamento,
-          servico_id: servicoFinalId,
-          valor_total: Number(valorTotal),
-          data_fechamento: dataInicio,
-          ...(numeroContrato.trim() ? { numero_contrato: numeroContrato.trim() } : {}),
-        });
+        const { data: novoContrato, error } = await supabase
+          .from("contratos")
+          .insert({
+            cliente_id: clienteId,
+            tipo_contrato: "pontual",
+            forma_pagamento: formaPagamento,
+            servico_id: servicoFinalId,
+            valor_total: Number(valorTotal),
+            data_fechamento: dataInicio,
+            descricao: descricao || null,
+            comentarios_extras: comentariosExtras || null,
+            ...(numeroContrato.trim() ? { numero_contrato: numeroContrato.trim() } : {}),
+          })
+          .select("id")
+          .single();
         if (error) throw error;
+
+        if (arquivo && novoContrato) {
+          await enviarArquivo(novoContrato.id, arquivo);
+        }
       }
 
       setSaving(false);
@@ -650,6 +738,72 @@ function ContratoPontualForm({
             )}
           </>
         )}
+      </div>
+
+      <div className="rounded-2xl bg-surface p-4">
+        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
+          <span className="text-forest">⬆</span> Arquivo do contrato
+        </p>
+        <span className="block text-sm font-medium text-ink/70 mb-1">Arquivo do contrato (PDF)</span>
+        <div
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setArrastandoArquivo(true);
+          }}
+          onDragLeave={() => setArrastandoArquivo(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setArrastandoArquivo(false);
+            handleArquivoSelecionado(e.dataTransfer.files?.[0]);
+          }}
+          className={`rounded-2xl border-2 border-dashed p-8 text-center cursor-pointer transition-colors ${
+            arrastandoArquivo ? "border-forest bg-mint/40" : "border-black/15 hover:border-forest/60"
+          }`}
+        >
+          <p className="text-2xl mb-2">⬆</p>
+          <p className="font-semibold text-ink text-sm">
+            {arquivo?.name ?? contratoEditando?.arquivo_nome ?? "Arraste o PDF ou clique para selecionar"}
+          </p>
+          <p className="text-xs text-ink/40 mt-1">Máximo 10MB</p>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          onChange={(e) => handleArquivoSelecionado(e.target.files?.[0])}
+        />
+      </div>
+
+      <div className="rounded-2xl bg-surface p-4 space-y-4">
+        <p className="text-sm font-bold text-ink flex items-center gap-2">
+          <span className="text-forest">📝</span> Observações do contrato
+        </p>
+        <Campo label="Contratado pelo cliente">
+          <textarea
+            value={descricao}
+            onChange={(e) => setDescricao(e.target.value)}
+            className="input"
+            rows={3}
+            placeholder="Resumo do contrato, observações importantes, escopo detalhado..."
+          />
+          <span className="block text-xs text-ink/40 mt-1">
+            Descreva o que foi contratado e observações relevantes sobre o escopo.
+          </span>
+        </Campo>
+        <Campo label="Comentários extras">
+          <textarea
+            value={comentariosExtras}
+            onChange={(e) => setComentariosExtras(e.target.value)}
+            className="input"
+            rows={3}
+            placeholder="Curiosidades, pedidos especiais, preferências do cliente..."
+          />
+          <span className="block text-xs text-ink/40 mt-1">
+            Informações adicionais sobre o fechamento e particularidades do cliente.
+          </span>
+        </Campo>
       </div>
 
       {erro && <p className="text-sm text-red-600">{erro}</p>}
