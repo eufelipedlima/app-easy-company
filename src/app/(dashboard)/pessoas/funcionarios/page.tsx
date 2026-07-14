@@ -458,34 +458,6 @@ function DetalheFuncionario({
           </form>
         )}
 
-        {historico.length > 0 && (
-          <div className="mb-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Histórico salarial</p>
-            <div className="rounded-2xl bg-card p-4 shadow-sm space-y-3">
-              {historico.map((h) => (
-                <div key={h.id} className="text-sm border-b border-black/5 last:border-0 pb-2 last:pb-0">
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        h.tipo === "aumento" ? "bg-mint text-forest" : "bg-black/5 text-ink/60"
-                      }`}
-                    >
-                      {h.tipo === "aumento" ? "Aumento" : "Reajuste"}
-                    </span>
-                    <span className="text-xs text-ink/40">
-                      {new Date(h.data_alteracao + "T00:00:00").toLocaleDateString("pt-BR")}
-                    </span>
-                  </div>
-                  <p className="text-ink/70 mt-1">
-                    {formatarMoeda(h.salario_anterior)} → <span className="font-semibold text-ink">{formatarMoeda(h.salario_novo)}</span>
-                  </p>
-                  {h.observacao && <p className="text-xs text-ink/40 mt-0.5">{h.observacao}</p>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div className="mb-4">
           <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Benefícios</p>
           <div className="rounded-2xl bg-card p-4 shadow-sm space-y-2.5">
@@ -574,6 +546,34 @@ function DetalheFuncionario({
             <ProvisaoLinha label="Multa FGTS" percentual="40,00%" valor={formatarMoeda(encargos.multaFgts)} />
           </div>
         </div>
+
+        {historico.length > 0 && (
+          <div className="mb-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Histórico salarial</p>
+            <div className="rounded-2xl bg-card p-4 shadow-sm space-y-3">
+              {historico.map((h) => (
+                <div key={h.id} className="text-sm border-b border-black/5 last:border-0 pb-2 last:pb-0">
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        h.tipo === "aumento" ? "bg-mint text-forest" : "bg-black/5 text-ink/60"
+                      }`}
+                    >
+                      {h.tipo === "aumento" ? "Aumento" : "Reajuste"}
+                    </span>
+                    <span className="text-xs text-ink/40">
+                      {new Date(h.data_alteracao + "T00:00:00").toLocaleDateString("pt-BR")}
+                    </span>
+                  </div>
+                  <p className="text-ink/70 mt-1">
+                    {formatarMoeda(h.salario_anterior)} → <span className="font-semibold text-ink">{formatarMoeda(h.salario_novo)}</span>
+                  </p>
+                  {h.observacao && <p className="text-xs text-ink/40 mt-0.5">{h.observacao}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <button
           onClick={onRemover}

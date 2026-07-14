@@ -22,7 +22,10 @@ interface Pessoa {
   segmento_id: string | null;
   created_at: string;
   segmentos: { nome: string } | null;
+  papeis: { papel: string }[];
 }
+
+type FiltroPapel = "todos" | "cliente" | "funcionario" | "prestador" | "sem_papel";
 
 function formatarData(data: string | null) {
   if (!data) return "—";
@@ -35,6 +38,7 @@ export default function PessoasPage() {
   const [painelAberto, setPainelAberto] = useState(false);
   const [editando, setEditando] = useState<Pessoa | null>(null);
   const [detalhe, setDetalhe] = useState<Pessoa | null>(null);
+  const [filtroPapel, setFiltroPapel] = useState<FiltroPapel>("todos");
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -42,7 +46,7 @@ export default function PessoasPage() {
     const { data } = await supabase
       .from("pessoas")
       .select(
-        "id, tipo_pessoa, nome, razao_social, documento, data_nascimento, email, whatsapp, rua, numero, complemento, bairro, cidade, cep, segmento_id, created_at, segmentos ( nome )"
+        "id, tipo_pessoa, nome, razao_social, documento, data_nascimento, email, whatsapp, rua, numero, complemento, bairro, cidade, cep, segmento_id, created_at, segmentos ( nome ), papeis ( papel )"
       )
       .order("created_at", { ascending: false });
     setPessoas((data as unknown as Pessoa[]) ?? []);
@@ -53,9 +57,36 @@ export default function PessoasPage() {
     carregar();
   }, [carregar]);
 
+  const pessoasFiltradas = pessoas.filter((p) => {
+    if (filtroPapel === "todos") return true;
+    if (filtroPapel === "sem_papel") return p.papeis.length === 0;
+    return p.papeis.some((papel) => papel.papel === filtroPapel);
+  });
+
   return (
     <div>
-      <div className="flex items-center justify-end mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner">
+          {(["todos", "cliente", "funcionario", "prestador", "sem_papel"] as FiltroPapel[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFiltroPapel(f)}
+              className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
+                filtroPapel === f ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
+              }`}
+            >
+              {f === "todos"
+                ? "Todos"
+                : f === "cliente"
+                ? "Clientes"
+                : f === "funcionario"
+                ? "Funcionários"
+                : f === "prestador"
+                ? "Prestadores"
+                : "Sem papel"}
+            </button>
+          ))}
+        </div>
         {!painelAberto && !editando && (
           <button
             onClick={() => setPainelAberto(true)}
@@ -89,9 +120,9 @@ export default function PessoasPage() {
       <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
         {loading ? (
           <p className="p-6 text-sm text-ink/50">Carregando...</p>
-        ) : pessoas.length === 0 ? (
+        ) : pessoasFiltradas.length === 0 ? (
           <p className="p-6 text-sm text-ink/50">
-            Nenhuma pessoa cadastrada ainda. Clique em &ldquo;Nova pessoa&rdquo; pra começar.
+            Nenhuma pessoa encontrada com esse filtro.
           </p>
         ) : (
           <table className="w-full text-sm table-fixed">
@@ -116,7 +147,7 @@ export default function PessoasPage() {
               </tr>
             </thead>
             <tbody>
-              {pessoas.map((p) => (
+              {pessoasFiltradas.map((p) => (
                 <tr
                   key={p.id}
                   onClick={() => setDetalhe(p)}
