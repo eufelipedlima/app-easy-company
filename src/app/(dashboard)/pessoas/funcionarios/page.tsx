@@ -8,6 +8,22 @@ interface Beneficio {
   id: string;
   nome: string;
   valor: number;
+  tipo_valor: "mensal" | "diario";
+}
+
+function diasUteisNoMes(ano: number, mes: number) {
+  let count = 0;
+  const data = new Date(ano, mes, 1);
+  while (data.getMonth() === mes) {
+    const dia = data.getDay();
+    if (dia !== 0 && dia !== 6) count++;
+    data.setDate(data.getDate() + 1);
+  }
+  return count;
+}
+
+function valorMensalBeneficio(b: Beneficio, ano: number, mes: number) {
+  return b.tipo_valor === "diario" ? b.valor * diasUteisNoMes(ano, mes) : b.valor;
 }
 
 interface Funcionario {
@@ -66,13 +82,13 @@ export default function FuncionariosPage() {
     if (lista.length > 0) {
       const { data: beneficios } = await supabase
         .from("funcionario_beneficios")
-        .select("id, funcionario_id, nome, valor")
+        .select("id, funcionario_id, nome, valor, tipo_valor")
         .in("funcionario_id", lista.map((f) => f.id));
 
       const agrupado: Record<string, Beneficio[]> = {};
       (beneficios ?? []).forEach((b) => {
         if (!agrupado[b.funcionario_id]) agrupado[b.funcionario_id] = [];
-        agrupado[b.funcionario_id].push({ id: b.id, nome: b.nome, valor: b.valor });
+        agrupado[b.funcionario_id].push({ id: b.id, nome: b.nome, valor: b.valor, tipo_valor: b.tipo_valor });
       });
       setBeneficiosPorFuncionario(agrupado);
     }
@@ -85,7 +101,11 @@ export default function FuncionariosPage() {
 
   function custoTotal(f: Funcionario) {
     const beneficios = beneficiosPorFuncionario[f.id] ?? [];
-    return f.salario + beneficios.reduce((s, b) => s + b.valor, 0);
+    const hoje = new Date();
+    return (
+      f.salario +
+      beneficios.reduce((s, b) => s + valorMensalBeneficio(b, hoje.getFullYear(), hoje.getMonth()), 0)
+    );
   }
 
   async function remover(id: string) {
@@ -188,9 +208,14 @@ function DetalheFuncionario({
 }) {
   const [nomeBeneficio, setNomeBeneficio] = useState("");
   const [valorBeneficio, setValorBeneficio] = useState("");
+  const [tipoValorBeneficio, setTipoValorBeneficio] = useState<"mensal" | "diario">("mensal");
   const [salvando, setSalvando] = useState(false);
 
-  const custoTotal = funcionario.salario + beneficios.reduce((s, b) => s + b.valor, 0);
+  const hoje = new Date();
+  const dias = diasUteisNoMes(hoje.getFullYear(), hoje.getMonth());
+  const custoTotal =
+    funcionario.salario +
+    beneficios.reduce((s, b) => s + valorMensalBeneficio(b, hoje.getFullYear(), hoje.getMonth()), 0);
 
   async function adicionarBeneficio(e: React.FormEvent) {
     e.preventDefault();
@@ -201,9 +226,11 @@ function DetalheFuncionario({
       funcionario_id: funcionario.id,
       nome: nomeBeneficio.trim(),
       valor: Number(valorBeneficio),
+      tipo_valor: tipoValorBeneficio,
     });
     setNomeBeneficio("");
     setValorBeneficio("");
+    setTipoValorBeneficio("mensal");
     setSalvando(false);
     onChange();
   }
@@ -233,10 +260,10 @@ function DetalheFuncionario({
         </div>
 
         <div className="rounded-2xl bg-card p-4 mb-4 shadow-sm">
-          <p className="text-xs text-ink/50 mb-0.5">Custo total mensal</p>
+          <p className="text-xs text-ink/50 mb-0.5">Custo total mensal (mês atual)</p>
           <p className="text-xl font-extrabold text-forest">{formatarMoeda(custoTotal)}</p>
           <p className="text-xs text-ink/40 mt-3 pt-3 border-t border-black/5">
-            Salário base: {formatarMoeda(funcionario.salario)}
+            Salário base: {formatarMoeda(funcionario.salario)} · {dias} dias úteis este mês
           </p>
         </div>
 
@@ -248,9 +275,18 @@ function DetalheFuncionario({
             ) : (
               beneficios.map((b) => (
                 <div key={b.id} className="flex items-center justify-between text-sm">
-                  <span className="text-ink/70">{b.nome}</span>
+                  <div>
+                    <span className="text-ink/70">{b.nome}</span>
+                    <span className="block text-xs text-ink/40">
+                      {b.tipo_valor === "diario"
+                        ? `${formatarMoeda(b.valor)}/dia útil × ${dias} dias`
+                        : "valor fixo mensal"}
+                    </span>
+                  </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-ink">{formatarMoeda(b.valor)}</span>
+                    <span className="font-semibold text-ink">
+                      {formatarMoeda(valorMensalBeneficio(b, hoje.getFullYear(), hoje.getMonth()))}
+                    </span>
                     <button onClick={() => removerBeneficio(b.id)} className="text-xs text-ink/30 hover:text-red-600">
                       ✕
                     </button>
@@ -259,28 +295,50 @@ function DetalheFuncionario({
               ))
             )}
 
-            <form onSubmit={adicionarBeneficio} className="flex gap-2 pt-2 border-t border-black/5">
+            <form onSubmit={adicionarBeneficio} className="space-y-2 pt-2 border-t border-black/5">
               <input
                 value={nomeBeneficio}
                 onChange={(e) => setNomeBeneficio(e.target.value)}
                 className="input text-sm"
-                placeholder="Vale-refeição..."
+                placeholder="Vale-refeição, vale-transporte..."
               />
-              <input
-                type="number"
-                step="0.01"
-                value={valorBeneficio}
-                onChange={(e) => setValorBeneficio(e.target.value)}
-                className="input text-sm w-28"
-                placeholder="R$"
-              />
-              <button
-                type="submit"
-                disabled={salvando}
-                className="shrink-0 rounded-full bg-forest text-white px-3 text-xs font-bold hover:bg-ink transition-colors"
-              >
-                +
-              </button>
+              <div className="flex gap-2">
+                <div className="flex items-center gap-1 rounded-full bg-surface p-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setTipoValorBeneficio("mensal")}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      tipoValorBeneficio === "mensal" ? "bg-ink text-white" : "text-ink/60"
+                    }`}
+                  >
+                    Mensal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTipoValorBeneficio("diario")}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      tipoValorBeneficio === "diario" ? "bg-ink text-white" : "text-ink/60"
+                    }`}
+                  >
+                    Por dia útil
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={valorBeneficio}
+                  onChange={(e) => setValorBeneficio(e.target.value)}
+                  className="input text-sm"
+                  placeholder={tipoValorBeneficio === "diario" ? "R$/dia" : "R$/mês"}
+                />
+                <button
+                  type="submit"
+                  disabled={salvando}
+                  className="shrink-0 rounded-full bg-forest text-white px-3 text-xs font-bold hover:bg-ink transition-colors"
+                >
+                  +
+                </button>
+              </div>
             </form>
           </div>
         </div>

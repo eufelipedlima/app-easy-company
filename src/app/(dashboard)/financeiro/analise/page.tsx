@@ -33,6 +33,18 @@ interface Funcionario {
 interface Beneficio {
   funcionario_id: string;
   valor: number;
+  tipo_valor: "mensal" | "diario";
+}
+
+function diasUteisNoMes(ano: number, mes: number) {
+  let count = 0;
+  const data = new Date(ano, mes, 1);
+  while (data.getMonth() === mes) {
+    const dia = data.getDay();
+    if (dia !== 0 && dia !== 6) count++;
+    data.setDate(data.getDate() + 1);
+  }
+  return count;
 }
 
 const MESES = [
@@ -76,7 +88,7 @@ export default function AnaliseFinanceiraPage() {
       if (listaFunc.length > 0) {
         const { data: ben } = await supabase
           .from("funcionario_beneficios")
-          .select("funcionario_id, valor")
+          .select("funcionario_id, valor, tipo_valor")
           .in("funcionario_id", listaFunc.map((f) => f.id));
         setBeneficios((ben as unknown as Beneficio[]) ?? []);
       } else {
@@ -153,8 +165,14 @@ export default function AnaliseFinanceiraPage() {
       .sort((a, b) => b.valor - a.valor);
   }, [pagosNoPeriodo]);
 
+  const mesReferencia = modo === "mensal" ? mes : hoje.getMonth();
+  const diasUteisReferencia = diasUteisNoMes(ano, mesReferencia);
   const totalFolha =
-    funcionarios.reduce((s, f) => s + f.salario, 0) + beneficios.reduce((s, b) => s + b.valor, 0);
+    funcionarios.reduce((s, f) => s + f.salario, 0) +
+    beneficios.reduce(
+      (s, b) => s + (b.tipo_valor === "diario" ? b.valor * diasUteisReferencia : b.valor),
+      0
+    );
   const mediaFolha = funcionarios.length > 0 ? totalFolha / funcionarios.length : 0;
 
   const anos = Array.from({ length: 5 }, (_, i) => hoje.getFullYear() - 2 + i);
