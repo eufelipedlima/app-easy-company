@@ -121,22 +121,33 @@ export default function ContratosPontuaisPage() {
       </div>
 
       {(painelAberto || editando) && (
-        <div className="mb-8 rounded-3xl bg-card border border-black/5 p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-ink mb-6">
-            {editando ? "Editar contrato" : "Cadastrar contrato pontual"}
-          </h2>
-          <ContratoPontualForm
-            contratoEditando={editando}
-            onSaved={() => {
-              setPainelAberto(false);
-              setEditando(null);
-              carregar();
-            }}
-            onCancel={() => {
-              setPainelAberto(false);
-              setEditando(null);
-            }}
-          />
+        <div
+          className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6"
+          onClick={() => {
+            setPainelAberto(false);
+            setEditando(null);
+          }}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold text-ink mb-5">
+              {editando ? "Editar contrato" : "Cadastrar contrato pontual"}
+            </h2>
+            <ContratoPontualForm
+              contratoEditando={editando}
+              onSaved={() => {
+                setPainelAberto(false);
+                setEditando(null);
+                carregar();
+              }}
+              onCancel={() => {
+                setPainelAberto(false);
+                setEditando(null);
+              }}
+            />
+          </div>
         </div>
       )}
 
@@ -385,6 +396,7 @@ function ContratoPontualForm({
   const [comentariosExtras, setComentariosExtras] = useState(contratoEditando?.comentarios_extras ?? "");
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [arrastandoArquivo, setArrastandoArquivo] = useState(false);
+  const [maisOpcoesAberto, setMaisOpcoesAberto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [saving, setSaving] = useState(false);
@@ -579,255 +591,231 @@ function ContratoPontualForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <div className="rounded-2xl bg-surface p-4">
-        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
-          <span className="text-forest">👤</span> Cliente
-        </p>
-        <div className="relative">
-          <input
-            disabled={editando}
-            value={buscaCliente}
-            onChange={(e) => {
-              setBuscaCliente(e.target.value);
-              setPessoaSelecionada(null);
-              setMostrarSugestoes(true);
-            }}
-            onFocus={() => !editando && setMostrarSugestoes(true)}
-            className="input disabled:opacity-60"
-            placeholder="Digite o nome do cliente..."
-          />
-          {!editando && mostrarSugestoes && buscaCliente && !pessoaSelecionada && (
-            <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
-              {sugestoes.length > 0 ? (
-                sugestoes.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => {
-                      setPessoaSelecionada(p);
-                      setBuscaCliente(p.nome);
-                      setMostrarSugestoes(false);
-                    }}
-                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
-                  >
-                    {p.nome} <span className="text-xs text-ink/40">({p.tipo_pessoa})</span>
-                  </button>
-                ))
-              ) : (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="relative">
+        <span className="block text-sm font-medium text-ink/70 mb-1">
+          Cliente<span className="text-forest"> *</span>
+        </span>
+        <input
+          disabled={editando}
+          value={buscaCliente}
+          onChange={(e) => {
+            setBuscaCliente(e.target.value);
+            setPessoaSelecionada(null);
+            setMostrarSugestoes(true);
+          }}
+          onFocus={() => !editando && setMostrarSugestoes(true)}
+          className="input disabled:opacity-60"
+          placeholder="Digite o nome do cliente..."
+        />
+        {!editando && mostrarSugestoes && buscaCliente && !pessoaSelecionada && (
+          <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
+            {sugestoes.length > 0 ? (
+              sugestoes.map((p) => (
                 <button
-                  type="button"
-                  onClick={() => setCadastrandoCliente(true)}
-                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-forest hover:bg-surface"
-                >
-                  + Cadastrar &ldquo;{buscaCliente}&rdquo; como novo cliente
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="rounded-2xl bg-surface p-4">
-        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
-          <span className="text-forest">🧾</span> Detalhes do contrato
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Campo label="Serviço">
-            {!novoServico ? (
-              <div className="flex gap-2">
-                <select value={servicoId} onChange={(e) => setServicoId(e.target.value)} className="input">
-                  <option value="">Selecione...</option>
-                  {servicos.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nome}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setNovoServico(true)}
-                  className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
-                >
-                  + Novo
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <input
-                  autoFocus
-                  value={nomeNovoServico}
-                  onChange={(e) => setNomeNovoServico(e.target.value)}
-                  className="input"
-                  placeholder="Nome do novo serviço"
-                />
-                <button
+                  key={p.id}
                   type="button"
                   onClick={() => {
-                    setNovoServico(false);
-                    setNomeNovoServico("");
+                    setPessoaSelecionada(p);
+                    setBuscaCliente(p.nome);
+                    setMostrarSugestoes(false);
                   }}
-                  className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
                 >
-                  Cancelar
+                  {p.nome} <span className="text-xs text-ink/40">({p.tipo_pessoa})</span>
                 </button>
-              </div>
+              ))
+            ) : (
+              <button
+                type="button"
+                onClick={() => setCadastrandoCliente(true)}
+                className="w-full text-left px-4 py-2.5 text-sm font-semibold text-forest hover:bg-surface"
+              >
+                + Cadastrar &ldquo;{buscaCliente}&rdquo; como novo cliente
+              </button>
             )}
-          </Campo>
-
-          <Campo label="Número do contrato">
-            <input
-              value={numeroContrato}
-              onChange={(e) => setNumeroContrato(e.target.value)}
-              className="input"
-              placeholder="Gerado automaticamente se em branco"
-            />
-          </Campo>
-
-          <Campo label="Forma de pagamento" required>
-            <select value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} className="input">
-              {FORMAS_PAGAMENTO.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          </Campo>
-        </div>
+          </div>
+        )}
       </div>
 
-      <div className="rounded-2xl bg-surface p-4">
-        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
-          <span className="text-forest">💰</span> Valores e datas
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Campo label="Início do contrato" required>
+      <div className="grid grid-cols-2 gap-3">
+        <Campo label="Serviço">
+          {!novoServico ? (
+            <div className="flex gap-2">
+              <select value={servicoId} onChange={(e) => setServicoId(e.target.value)} className="input">
+                <option value="">Selecione...</option>
+                {servicos.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nome}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setNovoServico(true)}
+                className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
+              >
+                + Novo
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                autoFocus
+                value={nomeNovoServico}
+                onChange={(e) => setNomeNovoServico(e.target.value)}
+                className="input"
+                placeholder="Nome do novo serviço"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setNovoServico(false);
+                  setNomeNovoServico("");
+                }}
+                className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
+        </Campo>
+
+        <Campo label="Número do contrato">
+          <input
+            value={numeroContrato}
+            onChange={(e) => setNumeroContrato(e.target.value)}
+            className="input"
+            placeholder="Automático se em branco"
+          />
+        </Campo>
+
+        <Campo label="Forma de pagamento" required>
+          <select value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} className="input">
+            {FORMAS_PAGAMENTO.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        </Campo>
+
+        <Campo label="Início do contrato" required>
+          <input
+            type="date"
+            required
+            value={dataInicio}
+            onChange={(e) => setDataInicio(e.target.value)}
+            className="input"
+          />
+        </Campo>
+
+        <Campo label="Valor total (R$)" required>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            required
+            value={valorTotal}
+            onChange={(e) => setValorTotal(e.target.value)}
+            className="input"
+            placeholder="0,00"
+          />
+        </Campo>
+
+        {editando && (
+          <Campo label="Status" required>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as "ativo" | "concluido" | "arquivado")}
+              className="input"
+            >
+              <option value="ativo">Ativo</option>
+              <option value="concluido">Concluído</option>
+              <option value="arquivado">Arquivado</option>
+            </select>
+          </Campo>
+        )}
+
+        {editando && status !== "ativo" && (
+          <Campo label="Data de encerramento" required>
             <input
               type="date"
               required
-              value={dataInicio}
-              onChange={(e) => setDataInicio(e.target.value)}
+              value={dataEncerramento}
+              onChange={(e) => setDataEncerramento(e.target.value)}
               className="input"
             />
           </Campo>
-
-          <Campo label="Valor total (R$)" required>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              required
-              value={valorTotal}
-              onChange={(e) => setValorTotal(e.target.value)}
-              className="input"
-              placeholder="0,00"
-            />
-          </Campo>
-        </div>
+        )}
       </div>
 
-      {editando && (
-        <div className="rounded-2xl bg-surface p-4">
-          <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
-            <span className="text-forest">⚙️</span> Status do contrato
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Campo label="Status" required>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as "ativo" | "concluido" | "arquivado")}
-                className="input"
-              >
-                <option value="ativo">Ativo</option>
-                <option value="concluido">Concluído</option>
-                <option value="arquivado">Arquivado</option>
-              </select>
-            </Campo>
+      <button
+        type="button"
+        onClick={() => setMaisOpcoesAberto((v) => !v)}
+        className="text-sm font-semibold text-forest hover:text-ink"
+      >
+        {maisOpcoesAberto ? "− Ocultar" : "+ Anexo e observações"}
+      </button>
 
-            {status !== "ativo" && (
-              <Campo label="Data de encerramento" required>
-                <input
-                  type="date"
-                  required
-                  value={dataEncerramento}
-                  onChange={(e) => setDataEncerramento(e.target.value)}
-                  className="input"
-                />
-              </Campo>
-            )}
+      {maisOpcoesAberto && (
+        <div className="space-y-4 rounded-2xl bg-surface p-4">
+          <div>
+            <span className="block text-sm font-medium text-ink/70 mb-1">Arquivo do contrato (PDF)</span>
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setArrastandoArquivo(true);
+              }}
+              onDragLeave={() => setArrastandoArquivo(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setArrastandoArquivo(false);
+                handleArquivoSelecionado(e.dataTransfer.files?.[0]);
+              }}
+              className={`rounded-xl border-2 border-dashed p-4 text-center cursor-pointer transition-colors ${
+                arrastandoArquivo ? "border-forest bg-mint/40" : "border-black/15 hover:border-forest/60"
+              }`}
+            >
+              <p className="font-semibold text-ink text-sm">
+                {arquivo?.name ?? contratoEditando?.arquivo_nome ?? "Arraste o PDF ou clique para selecionar"}
+              </p>
+              <p className="text-xs text-ink/40 mt-1">Máximo 10MB</p>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={(e) => handleArquivoSelecionado(e.target.files?.[0])}
+            />
           </div>
+
+          <Campo label="Contratado pelo cliente">
+            <textarea
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              className="input"
+              rows={2}
+              placeholder="Resumo do contrato, escopo..."
+            />
+          </Campo>
+          <Campo label="Comentários extras">
+            <textarea
+              value={comentariosExtras}
+              onChange={(e) => setComentariosExtras(e.target.value)}
+              className="input"
+              rows={2}
+              placeholder="Curiosidades, pedidos especiais..."
+            />
+          </Campo>
         </div>
       )}
 
-      <div className="rounded-2xl bg-surface p-4">
-        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
-          <span className="text-forest">⬆</span> Arquivo do contrato
-        </p>
-        <span className="block text-sm font-medium text-ink/70 mb-1">Arquivo do contrato (PDF)</span>
-        <div
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setArrastandoArquivo(true);
-          }}
-          onDragLeave={() => setArrastandoArquivo(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setArrastandoArquivo(false);
-            handleArquivoSelecionado(e.dataTransfer.files?.[0]);
-          }}
-          className={`rounded-2xl border-2 border-dashed p-8 text-center cursor-pointer transition-colors ${
-            arrastandoArquivo ? "border-forest bg-mint/40" : "border-black/15 hover:border-forest/60"
-          }`}
-        >
-          <p className="text-2xl mb-2">⬆</p>
-          <p className="font-semibold text-ink text-sm">
-            {arquivo?.name ?? contratoEditando?.arquivo_nome ?? "Arraste o PDF ou clique para selecionar"}
-          </p>
-          <p className="text-xs text-ink/40 mt-1">Máximo 10MB</p>
-        </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/pdf"
-          className="hidden"
-          onChange={(e) => handleArquivoSelecionado(e.target.files?.[0])}
-        />
-      </div>
-
-      <div className="rounded-2xl bg-surface p-4 space-y-4">
-        <p className="text-sm font-bold text-ink flex items-center gap-2">
-          <span className="text-forest">📝</span> Observações do contrato
-        </p>
-        <Campo label="Contratado pelo cliente">
-          <textarea
-            value={descricao}
-            onChange={(e) => setDescricao(e.target.value)}
-            className="input"
-            rows={3}
-            placeholder="Resumo do contrato, observações importantes, escopo detalhado..."
-          />
-          <span className="block text-xs text-ink/40 mt-1">
-            Descreva o que foi contratado e observações relevantes sobre o escopo.
-          </span>
-        </Campo>
-        <Campo label="Comentários extras">
-          <textarea
-            value={comentariosExtras}
-            onChange={(e) => setComentariosExtras(e.target.value)}
-            className="input"
-            rows={3}
-            placeholder="Curiosidades, pedidos especiais, preferências do cliente..."
-          />
-          <span className="block text-xs text-ink/40 mt-1">
-            Informações adicionais sobre o fechamento e particularidades do cliente.
-          </span>
-        </Campo>
-      </div>
-
       {erro && <p className="text-sm text-red-600">{erro}</p>}
 
-      <div className="flex items-center gap-3 pt-2">
+      <div className="flex items-center gap-3 pt-1">
         <button
           type="submit"
           disabled={saving}

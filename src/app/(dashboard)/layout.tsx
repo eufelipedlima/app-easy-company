@@ -21,16 +21,6 @@ interface Grupo {
 
 const MENU: Grupo[] = [
   {
-    label: "Configurações",
-    icon: <Settings size={18} />,
-    itens: [
-      { href: "/configuracoes/bancos", label: "Bancos", icon: <Landmark size={15} /> },
-      { href: "/configuracoes/cargos", label: "Cargos", icon: <Briefcase size={15} /> },
-      { href: "/configuracoes/planos-conta", label: "Planos de conta", icon: <ListTree size={15} /> },
-      { href: "/configuracoes/servicos", label: "Serviços", icon: <Wrench size={15} /> },
-    ],
-  },
-  {
     label: "Contratos",
     icon: <FileText size={18} />,
     itens: [
@@ -54,6 +44,16 @@ const MENU: Grupo[] = [
       { href: "/pessoas/clientes", label: "Clientes", icon: <UserCheck size={15} /> },
       { href: "/pessoas/funcionarios", label: "Funcionários", icon: <Briefcase size={15} /> },
       { href: "/pessoas/prestadores", label: "Prestadores", icon: <HardHat size={15} /> },
+    ],
+  },
+  {
+    label: "Configurações",
+    icon: <Settings size={18} />,
+    itens: [
+      { href: "/configuracoes/bancos", label: "Bancos", icon: <Landmark size={15} /> },
+      { href: "/configuracoes/cargos", label: "Cargos", icon: <Briefcase size={15} /> },
+      { href: "/configuracoes/planos-conta", label: "Planos de conta", icon: <ListTree size={15} /> },
+      { href: "/configuracoes/servicos", label: "Serviços", icon: <Wrench size={15} /> },
     ],
   },
 ];
