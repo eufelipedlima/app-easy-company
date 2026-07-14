@@ -31,6 +31,10 @@ interface Opcao {
   nome: string;
 }
 
+interface PlanoContaOpcao extends Opcao {
+  tipo: "receita" | "despesa";
+}
+
 function formatarMoeda(valor: number) {
   return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -303,7 +307,7 @@ function LancamentoForm({
   const [novoBanco, setNovoBanco] = useState(false);
   const [nomeNovoBanco, setNomeNovoBanco] = useState("");
 
-  const [planosConta, setPlanosConta] = useState<Opcao[]>([]);
+  const [planosConta, setPlanosConta] = useState<PlanoContaOpcao[]>([]);
   const [planoContaId, setPlanoContaId] = useState(lancamentoEditando?.plano_conta_id ?? "");
   const [novoPlanoConta, setNovoPlanoConta] = useState(false);
   const [nomeNovoPlanoConta, setNomeNovoPlanoConta] = useState("");
@@ -338,8 +342,8 @@ function LancamentoForm({
 
   async function carregarPlanosConta() {
     const supabase = createClient();
-    const { data } = await supabase.from("planos_conta").select("id, nome").order("nome");
-    setPlanosConta(data ?? []);
+    const { data } = await supabase.from("planos_conta").select("id, nome, tipo").order("nome");
+    setPlanosConta((data as PlanoContaOpcao[]) ?? []);
   }
 
   const sugestoes = pessoas.filter((p) => p.nome.toLowerCase().includes(buscaCliente.toLowerCase()));
@@ -399,7 +403,7 @@ function LancamentoForm({
       if (novoPlanoConta && nomeNovoPlanoConta.trim()) {
         const { data, error } = await supabase
           .from("planos_conta")
-          .insert({ nome: nomeNovoPlanoConta.trim() })
+          .insert({ nome: nomeNovoPlanoConta.trim(), tipo })
           .select("id")
           .single();
         if (error) throw error;
@@ -646,11 +650,13 @@ function LancamentoForm({
               <div className="flex gap-2">
                 <select value={planoContaId} onChange={(e) => setPlanoContaId(e.target.value)} className="input">
                   <option value="">Selecione...</option>
-                  {planosConta.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nome}
-                    </option>
-                  ))}
+                  {planosConta
+                    .filter((p) => p.tipo === tipo)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nome}
+                      </option>
+                    ))}
                 </select>
                 <button
                   type="button"
@@ -667,7 +673,7 @@ function LancamentoForm({
                   value={nomeNovoPlanoConta}
                   onChange={(e) => setNomeNovoPlanoConta(e.target.value)}
                   className="input"
-                  placeholder="Nome do plano de conta"
+                  placeholder={`Nova conta de ${tipo}`}
                 />
                 <button
                   type="button"
@@ -681,6 +687,9 @@ function LancamentoForm({
                 </button>
               </div>
             )}
+            <span className="block text-xs text-ink/40 mt-1">
+              Mostrando apenas contas de {tipo === "receita" ? "receita" : "despesa"}.
+            </span>
           </Campo>
         </div>
       </div>
