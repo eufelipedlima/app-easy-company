@@ -27,39 +27,62 @@ interface Segmento {
   nome: string;
 }
 
+interface PessoaEditando {
+  id: string;
+  tipo_pessoa: TipoPessoa;
+  nome: string;
+  razao_social: string | null;
+  documento: string;
+  data_nascimento: string | null;
+  email: string | null;
+  whatsapp: string | null;
+  rua: string | null;
+  numero: string | null;
+  complemento: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  cep: string | null;
+  segmento_id: string | null;
+}
+
 interface Props {
   onSaved?: (pessoa: { id: string; nome: string }) => void;
   onCancel?: () => void;
   /** Título inicial pré-preenchido, útil quando vem de "cadastrar novo cliente" no meio de outro formulário */
   nomeInicial?: string;
+  /** Quando presente, o formulário edita essa pessoa em vez de criar uma nova */
+  pessoaEditando?: PessoaEditando | null;
 }
 
-export function PessoaForm({ onSaved, onCancel, nomeInicial }: Props) {
-  const [tipo, setTipo] = useState<TipoPessoa>("PF");
+export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: Props) {
+  const editando = !!pessoaEditando;
+
+  const [tipo, setTipo] = useState<TipoPessoa>(pessoaEditando?.tipo_pessoa ?? "PF");
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  const [nome, setNome] = useState(nomeInicial ?? "");
-  const [razaoSocial, setRazaoSocial] = useState("");
-  const [documento, setDocumento] = useState("");
-  const [dataNascimento, setDataNascimento] = useState("");
-  const [email, setEmail] = useState("");
-  const [whatsapp, setWhatsapp] = useState("");
-  const [rua, setRua] = useState("");
-  const [numero, setNumero] = useState("");
-  const [complemento, setComplemento] = useState("");
-  const [bairro, setBairro] = useState("");
-  const [cidade, setCidade] = useState("");
-  const [cep, setCep] = useState("");
+  const [nome, setNome] = useState(pessoaEditando?.nome ?? nomeInicial ?? "");
+  const [razaoSocial, setRazaoSocial] = useState(pessoaEditando?.razao_social ?? "");
+  const [documento, setDocumento] = useState(pessoaEditando?.documento ?? "");
+  const [dataNascimento, setDataNascimento] = useState(pessoaEditando?.data_nascimento ?? "");
+  const [email, setEmail] = useState(pessoaEditando?.email ?? "");
+  const [whatsapp, setWhatsapp] = useState(pessoaEditando?.whatsapp ?? "");
+  const [rua, setRua] = useState(pessoaEditando?.rua ?? "");
+  const [numero, setNumero] = useState(pessoaEditando?.numero ?? "");
+  const [complemento, setComplemento] = useState(pessoaEditando?.complemento ?? "");
+  const [bairro, setBairro] = useState(pessoaEditando?.bairro ?? "");
+  const [cidade, setCidade] = useState(pessoaEditando?.cidade ?? "");
+  const [cep, setCep] = useState(pessoaEditando?.cep ?? "");
 
   const [temResponsavel, setTemResponsavel] = useState(false);
+  const [responsavelId, setResponsavelId] = useState<string | null>(null);
   const [respNome, setRespNome] = useState("");
   const [respCpf, setRespCpf] = useState("");
   const [respEmail, setRespEmail] = useState("");
   const [respWhatsapp, setRespWhatsapp] = useState("");
 
   const [segmentos, setSegmentos] = useState<Segmento[]>([]);
-  const [segmentoId, setSegmentoId] = useState("");
+  const [segmentoId, setSegmentoId] = useState(pessoaEditando?.segmento_id ?? "");
   const [novoSegmento, setNovoSegmento] = useState(false);
   const [nomeNovoSegmento, setNomeNovoSegmento] = useState("");
 
@@ -70,6 +93,26 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial }: Props) {
       setSegmentos(data ?? []);
     }
     carregarSegmentos();
+
+    async function carregarResponsavel() {
+      if (!pessoaEditando) return;
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("responsaveis")
+        .select("id, nome_completo, cpf, email, whatsapp")
+        .eq("pessoa_id", pessoaEditando.id)
+        .maybeSingle();
+      if (data) {
+        setTemResponsavel(true);
+        setResponsavelId(data.id);
+        setRespNome(data.nome_completo);
+        setRespCpf(data.cpf);
+        setRespEmail(data.email ?? "");
+        setRespWhatsapp(data.whatsapp ?? "");
+      }
+    }
+    carregarResponsavel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -95,51 +138,79 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial }: Props) {
       segmentoFinalId = seg.id;
     }
 
-    const { data: pessoa, error: pessoaError } = await supabase
-      .from("pessoas")
-      .insert({
-        tipo_pessoa: tipo,
-        nome,
-        razao_social: tipo === "PJ" ? razaoSocial : null,
-        documento,
-        data_nascimento: tipo === "PF" ? dataNascimento || null : null,
-        email: email || null,
-        whatsapp: whatsapp || null,
-        rua: rua || null,
-        numero: numero || null,
-        complemento: complemento || null,
-        bairro: bairro || null,
-        cidade: cidade || null,
-        cep: cep || null,
-        segmento_id: tipo === "PJ" ? segmentoFinalId : null,
-      })
-      .select()
-      .single();
+    const dadosPessoa = {
+      tipo_pessoa: tipo,
+      nome,
+      razao_social: tipo === "PJ" ? razaoSocial : null,
+      documento,
+      data_nascimento: tipo === "PF" ? dataNascimento || null : null,
+      email: email || null,
+      whatsapp: whatsapp || null,
+      rua: rua || null,
+      numero: numero || null,
+      complemento: complemento || null,
+      bairro: bairro || null,
+      cidade: cidade || null,
+      cep: cep || null,
+      segmento_id: tipo === "PJ" ? segmentoFinalId : null,
+    };
 
-    if (pessoaError) {
-      setErro(pessoaError.message);
-      setSaving(false);
-      return;
+    let pessoaId: string;
+    let pessoaNome: string;
+
+    if (editando && pessoaEditando) {
+      const { error: pessoaError } = await supabase
+        .from("pessoas")
+        .update(dadosPessoa)
+        .eq("id", pessoaEditando.id);
+
+      if (pessoaError) {
+        setErro(pessoaError.message);
+        setSaving(false);
+        return;
+      }
+      pessoaId = pessoaEditando.id;
+      pessoaNome = nome;
+    } else {
+      const { data: pessoa, error: pessoaError } = await supabase
+        .from("pessoas")
+        .insert(dadosPessoa)
+        .select()
+        .single();
+
+      if (pessoaError) {
+        setErro(pessoaError.message);
+        setSaving(false);
+        return;
+      }
+      pessoaId = pessoa.id;
+      pessoaNome = pessoa.nome;
     }
 
     if (tipo === "PJ" && temResponsavel && respNome && respCpf) {
-      const { error: respError } = await supabase.from("responsaveis").insert({
-        pessoa_id: pessoa.id,
+      const dadosResponsavel = {
+        pessoa_id: pessoaId,
         nome_completo: respNome,
         cpf: respCpf,
         email: respEmail || null,
         whatsapp: respWhatsapp || null,
-      });
+      };
+
+      const { error: respError } = responsavelId
+        ? await supabase.from("responsaveis").update(dadosResponsavel).eq("id", responsavelId)
+        : await supabase.from("responsaveis").insert(dadosResponsavel);
 
       if (respError) {
         setErro(respError.message);
         setSaving(false);
         return;
       }
+    } else if (editando && responsavelId && (!temResponsavel || tipo === "PF")) {
+      await supabase.from("responsaveis").delete().eq("id", responsavelId);
     }
 
     setSaving(false);
-    onSaved?.({ id: pessoa.id, nome: pessoa.nome });
+    onSaved?.({ id: pessoaId, nome: pessoaNome });
   }
 
   return (
@@ -369,7 +440,7 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial }: Props) {
           disabled={saving}
           className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
         >
-          {saving ? "Salvando..." : "Salvar pessoa"}
+          {saving ? "Salvando..." : editando ? "Salvar alterações" : "Salvar pessoa"}
         </button>
         {onCancel && (
           <button
