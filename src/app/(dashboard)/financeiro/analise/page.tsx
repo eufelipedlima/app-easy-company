@@ -168,7 +168,7 @@ export default function AnaliseFinanceiraPage() {
         <p className="text-sm text-ink/60 mt-1">Visão geral de faturamento, custos e margem.</p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 mb-8">
+      <div className="flex flex-wrap items-center gap-2 mb-8">
         <div className="inline-flex items-center rounded-full bg-surface p-1 shadow-inner">
           <button
             onClick={() => setModo("mensal")}
@@ -189,17 +189,25 @@ export default function AnaliseFinanceiraPage() {
         </div>
 
         {modo === "mensal" && (
-          <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input w-auto">
+          <select
+            value={mes}
+            onChange={(e) => setMes(Number(e.target.value))}
+            className="input !w-auto text-sm py-2"
+          >
             {MESES.map((nome, i) => (
               <option key={nome} value={i}>
-                {nome}
+                {nome.slice(0, 3)}
                 {i === hoje.getMonth() && ano === hoje.getFullYear() ? " (atual)" : ""}
               </option>
             ))}
           </select>
         )}
 
-        <select value={ano} onChange={(e) => setAno(Number(e.target.value))} className="input w-auto">
+        <select
+          value={ano}
+          onChange={(e) => setAno(Number(e.target.value))}
+          className="input !w-auto text-sm py-2"
+        >
           {anos.map((a) => (
             <option key={a} value={a}>
               {a}
@@ -210,9 +218,9 @@ export default function AnaliseFinanceiraPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <Metrica icon={<Wallet size={16} />} label="Faturamento" valor={formatarMoeda(faturamento)} />
-        <Metrica icon={<TrendingUp size={16} />} label="Ticket médio" valor={formatarMoeda(ticketMedio)} />
-        <Metrica icon={<Percent size={16} />} label="Margem de lucro" valor={`${margemLucro.toFixed(1)}%`} />
         <Metrica icon={<ArrowDownCircle size={16} />} label="Custo total" valor={formatarMoeda(custoTotal)} />
+        <Metrica icon={<Percent size={16} />} label="Margem de lucro" valor={`${margemLucro.toFixed(1)}%`} />
+        <Metrica icon={<TrendingUp size={16} />} label="Ticket médio" valor={formatarMoeda(ticketMedio)} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">

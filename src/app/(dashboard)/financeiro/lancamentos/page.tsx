@@ -269,7 +269,7 @@ export default function LancamentosPage() {
               setPresetPeriodo(preset);
               if (preset === "personalizado") setPeriodoPersonalizado(calcularPeriodo("este_mes"));
             }}
-            className="input w-auto"
+            className="input !w-auto"
           >
             {PERIODO_ORDEM.map((p) => (
               <option key={p} value={p}>
@@ -284,14 +284,14 @@ export default function LancamentosPage() {
                 type="date"
                 value={periodoPersonalizado.inicio}
                 onChange={(e) => setPeriodoPersonalizado((p) => ({ ...p, inicio: e.target.value }))}
-                className="input w-auto"
+                className="input !w-auto"
               />
               <span className="text-ink/40 text-sm">até</span>
               <input
                 type="date"
                 value={periodoPersonalizado.fim}
                 onChange={(e) => setPeriodoPersonalizado((p) => ({ ...p, fim: e.target.value }))}
-                className="input w-auto"
+                className="input !w-auto"
               />
             </>
           )}
