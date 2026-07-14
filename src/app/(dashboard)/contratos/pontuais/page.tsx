@@ -8,9 +8,11 @@ interface Contrato {
   id: string;
   numero_contrato: string | null;
   status: "ativo" | "concluido" | "arquivado";
+  forma_pagamento: string | null;
   valor_total: number | null;
   data_fechamento: string | null;
   data_encerramento: string | null;
+  servico_id: string | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
   servicos: { nome: string } | null;
 }
@@ -50,6 +52,7 @@ export default function ContratosPontuaisPage() {
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [loading, setLoading] = useState(true);
   const [painelAberto, setPainelAberto] = useState(false);
+  const [editando, setEditando] = useState<Contrato | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("ativo");
   const [alterandoId, setAlterandoId] = useState<string | null>(null);
   const [novoStatus, setNovoStatus] = useState<"concluido" | "arquivado">("concluido");
@@ -61,7 +64,8 @@ export default function ContratosPontuaisPage() {
     const { data } = await supabase
       .from("contratos")
       .select(
-        `id, numero_contrato, status, valor_total, data_fechamento, data_encerramento,
+        `id, numero_contrato, status, forma_pagamento, valor_total, data_fechamento,
+         data_encerramento, servico_id,
          clientes ( papeis ( pessoas ( nome ) ) ),
          servicos ( nome )`
       )
@@ -92,20 +96,22 @@ export default function ContratosPontuaisPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner">
           {(["ativo", "concluido", "arquivado", "todos"] as Filtro[]).map((f) => (
             <button
               key={f}
               onClick={() => setFiltro(f)}
-              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
-                filtro === f ? "bg-card shadow-sm text-ink" : "text-ink/50"
+              className={`rounded-full px-5 py-2 text-sm font-bold transition-all ${
+                filtro === f
+                  ? "bg-ink text-white shadow-md scale-105"
+                  : "text-ink/50 hover:text-ink hover:bg-white/60"
               }`}
             >
               {f === "todos" ? "Todos" : STATUS_LABEL[f]}
             </button>
           ))}
         </div>
-        {!painelAberto && (
+        {!painelAberto && !editando && (
           <button
             onClick={() => setPainelAberto(true)}
             className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
@@ -115,15 +121,22 @@ export default function ContratosPontuaisPage() {
         )}
       </div>
 
-      {painelAberto && (
+      {(painelAberto || editando) && (
         <div className="mb-8 rounded-3xl bg-card border border-black/5 p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-ink mb-6">Cadastrar contrato pontual</h2>
+          <h2 className="text-lg font-bold text-ink mb-6">
+            {editando ? "Editar contrato" : "Cadastrar contrato pontual"}
+          </h2>
           <ContratoPontualForm
+            contratoEditando={editando}
             onSaved={() => {
               setPainelAberto(false);
+              setEditando(null);
               carregar();
             }}
-            onCancel={() => setPainelAberto(false)}
+            onCancel={() => {
+              setPainelAberto(false);
+              setEditando(null);
+            }}
           />
         </div>
       )}
@@ -134,33 +147,45 @@ export default function ContratosPontuaisPage() {
         ) : contratosFiltrados.length === 0 ? (
           <p className="p-6 text-sm text-ink/50">Nenhum contrato encontrado.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
+            <colgroup>
+              <col className="w-16" />
+              <col className="w-auto" />
+              <col className="w-36" />
+              <col className="w-28" />
+              <col className="w-24" />
+              <col className="w-24" />
+              <col className="w-24" />
+              <col className="w-28" />
+            </colgroup>
             <thead>
               <tr className="text-left text-ink/50 border-b border-black/5">
-                <th className="px-5 py-3 font-medium">Nº</th>
-                <th className="px-5 py-3 font-medium">Cliente</th>
-                <th className="px-5 py-3 font-medium">Serviço</th>
-                <th className="px-5 py-3 font-medium">Valor</th>
-                <th className="px-5 py-3 font-medium">Início</th>
-                <th className="px-5 py-3 font-medium">Encerramento</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium"></th>
+                <th className="px-3 py-3 font-medium">Nº</th>
+                <th className="px-3 py-3 font-medium">Cliente</th>
+                <th className="px-3 py-3 font-medium">Serviço</th>
+                <th className="px-3 py-3 font-medium">Valor</th>
+                <th className="px-3 py-3 font-medium">Início</th>
+                <th className="px-3 py-3 font-medium">Encerr.</th>
+                <th className="px-3 py-3 font-medium">Status</th>
+                <th className="px-3 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
               {contratosFiltrados.map((c) => (
                 <tr key={c.id} className="border-b border-black/5 last:border-0 hover:bg-surface/60">
-                  <td className="px-5 py-3 text-ink/50 font-mono text-xs">{c.numero_contrato ?? "—"}</td>
-                  <td className="px-5 py-3 font-semibold text-ink">
+                  <td className="px-3 py-3 text-ink/50 font-mono text-xs truncate">
+                    {c.numero_contrato ?? "—"}
+                  </td>
+                  <td className="px-3 py-3 font-semibold text-ink truncate">
                     {c.clientes?.papeis?.pessoas?.nome ?? "—"}
                   </td>
-                  <td className="px-5 py-3 text-ink/70">{c.servicos?.nome ?? "—"}</td>
-                  <td className="px-5 py-3 text-ink/70">{formatarMoeda(c.valor_total)}</td>
-                  <td className="px-5 py-3 text-ink/70">{formatarData(c.data_fechamento)}</td>
-                  <td className="px-5 py-3 text-ink/70">
+                  <td className="px-3 py-3 text-ink/70 truncate">{c.servicos?.nome ?? "—"}</td>
+                  <td className="px-3 py-3 text-ink/70">{formatarMoeda(c.valor_total)}</td>
+                  <td className="px-3 py-3 text-ink/70">{formatarData(c.data_fechamento)}</td>
+                  <td className="px-3 py-3 text-ink/70">
                     {c.status !== "ativo" ? formatarData(c.data_encerramento) : "—"}
                   </td>
-                  <td className="px-5 py-3">
+                  <td className="px-3 py-3">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                         c.status === "ativo"
@@ -173,45 +198,59 @@ export default function ContratosPontuaisPage() {
                       {STATUS_LABEL[c.status]}
                     </span>
                   </td>
-                  <td className="px-5 py-3">
-                    {c.status === "ativo" &&
-                      (alterandoId === c.id ? (
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            value={novoStatus}
-                            onChange={(e) => setNovoStatus(e.target.value as "concluido" | "arquivado")}
-                            className="input py-1 px-2 text-xs"
-                          >
-                            <option value="concluido">Concluído</option>
-                            <option value="arquivado">Arquivado</option>
-                          </select>
-                          <input
-                            type="date"
-                            value={dataEncerramento}
-                            onChange={(e) => setDataEncerramento(e.target.value)}
-                            className="input py-1 px-2 text-xs"
-                          />
-                          <button
-                            onClick={() => confirmarMudancaStatus(c.id)}
-                            className="text-xs font-semibold text-forest"
-                          >
-                            OK
-                          </button>
-                          <button
-                            onClick={() => setAlterandoId(null)}
-                            className="text-xs font-semibold text-ink/40"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setAlterandoId(c.id)}
-                          className="text-xs font-semibold text-ink/40 hover:text-ink"
+                  <td className="px-3 py-3">
+                    {alterandoId === c.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={novoStatus}
+                          onChange={(e) => setNovoStatus(e.target.value as "concluido" | "arquivado")}
+                          className="input py-1 px-2 text-xs"
                         >
-                          Encerrar
+                          <option value="concluido">Concluído</option>
+                          <option value="arquivado">Arquivado</option>
+                        </select>
+                        <input
+                          type="date"
+                          value={dataEncerramento}
+                          onChange={(e) => setDataEncerramento(e.target.value)}
+                          className="input py-1 px-2 text-xs"
+                        />
+                        <button
+                          onClick={() => confirmarMudancaStatus(c.id)}
+                          className="text-xs font-semibold text-forest"
+                        >
+                          OK
                         </button>
-                      ))}
+                        <button
+                          onClick={() => setAlterandoId(null)}
+                          className="text-xs font-semibold text-ink/40"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setEditando(c);
+                            setPainelAberto(false);
+                          }}
+                          title="Editar contrato"
+                          className="rounded-full px-2.5 py-1 text-xs font-semibold text-ink/50 hover:bg-surface hover:text-ink transition-colors"
+                        >
+                          Editar
+                        </button>
+                        {c.status === "ativo" && (
+                          <button
+                            onClick={() => setAlterandoId(c.id)}
+                            title="Mudar status"
+                            className="rounded-full px-2.5 py-1 text-xs font-semibold bg-mint text-forest hover:bg-forest hover:text-white transition-colors"
+                          >
+                            Status
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -223,7 +262,17 @@ export default function ContratosPontuaisPage() {
   );
 }
 
-function ContratoPontualForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
+function ContratoPontualForm({
+  contratoEditando,
+  onSaved,
+  onCancel,
+}: {
+  contratoEditando: Contrato | null;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const editando = !!contratoEditando;
+
   const [pessoas, setPessoas] = useState<PessoaOpcao[]>([]);
   const [pessoaSelecionada, setPessoaSelecionada] = useState<PessoaOpcao | null>(null);
   const [buscaCliente, setBuscaCliente] = useState("");
@@ -231,14 +280,18 @@ function ContratoPontualForm({ onSaved, onCancel }: { onSaved: () => void; onCan
   const [cadastrandoCliente, setCadastrandoCliente] = useState(false);
 
   const [servicos, setServicos] = useState<Servico[]>([]);
-  const [servicoId, setServicoId] = useState("");
+  const [servicoId, setServicoId] = useState(contratoEditando?.servico_id ?? "");
   const [novoServico, setNovoServico] = useState(false);
   const [nomeNovoServico, setNomeNovoServico] = useState("");
 
-  const [numeroContrato, setNumeroContrato] = useState("");
-  const [formaPagamento, setFormaPagamento] = useState(FORMAS_PAGAMENTO[0]);
-  const [valorTotal, setValorTotal] = useState("");
-  const [dataInicio, setDataInicio] = useState("");
+  const [numeroContrato, setNumeroContrato] = useState(contratoEditando?.numero_contrato ?? "");
+  const [formaPagamento, setFormaPagamento] = useState(
+    contratoEditando?.forma_pagamento ?? FORMAS_PAGAMENTO[0]
+  );
+  const [valorTotal, setValorTotal] = useState(
+    contratoEditando?.valor_total != null ? String(contratoEditando.valor_total) : ""
+  );
+  const [dataInicio, setDataInicio] = useState(contratoEditando?.data_fechamento ?? "");
 
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -246,6 +299,10 @@ function ContratoPontualForm({ onSaved, onCancel }: { onSaved: () => void; onCan
   useEffect(() => {
     carregarPessoas();
     carregarServicos();
+    if (editando) {
+      setBuscaCliente(contratoEditando?.clientes?.papeis?.pessoas?.nome ?? "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function carregarPessoas() {
@@ -300,7 +357,7 @@ function ContratoPontualForm({ onSaved, onCancel }: { onSaved: () => void; onCan
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!pessoaSelecionada) {
+    if (!editando && !pessoaSelecionada) {
       setErro("Selecione um cliente.");
       return;
     }
@@ -309,7 +366,6 @@ function ContratoPontualForm({ onSaved, onCancel }: { onSaved: () => void; onCan
 
     try {
       const supabase = createClient();
-      const clienteId = await garantirClienteId(pessoaSelecionada.id);
 
       let servicoFinalId = servicoId || null;
       if (novoServico && nomeNovoServico.trim()) {
@@ -322,16 +378,31 @@ function ContratoPontualForm({ onSaved, onCancel }: { onSaved: () => void; onCan
         servicoFinalId = srv.id;
       }
 
-      const { error } = await supabase.from("contratos").insert({
-        cliente_id: clienteId,
-        tipo_contrato: "pontual",
-        forma_pagamento: formaPagamento,
-        servico_id: servicoFinalId,
-        valor_total: Number(valorTotal),
-        data_fechamento: dataInicio,
-        ...(numeroContrato.trim() ? { numero_contrato: numeroContrato.trim() } : {}),
-      });
-      if (error) throw error;
+      if (editando && contratoEditando) {
+        const { error } = await supabase
+          .from("contratos")
+          .update({
+            forma_pagamento: formaPagamento,
+            servico_id: servicoFinalId,
+            valor_total: Number(valorTotal),
+            data_fechamento: dataInicio,
+            numero_contrato: numeroContrato.trim() || null,
+          })
+          .eq("id", contratoEditando.id);
+        if (error) throw error;
+      } else {
+        const clienteId = await garantirClienteId(pessoaSelecionada!.id);
+        const { error } = await supabase.from("contratos").insert({
+          cliente_id: clienteId,
+          tipo_contrato: "pontual",
+          forma_pagamento: formaPagamento,
+          servico_id: servicoFinalId,
+          valor_total: Number(valorTotal),
+          data_fechamento: dataInicio,
+          ...(numeroContrato.trim() ? { numero_contrato: numeroContrato.trim() } : {}),
+        });
+        if (error) throw error;
+      }
 
       setSaving(false);
       onSaved();
@@ -375,17 +446,18 @@ function ContratoPontualForm({ onSaved, onCancel }: { onSaved: () => void; onCan
             Cliente<span className="text-forest"> *</span>
           </span>
           <input
+            disabled={editando}
             value={buscaCliente}
             onChange={(e) => {
               setBuscaCliente(e.target.value);
               setPessoaSelecionada(null);
               setMostrarSugestoes(true);
             }}
-            onFocus={() => setMostrarSugestoes(true)}
-            className="input"
+            onFocus={() => !editando && setMostrarSugestoes(true)}
+            className="input disabled:opacity-60"
             placeholder="Digite o nome do cliente..."
           />
-          {mostrarSugestoes && buscaCliente && !pessoaSelecionada && (
+          {!editando && mostrarSugestoes && buscaCliente && !pessoaSelecionada && (
             <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
               {sugestoes.length > 0 ? (
                 sugestoes.map((p) => (
@@ -508,7 +580,7 @@ function ContratoPontualForm({ onSaved, onCancel }: { onSaved: () => void; onCan
           disabled={saving}
           className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
         >
-          {saving ? "Salvando..." : "Salvar contrato"}
+          {saving ? "Salvando..." : editando ? "Salvar alterações" : "Salvar contrato"}
         </button>
         <button type="button" onClick={onCancel} className="text-sm font-semibold text-ink/60 hover:text-ink">
           Cancelar

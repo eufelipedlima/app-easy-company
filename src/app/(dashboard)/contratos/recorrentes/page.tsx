@@ -8,9 +8,12 @@ interface Contrato {
   id: string;
   numero_contrato: string | null;
   status: "ativo" | "encerrado";
+  forma_pagamento: string | null;
   valor_mensal: number | null;
   data_primeira_mensalidade: string | null;
   data_encerramento: string | null;
+  tempo_inicial_meses: number | null;
+  servico_id: string | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
   servicos: { nome: string } | null;
 }
@@ -54,8 +57,9 @@ export default function ContratosRecorrentesPage() {
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [loading, setLoading] = useState(true);
   const [painelAberto, setPainelAberto] = useState(false);
+  const [editando, setEditando] = useState<Contrato | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("ativo");
-  const [encerrandoId, setEncerrandoId] = useState<string | null>(null);
+  const [alterandoStatusId, setAlterandoStatusId] = useState<string | null>(null);
   const [dataEncerramento, setDataEncerramento] = useState("");
 
   const carregar = useCallback(async () => {
@@ -64,7 +68,8 @@ export default function ContratosRecorrentesPage() {
     const { data } = await supabase
       .from("contratos")
       .select(
-        `id, numero_contrato, status, valor_mensal, data_primeira_mensalidade, data_encerramento,
+        `id, numero_contrato, status, forma_pagamento, valor_mensal, data_primeira_mensalidade,
+         data_encerramento, tempo_inicial_meses, servico_id,
          clientes ( papeis ( pessoas ( nome ) ) ),
          servicos ( nome )`
       )
@@ -85,7 +90,7 @@ export default function ContratosRecorrentesPage() {
       .from("contratos")
       .update({ status: "encerrado", data_encerramento: dataEncerramento })
       .eq("id", id);
-    setEncerrandoId(null);
+    setAlterandoStatusId(null);
     setDataEncerramento("");
     carregar();
   }
@@ -95,20 +100,22 @@ export default function ContratosRecorrentesPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner">
           {(["ativo", "encerrado", "todos"] as Filtro[]).map((f) => (
             <button
               key={f}
               onClick={() => setFiltro(f)}
-              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
-                filtro === f ? "bg-card shadow-sm text-ink" : "text-ink/50"
+              className={`rounded-full px-5 py-2 text-sm font-bold transition-all ${
+                filtro === f
+                  ? "bg-ink text-white shadow-md scale-105"
+                  : "text-ink/50 hover:text-ink hover:bg-white/60"
               }`}
             >
               {f === "ativo" ? "Ativos" : f === "encerrado" ? "Encerrados" : "Todos"}
             </button>
           ))}
         </div>
-        {!painelAberto && (
+        {!painelAberto && !editando && (
           <button
             onClick={() => setPainelAberto(true)}
             className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
@@ -118,15 +125,22 @@ export default function ContratosRecorrentesPage() {
         )}
       </div>
 
-      {painelAberto && (
+      {(painelAberto || editando) && (
         <div className="mb-8 rounded-3xl bg-card border border-black/5 p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-ink mb-6">Cadastrar contrato recorrente</h2>
+          <h2 className="text-lg font-bold text-ink mb-6">
+            {editando ? "Editar contrato" : "Cadastrar contrato recorrente"}
+          </h2>
           <ContratoRecorrenteForm
+            contratoEditando={editando}
             onSaved={() => {
               setPainelAberto(false);
+              setEditando(null);
               carregar();
             }}
-            onCancel={() => setPainelAberto(false)}
+            onCancel={() => {
+              setPainelAberto(false);
+              setEditando(null);
+            }}
           />
         </div>
       )}
@@ -137,19 +151,31 @@ export default function ContratosRecorrentesPage() {
         ) : contratosFiltrados.length === 0 ? (
           <p className="p-6 text-sm text-ink/50">Nenhum contrato encontrado.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
+            <colgroup>
+              <col className="w-16" />
+              <col className="w-auto" />
+              <col className="w-36" />
+              <col className="w-28" />
+              <col className="w-24" />
+              <col className="w-20" />
+              <col className="w-28" />
+              <col className="w-24" />
+              <col className="w-24" />
+              <col className="w-24" />
+            </colgroup>
             <thead>
               <tr className="text-left text-ink/50 border-b border-black/5">
-                <th className="px-5 py-3 font-medium">Nº</th>
-                <th className="px-5 py-3 font-medium">Cliente</th>
-                <th className="px-5 py-3 font-medium">Serviço</th>
-                <th className="px-5 py-3 font-medium">Valor</th>
-                <th className="px-5 py-3 font-medium">Início</th>
-                <th className="px-5 py-3 font-medium">Meses de casa</th>
-                <th className="px-5 py-3 font-medium">LTV atual</th>
-                <th className="px-5 py-3 font-medium">Encerramento</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium"></th>
+                <th className="px-3 py-3 font-medium">Nº</th>
+                <th className="px-3 py-3 font-medium">Cliente</th>
+                <th className="px-3 py-3 font-medium">Serviço</th>
+                <th className="px-3 py-3 font-medium">Valor</th>
+                <th className="px-3 py-3 font-medium">Início</th>
+                <th className="px-3 py-3 font-medium">Meses</th>
+                <th className="px-3 py-3 font-medium">LTV atual</th>
+                <th className="px-3 py-3 font-medium">Encerr.</th>
+                <th className="px-3 py-3 font-medium">Status</th>
+                <th className="px-3 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -158,19 +184,21 @@ export default function ContratosRecorrentesPage() {
                 const ltv = meses * (c.valor_mensal ?? 0);
                 return (
                   <tr key={c.id} className="border-b border-black/5 last:border-0 hover:bg-surface/60">
-                    <td className="px-5 py-3 text-ink/50 font-mono text-xs">{c.numero_contrato ?? "—"}</td>
-                    <td className="px-5 py-3 font-semibold text-ink">
+                    <td className="px-3 py-3 text-ink/50 font-mono text-xs truncate">
+                      {c.numero_contrato ?? "—"}
+                    </td>
+                    <td className="px-3 py-3 font-semibold text-ink truncate">
                       {c.clientes?.papeis?.pessoas?.nome ?? "—"}
                     </td>
-                    <td className="px-5 py-3 text-ink/70">{c.servicos?.nome ?? "—"}</td>
-                    <td className="px-5 py-3 text-ink/70">{formatarMoeda(c.valor_mensal)}/mês</td>
-                    <td className="px-5 py-3 text-ink/70">{formatarData(c.data_primeira_mensalidade)}</td>
-                    <td className="px-5 py-3 text-ink/70">{meses}</td>
-                    <td className="px-5 py-3 font-semibold text-ink">{formatarMoeda(ltv)}</td>
-                    <td className="px-5 py-3 text-ink/70">
+                    <td className="px-3 py-3 text-ink/70 truncate">{c.servicos?.nome ?? "—"}</td>
+                    <td className="px-3 py-3 text-ink/70">{formatarMoeda(c.valor_mensal)}/mês</td>
+                    <td className="px-3 py-3 text-ink/70">{formatarData(c.data_primeira_mensalidade)}</td>
+                    <td className="px-3 py-3 text-ink/70">{meses}</td>
+                    <td className="px-3 py-3 font-semibold text-ink">{formatarMoeda(ltv)}</td>
+                    <td className="px-3 py-3 text-ink/70">
                       {c.status === "encerrado" ? formatarData(c.data_encerramento) : "—"}
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-3 py-3">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                           c.status === "ativo" ? "bg-mint text-forest" : "bg-black/5 text-ink/50"
@@ -179,37 +207,51 @@ export default function ContratosRecorrentesPage() {
                         {c.status === "ativo" ? "Ativo" : "Encerrado"}
                       </span>
                     </td>
-                    <td className="px-5 py-3">
-                      {c.status === "ativo" &&
-                        (encerrandoId === c.id ? (
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="date"
-                              value={dataEncerramento}
-                              onChange={(e) => setDataEncerramento(e.target.value)}
-                              className="input py-1 px-2 text-xs"
-                            />
-                            <button
-                              onClick={() => confirmarEncerramento(c.id)}
-                              className="text-xs font-semibold text-forest"
-                            >
-                              OK
-                            </button>
-                            <button
-                              onClick={() => setEncerrandoId(null)}
-                              className="text-xs font-semibold text-ink/40"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ) : (
+                    <td className="px-3 py-3">
+                      {alterandoStatusId === c.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="date"
+                            value={dataEncerramento}
+                            onChange={(e) => setDataEncerramento(e.target.value)}
+                            className="input py-1 px-2 text-xs"
+                          />
                           <button
-                            onClick={() => setEncerrandoId(c.id)}
-                            className="text-xs font-semibold text-ink/40 hover:text-ink"
+                            onClick={() => confirmarEncerramento(c.id)}
+                            className="text-xs font-semibold text-forest"
                           >
-                            Encerrar
+                            OK
                           </button>
-                        ))}
+                          <button
+                            onClick={() => setAlterandoStatusId(null)}
+                            className="text-xs font-semibold text-ink/40"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setEditando(c);
+                              setPainelAberto(false);
+                            }}
+                            title="Editar contrato"
+                            className="rounded-full px-2.5 py-1 text-xs font-semibold text-ink/50 hover:bg-surface hover:text-ink transition-colors"
+                          >
+                            Editar
+                          </button>
+                          {c.status === "ativo" && (
+                            <button
+                              onClick={() => setAlterandoStatusId(c.id)}
+                              title="Encerrar contrato"
+                              className="rounded-full px-2.5 py-1 text-xs font-semibold bg-mint text-forest hover:bg-forest hover:text-white transition-colors"
+                            >
+                              Status
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -223,12 +265,16 @@ export default function ContratosRecorrentesPage() {
 }
 
 function ContratoRecorrenteForm({
+  contratoEditando,
   onSaved,
   onCancel,
 }: {
+  contratoEditando: Contrato | null;
   onSaved: () => void;
   onCancel: () => void;
 }) {
+  const editando = !!contratoEditando;
+
   const [pessoas, setPessoas] = useState<PessoaOpcao[]>([]);
   const [pessoaSelecionada, setPessoaSelecionada] = useState<PessoaOpcao | null>(null);
   const [buscaCliente, setBuscaCliente] = useState("");
@@ -236,15 +282,21 @@ function ContratoRecorrenteForm({
   const [cadastrandoCliente, setCadastrandoCliente] = useState(false);
 
   const [servicos, setServicos] = useState<Servico[]>([]);
-  const [servicoId, setServicoId] = useState("");
+  const [servicoId, setServicoId] = useState(contratoEditando?.servico_id ?? "");
   const [novoServico, setNovoServico] = useState(false);
   const [nomeNovoServico, setNomeNovoServico] = useState("");
 
-  const [numeroContrato, setNumeroContrato] = useState("");
-  const [formaPagamento, setFormaPagamento] = useState(FORMAS_PAGAMENTO[0]);
-  const [valorMensal, setValorMensal] = useState("");
-  const [dataPrimeiraMensalidade, setDataPrimeiraMensalidade] = useState("");
-  const [tempoInicial, setTempoInicial] = useState(3);
+  const [numeroContrato, setNumeroContrato] = useState(contratoEditando?.numero_contrato ?? "");
+  const [formaPagamento, setFormaPagamento] = useState(
+    contratoEditando?.forma_pagamento ?? FORMAS_PAGAMENTO[0]
+  );
+  const [valorMensal, setValorMensal] = useState(
+    contratoEditando?.valor_mensal != null ? String(contratoEditando.valor_mensal) : ""
+  );
+  const [dataPrimeiraMensalidade, setDataPrimeiraMensalidade] = useState(
+    contratoEditando?.data_primeira_mensalidade ?? ""
+  );
+  const [tempoInicial, setTempoInicial] = useState(contratoEditando?.tempo_inicial_meses ?? 3);
 
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -252,6 +304,10 @@ function ContratoRecorrenteForm({
   useEffect(() => {
     carregarPessoas();
     carregarServicos();
+    if (editando) {
+      setBuscaCliente(contratoEditando?.clientes?.papeis?.pessoas?.nome ?? "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function carregarPessoas() {
@@ -306,7 +362,7 @@ function ContratoRecorrenteForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!pessoaSelecionada) {
+    if (!editando && !pessoaSelecionada) {
       setErro("Selecione um cliente.");
       return;
     }
@@ -315,7 +371,6 @@ function ContratoRecorrenteForm({
 
     try {
       const supabase = createClient();
-      const clienteId = await garantirClienteId(pessoaSelecionada.id);
 
       let servicoFinalId = servicoId || null;
       if (novoServico && nomeNovoServico.trim()) {
@@ -328,17 +383,33 @@ function ContratoRecorrenteForm({
         servicoFinalId = srv.id;
       }
 
-      const { error } = await supabase.from("contratos").insert({
-        cliente_id: clienteId,
-        tipo_contrato: "recorrente",
-        forma_pagamento: formaPagamento,
-        servico_id: servicoFinalId,
-        valor_mensal: Number(valorMensal),
-        data_primeira_mensalidade: dataPrimeiraMensalidade,
-        tempo_inicial_meses: tempoInicial,
-        ...(numeroContrato.trim() ? { numero_contrato: numeroContrato.trim() } : {}),
-      });
-      if (error) throw error;
+      if (editando && contratoEditando) {
+        const { error } = await supabase
+          .from("contratos")
+          .update({
+            forma_pagamento: formaPagamento,
+            servico_id: servicoFinalId,
+            valor_mensal: Number(valorMensal),
+            data_primeira_mensalidade: dataPrimeiraMensalidade,
+            tempo_inicial_meses: tempoInicial,
+            numero_contrato: numeroContrato.trim() || null,
+          })
+          .eq("id", contratoEditando.id);
+        if (error) throw error;
+      } else {
+        const clienteId = await garantirClienteId(pessoaSelecionada!.id);
+        const { error } = await supabase.from("contratos").insert({
+          cliente_id: clienteId,
+          tipo_contrato: "recorrente",
+          forma_pagamento: formaPagamento,
+          servico_id: servicoFinalId,
+          valor_mensal: Number(valorMensal),
+          data_primeira_mensalidade: dataPrimeiraMensalidade,
+          tempo_inicial_meses: tempoInicial,
+          ...(numeroContrato.trim() ? { numero_contrato: numeroContrato.trim() } : {}),
+        });
+        if (error) throw error;
+      }
 
       setSaving(false);
       onSaved();
@@ -382,17 +453,18 @@ function ContratoRecorrenteForm({
             Cliente<span className="text-forest"> *</span>
           </span>
           <input
+            disabled={editando}
             value={buscaCliente}
             onChange={(e) => {
               setBuscaCliente(e.target.value);
               setPessoaSelecionada(null);
               setMostrarSugestoes(true);
             }}
-            onFocus={() => setMostrarSugestoes(true)}
-            className="input"
+            onFocus={() => !editando && setMostrarSugestoes(true)}
+            className="input disabled:opacity-60"
             placeholder="Digite o nome do cliente..."
           />
-          {mostrarSugestoes && buscaCliente && !pessoaSelecionada && (
+          {!editando && mostrarSugestoes && buscaCliente && !pessoaSelecionada && (
             <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
               {sugestoes.length > 0 ? (
                 sugestoes.map((p) => (
@@ -517,10 +589,12 @@ function ContratoRecorrenteForm({
         </Campo>
       </div>
 
-      <p className="text-xs text-ink/50">
-        Após os {tempoInicial} meses iniciais, o contrato renova automaticamente todo mês até ser
-        encerrado manualmente.
-      </p>
+      {!editando && (
+        <p className="text-xs text-ink/50">
+          Após os {tempoInicial} meses iniciais, o contrato renova automaticamente todo mês até ser
+          encerrado manualmente.
+        </p>
+      )}
 
       {erro && <p className="text-sm text-red-600">{erro}</p>}
 
@@ -530,7 +604,7 @@ function ContratoRecorrenteForm({
           disabled={saving}
           className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
         >
-          {saving ? "Salvando..." : "Salvar contrato"}
+          {saving ? "Salvando..." : editando ? "Salvar alterações" : "Salvar contrato"}
         </button>
         <button type="button" onClick={onCancel} className="text-sm font-semibold text-ink/60 hover:text-ink">
           Cancelar
