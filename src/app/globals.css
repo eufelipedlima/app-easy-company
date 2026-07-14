@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+:root {
+  /* Easy Company — identidade visual */
+  --ec-ink: #02170B;       /* verde quase-preto — texto principal, sidebar */
+  --ec-forest: #143421;    /* verde escuro — hover, cards ativos, destaques */
+  --ec-mint: #E4FFEF;      /* verde claro — badges, estados de sucesso, fundo de destaque */
+  --ec-cloud: #F6F6F6;     /* cinza claro — fundo geral da aplicação */
+  --ec-white: #FFFFFF;
+
+  --background: var(--ec-cloud);
+  --foreground: var(--ec-ink);
+}
+
+@theme inline {
+  --font-sans: "Manrope", system-ui, sans-serif;
+
+  --color-ink: var(--ec-ink);
+  --color-forest: var(--ec-forest);
+  --color-mint: var(--ec-mint);
+  --color-surface: var(--ec-cloud);
+  --color-card: var(--ec-white);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+body {
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+.input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(2, 23, 11, 0.12);
+  background: var(--ec-white);
+  padding: 0.55rem 0.9rem;
+  font-size: 0.875rem;
+  color: var(--ec-ink);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.input:focus {
+  border-color: var(--ec-forest);
+}
