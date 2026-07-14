@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const ABAS = [
   { href: "/contratos/recorrentes", label: "Recorrentes" },
   { href: "/contratos/pontuais", label: "Pontuais" },
+  { href: "/contratos/analise", label: "Análise" },
 ];
 
 export default function ContratosLayout({ children }: { children: React.ReactNode }) {
