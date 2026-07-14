@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { PessoaForm } from "@/components/pessoa-form";
 
 interface Contrato {
   id: string;
+  numero_contrato: string | null;
   tipo_contrato: "pontual" | "recorrente";
   status: "ativo" | "encerrado";
   descricao: string | null;
@@ -43,7 +45,7 @@ export default function ContratosPage() {
     const { data, error } = await supabase
       .from("contratos")
       .select(
-        `id, tipo_contrato, status, descricao, forma_pagamento,
+        `id, numero_contrato, tipo_contrato, status, descricao, forma_pagamento,
          valor_total, data_fechamento,
          valor_mensal, data_primeira_mensalidade, tempo_inicial_meses,
          created_at,
@@ -103,6 +105,7 @@ export default function ContratosPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-ink/50 border-b border-black/5">
+                <th className="px-6 py-3 font-medium">Nº</th>
                 <th className="px-6 py-3 font-medium">Cliente</th>
                 <th className="px-6 py-3 font-medium">Tipo</th>
                 <th className="px-6 py-3 font-medium">Valor</th>
@@ -113,6 +116,7 @@ export default function ContratosPage() {
             <tbody>
               {contratos.map((c) => (
                 <tr key={c.id} className="border-b border-black/5 last:border-0 hover:bg-surface/60">
+                  <td className="px-6 py-3 text-ink/50 font-mono text-xs">{c.numero_contrato ?? "—"}</td>
                   <td className="px-6 py-3 font-semibold text-ink">
                     {c.clientes?.papeis?.pessoas?.nome ?? "—"}
                   </td>
@@ -167,43 +171,46 @@ interface PessoaOpcao {
 const FORMAS_PAGAMENTO = ["Pix", "Boleto", "Cartão de crédito", "Transferência"];
 const OPCOES_TEMPO_INICIAL = [3, 6, 9, 12];
 
-interface Props {
+interface FormProps {
   onSaved?: () => void;
   onCancel?: () => void;
 }
 
-export function ContratoForm({ onSaved, onCancel }: Props) {
+function ContratoForm({ onSaved, onCancel }: FormProps) {
   const [tipo, setTipo] = useState<TipoContrato>("recorrente");
   const [pessoas, setPessoas] = useState<PessoaOpcao[]>([]);
-  const [pessoaId, setPessoaId] = useState("");
+  const [pessoaSelecionada, setPessoaSelecionada] = useState<PessoaOpcao | null>(null);
+  const [buscaCliente, setBuscaCliente] = useState("");
+  const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
+  const [cadastrandoCliente, setCadastrandoCliente] = useState(false);
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
+  const [numeroContrato, setNumeroContrato] = useState("");
   const [descricao, setDescricao] = useState("");
   const [formaPagamento, setFormaPagamento] = useState(FORMAS_PAGAMENTO[0]);
 
-  // Pontual
   const [valorTotal, setValorTotal] = useState("");
   const [dataFechamento, setDataFechamento] = useState("");
 
-  // Recorrente
   const [valorMensal, setValorMensal] = useState("");
   const [dataPrimeiraMensalidade, setDataPrimeiraMensalidade] = useState("");
   const [tempoInicial, setTempoInicial] = useState(3);
 
   useEffect(() => {
-    async function carregarPessoas() {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("pessoas")
-        .select("id, nome, tipo_pessoa")
-        .order("nome");
-      setPessoas(data ?? []);
-    }
     carregarPessoas();
   }, []);
 
-  // Garante que a pessoa selecionada tenha o papel de cliente (cria se não existir)
+  async function carregarPessoas() {
+    const supabase = createClient();
+    const { data } = await supabase.from("pessoas").select("id, nome, tipo_pessoa").order("nome");
+    setPessoas(data ?? []);
+  }
+
+  const sugestoes = pessoas.filter((p) =>
+    p.nome.toLowerCase().includes(buscaCliente.toLowerCase())
+  );
+
   async function garantirClienteId(pessoaId: string): Promise<string> {
     const supabase = createClient();
 
@@ -246,7 +253,7 @@ export function ContratoForm({ onSaved, onCancel }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!pessoaId) {
+    if (!pessoaSelecionada) {
       setErro("Selecione um cliente.");
       return;
     }
@@ -255,28 +262,23 @@ export function ContratoForm({ onSaved, onCancel }: Props) {
     setErro(null);
 
     try {
-      const clienteId = await garantirClienteId(pessoaId);
+      const clienteId = await garantirClienteId(pessoaSelecionada.id);
       const supabase = createClient();
 
-      const payload: Record<string, unknown> =
-        tipo === "pontual"
-          ? {
-              cliente_id: clienteId,
-              tipo_contrato: "pontual",
-              descricao: descricao || null,
-              forma_pagamento: formaPagamento,
-              valor_total: Number(valorTotal),
-              data_fechamento: dataFechamento,
-            }
+      const payload: Record<string, unknown> = {
+        cliente_id: clienteId,
+        tipo_contrato: tipo,
+        descricao: descricao || null,
+        forma_pagamento: formaPagamento,
+        ...(numeroContrato.trim() ? { numero_contrato: numeroContrato.trim() } : {}),
+        ...(tipo === "pontual"
+          ? { valor_total: Number(valorTotal), data_fechamento: dataFechamento }
           : {
-              cliente_id: clienteId,
-              tipo_contrato: "recorrente",
-              descricao: descricao || null,
-              forma_pagamento: formaPagamento,
               valor_mensal: Number(valorMensal),
               data_primeira_mensalidade: dataPrimeiraMensalidade,
               tempo_inicial_meses: tempoInicial,
-            };
+            }),
+      };
 
       const { error } = await supabase.from("contratos").insert(payload);
       if (error) throw error;
@@ -287,6 +289,36 @@ export function ContratoForm({ onSaved, onCancel }: Props) {
       setErro(err instanceof Error ? err.message : "Erro ao salvar contrato.");
       setSaving(false);
     }
+  }
+
+  if (cadastrandoCliente) {
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={() => setCadastrandoCliente(false)}
+          className="text-sm font-semibold text-ink/50 hover:text-ink mb-4"
+        >
+          ← Voltar para o contrato
+        </button>
+        <PessoaForm
+          nomeInicial={buscaCliente}
+          onCancel={() => setCadastrandoCliente(false)}
+          onSaved={async (pessoa) => {
+            const supabase = createClient();
+            const { data } = await supabase
+              .from("pessoas")
+              .select("id, nome, tipo_pessoa")
+              .order("nome");
+            setPessoas(data ?? []);
+            const encontrada = data?.find((p) => p.id === pessoa.id);
+            setPessoaSelecionada(encontrada ?? { id: pessoa.id, nome: pessoa.nome, tipo_pessoa: "PF" });
+            setBuscaCliente(pessoa.nome);
+            setCadastrandoCliente(false);
+          }}
+        />
+      </div>
+    );
   }
 
   return (
@@ -313,20 +345,60 @@ export function ContratoForm({ onSaved, onCancel }: Props) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Campo label="Cliente" required>
-          <select
-            required
-            value={pessoaId}
-            onChange={(e) => setPessoaId(e.target.value)}
+        <div className="relative sm:col-span-2">
+          <span className="block text-sm font-medium text-ink/70 mb-1">
+            Cliente<span className="text-forest"> *</span>
+          </span>
+          <input
+            value={buscaCliente}
+            onChange={(e) => {
+              setBuscaCliente(e.target.value);
+              setPessoaSelecionada(null);
+              setMostrarSugestoes(true);
+            }}
+            onFocus={() => setMostrarSugestoes(true)}
             className="input"
-          >
-            <option value="">Selecione...</option>
-            {pessoas.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nome} ({p.tipo_pessoa})
-              </option>
-            ))}
-          </select>
+            placeholder="Digite o nome do cliente..."
+          />
+
+          {mostrarSugestoes && buscaCliente && !pessoaSelecionada && (
+            <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
+              {sugestoes.length > 0 ? (
+                sugestoes.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setPessoaSelecionada(p);
+                      setBuscaCliente(p.nome);
+                      setMostrarSugestoes(false);
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
+                  >
+                    {p.nome}{" "}
+                    <span className="text-xs text-ink/40">({p.tipo_pessoa})</span>
+                  </button>
+                ))
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setCadastrandoCliente(true)}
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-forest hover:bg-surface"
+                >
+                  + Cadastrar &ldquo;{buscaCliente}&rdquo; como novo cliente
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <Campo label="Número do contrato">
+          <input
+            value={numeroContrato}
+            onChange={(e) => setNumeroContrato(e.target.value)}
+            className="input"
+            placeholder="Gerado automaticamente se deixado em branco"
+          />
         </Campo>
 
         <Campo label="Forma de pagamento" required>
