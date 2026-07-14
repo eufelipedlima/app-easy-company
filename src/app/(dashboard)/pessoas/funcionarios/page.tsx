@@ -14,9 +14,17 @@ interface Funcionario {
   id: string;
   papel_id: string;
   cargo: string | null;
+  cargo_id: string | null;
+  tipo_contrato: "CLT" | "PJ" | null;
   salario: number;
   data_admissao: string | null;
   papeis: { pessoas: { nome: string } | null } | null;
+  cargos: { nome: string } | null;
+}
+
+interface Cargo {
+  id: string;
+  nome: string;
 }
 
 interface PessoaOpcao {
@@ -46,7 +54,9 @@ export default function FuncionariosPage() {
     const supabase = createClient();
     const { data: func } = await supabase
       .from("funcionarios")
-      .select("id, papel_id, cargo, salario, data_admissao, papeis ( pessoas ( nome ) )")
+      .select(
+        "id, papel_id, cargo, cargo_id, tipo_contrato, salario, data_admissao, papeis ( pessoas ( nome ) ), cargos ( nome )"
+      )
       .eq("ativo", true)
       .order("created_at", { ascending: false });
 
@@ -121,9 +131,10 @@ export default function FuncionariosPage() {
               <tr className="text-left text-ink/50 border-b border-black/5">
                 <th className="px-4 py-3 font-medium">Nome</th>
                 <th className="px-4 py-3 font-medium">Cargo</th>
-                <th className="px-4 py-3 font-medium">Salário</th>
+                <th className="px-4 py-3 font-medium">Contrato</th>
+                <th className="px-4 py-3 font-medium">Salário bruto</th>
                 <th className="px-4 py-3 font-medium">Custo total</th>
-                <th className="px-4 py-3 font-medium">Admissão</th>
+                <th className="px-4 py-3 font-medium">Início</th>
               </tr>
             </thead>
             <tbody>
@@ -134,7 +145,8 @@ export default function FuncionariosPage() {
                   className="border-b border-black/5 last:border-0 hover:bg-surface/60 cursor-pointer"
                 >
                   <td className="px-4 py-3 font-semibold text-ink">{f.papeis?.pessoas?.nome ?? "—"}</td>
-                  <td className="px-4 py-3 text-ink/70">{f.cargo ?? "—"}</td>
+                  <td className="px-4 py-3 text-ink/70">{f.cargos?.nome ?? f.cargo ?? "—"}</td>
+                  <td className="px-4 py-3 text-ink/70">{f.tipo_contrato ?? "—"}</td>
                   <td className="px-4 py-3 text-ink/70">{formatarMoeda(f.salario)}</td>
                   <td className="px-4 py-3 font-semibold text-forest">{formatarMoeda(custoTotal(f))}</td>
                   <td className="px-4 py-3 text-ink/70">{formatarData(f.data_admissao)}</td>
@@ -211,7 +223,9 @@ function DetalheFuncionario({
         <div className="flex items-start justify-between mb-4">
           <div>
             <p className="font-bold text-ink leading-tight">{funcionario.papeis?.pessoas?.nome ?? "—"}</p>
-            {funcionario.cargo && <p className="text-xs text-ink/50">{funcionario.cargo}</p>}
+            {(funcionario.cargos?.nome ?? funcionario.cargo) && (
+              <p className="text-xs text-ink/50">{funcionario.cargos?.nome ?? funcionario.cargo}</p>
+            )}
           </div>
           <button onClick={onClose} className="text-ink/40 hover:text-ink text-lg leading-none">
             ✕
@@ -288,7 +302,11 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
   const [busca, setBusca] = useState("");
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
   const [cadastrandoPessoa, setCadastrandoPessoa] = useState(false);
-  const [cargo, setCargo] = useState("");
+  const [cargos, setCargos] = useState<Cargo[]>([]);
+  const [cargoId, setCargoId] = useState("");
+  const [novoCargo, setNovoCargo] = useState(false);
+  const [nomeNovoCargo, setNomeNovoCargo] = useState("");
+  const [tipoContrato, setTipoContrato] = useState<"CLT" | "PJ">("CLT");
   const [salario, setSalario] = useState("");
   const [dataAdmissao, setDataAdmissao] = useState("");
   const [saving, setSaving] = useState(false);
@@ -300,7 +318,13 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
       const { data } = await supabase.from("pessoas").select("id, nome, tipo_pessoa").order("nome");
       setPessoas(data ?? []);
     }
+    async function carregarCargos() {
+      const supabase = createClient();
+      const { data } = await supabase.from("cargos").select("id, nome").order("nome");
+      setCargos(data ?? []);
+    }
     carregarPessoas();
+    carregarCargos();
   }, []);
 
   const sugestoes = pessoas.filter((p) => p.nome.toLowerCase().includes(busca.toLowerCase()));
@@ -335,9 +359,22 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
     try {
       const supabase = createClient();
       const papelId = await garantirFuncionarioPapelId(pessoaSelecionada.id);
+
+      let cargoFinalId = cargoId || null;
+      if (novoCargo && nomeNovoCargo.trim()) {
+        const { data, error } = await supabase
+          .from("cargos")
+          .insert({ nome: nomeNovoCargo.trim() })
+          .select("id")
+          .single();
+        if (error) throw error;
+        cargoFinalId = data.id;
+      }
+
       const { error } = await supabase.from("funcionarios").insert({
         papel_id: papelId,
-        cargo: cargo || null,
+        cargo_id: cargoFinalId,
+        tipo_contrato: tipoContrato,
         salario: Number(salario),
         data_admissao: dataAdmissao || null,
       });
@@ -421,19 +458,71 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
             )}
           </div>
         )}
+        <span className="block text-xs text-ink/40 mt-1">
+          Se a pessoa ainda não existe, o cadastro completo (CPF, telefone, e-mail, nascimento e
+          endereço) é feito na hora de criar — é só escolher &ldquo;cadastrar como nova pessoa&rdquo;.
+        </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label className="block">
           <span className="block text-sm font-medium text-ink/70 mb-1">Cargo</span>
-          <input value={cargo} onChange={(e) => setCargo(e.target.value)} className="input" />
+          {!novoCargo ? (
+            <div className="flex gap-2">
+              <select value={cargoId} onChange={(e) => setCargoId(e.target.value)} className="input">
+                <option value="">Selecione...</option>
+                {cargos.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setNovoCargo(true)}
+                className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
+              >
+                + Novo
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                autoFocus
+                value={nomeNovoCargo}
+                onChange={(e) => setNomeNovoCargo(e.target.value)}
+                className="input"
+                placeholder="Nome do cargo"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setNovoCargo(false);
+                  setNomeNovoCargo("");
+                }}
+                className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
         </label>
+
         <label className="block">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Salário (R$) *</span>
+          <span className="block text-sm font-medium text-ink/70 mb-1">Tipo de contrato *</span>
+          <select value={tipoContrato} onChange={(e) => setTipoContrato(e.target.value as "CLT" | "PJ")} className="input">
+            <option value="CLT">CLT</option>
+            <option value="PJ">PJ</option>
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="block text-sm font-medium text-ink/70 mb-1">Salário bruto (R$) *</span>
           <input type="number" step="0.01" min="0" value={salario} onChange={(e) => setSalario(e.target.value)} className="input" />
         </label>
+
         <label className="block">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Data de admissão</span>
+          <span className="block text-sm font-medium text-ink/70 mb-1">Início do contrato</span>
           <input type="date" value={dataAdmissao} onChange={(e) => setDataAdmissao(e.target.value)} className="input" />
         </label>
       </div>
