@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Users, FileText, ChevronDown, LogOut, Repeat, Package, BarChart3 } from "lucide-react";
+import { Users, FileText, ChevronDown, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -28,6 +28,14 @@ const MENU: Grupo[] = [
       { href: "/contratos/recorrentes", label: "Recorrentes", icon: <Repeat size={15} /> },
       { href: "/contratos/pontuais", label: "Pontuais", icon: <Package size={15} /> },
       { href: "/contratos/analise", label: "Análise", icon: <BarChart3 size={15} /> },
+    ],
+  },
+  {
+    label: "Financeiro",
+    icon: <DollarSign size={18} />,
+    itens: [
+      { href: "/financeiro/lancamentos", label: "Lançamentos", icon: <Receipt size={15} /> },
+      { href: "/financeiro/configuracoes", label: "Configurações", icon: <Settings size={15} /> },
     ],
   },
 ];
