@@ -207,6 +207,15 @@ export default function FuncionariosPage() {
   );
 }
 
+interface HistoricoSalario {
+  id: string;
+  tipo: "aumento" | "reajuste";
+  salario_anterior: number;
+  salario_novo: number;
+  data_alteracao: string;
+  observacao: string | null;
+}
+
 function DetalheFuncionario({
   funcionario,
   beneficios,
@@ -225,13 +234,83 @@ function DetalheFuncionario({
   const [tipoValorBeneficio, setTipoValorBeneficio] = useState<"mensal" | "diario">("mensal");
   const [salvando, setSalvando] = useState(false);
 
+  const [salarioAtual, setSalarioAtual] = useState(funcionario.salario);
+  const [historico, setHistorico] = useState<HistoricoSalario[]>([]);
+  const [painelReajusteAberto, setPainelReajusteAberto] = useState(false);
+  const [tipoReajuste, setTipoReajuste] = useState<"aumento" | "reajuste">("reajuste");
+  const [novoSalario, setNovoSalario] = useState("");
+  const [dataReajuste, setDataReajuste] = useState(() => new Date().toISOString().slice(0, 10));
+  const [observacaoReajuste, setObservacaoReajuste] = useState("");
+  const [salvandoReajuste, setSalvandoReajuste] = useState(false);
+  const [erroReajuste, setErroReajuste] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function carregarHistorico() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("funcionario_historico_salario")
+        .select("id, tipo, salario_anterior, salario_novo, data_alteracao, observacao")
+        .eq("funcionario_id", funcionario.id)
+        .order("data_alteracao", { ascending: false });
+      setHistorico(data ?? []);
+    }
+    carregarHistorico();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const hoje = new Date();
   const dias = diasUteisNoMes(hoje.getFullYear(), hoje.getMonth());
-  const encargos = calcularEncargos(funcionario.salario);
+  const encargos = calcularEncargos(salarioAtual);
   const custoTotal =
-    funcionario.salario +
+    salarioAtual +
     encargos.fgts +
     beneficios.reduce((s, b) => s + valorMensalBeneficio(b, hoje.getFullYear(), hoje.getMonth()), 0);
+
+  async function registrarReajuste(e: React.FormEvent) {
+    e.preventDefault();
+    if (!novoSalario || !dataReajuste) {
+      setErroReajuste("Informe o novo salário e a data.");
+      return;
+    }
+    setSalvandoReajuste(true);
+    setErroReajuste(null);
+    try {
+      const supabase = createClient();
+      const { error: histError } = await supabase.from("funcionario_historico_salario").insert({
+        funcionario_id: funcionario.id,
+        tipo: tipoReajuste,
+        salario_anterior: salarioAtual,
+        salario_novo: Number(novoSalario),
+        data_alteracao: dataReajuste,
+        observacao: observacaoReajuste || null,
+      });
+      if (histError) throw histError;
+
+      const { error: updError } = await supabase
+        .from("funcionarios")
+        .update({ salario: Number(novoSalario) })
+        .eq("id", funcionario.id);
+      if (updError) throw updError;
+
+      setSalarioAtual(Number(novoSalario));
+      setNovoSalario("");
+      setObservacaoReajuste("");
+      setPainelReajusteAberto(false);
+
+      const { data } = await supabase
+        .from("funcionario_historico_salario")
+        .select("id, tipo, salario_anterior, salario_novo, data_alteracao, observacao")
+        .eq("funcionario_id", funcionario.id)
+        .order("data_alteracao", { ascending: false });
+      setHistorico(data ?? []);
+
+      onChange();
+    } catch (err) {
+      setErroReajuste(err instanceof Error ? err.message : "Erro ao registrar reajuste.");
+    } finally {
+      setSalvandoReajuste(false);
+    }
+  }
 
   async function adicionarBeneficio(e: React.FormEvent) {
     e.preventDefault();
@@ -276,12 +355,136 @@ function DetalheFuncionario({
         </div>
 
         <div className="rounded-2xl bg-card p-4 mb-4 shadow-sm">
-          <p className="text-xs text-ink/50 mb-0.5">Custo total mensal (mês atual)</p>
-          <p className="text-xl font-extrabold text-forest">{formatarMoeda(custoTotal)}</p>
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs text-ink/50 mb-0.5">Custo total mensal (mês atual)</p>
+              <p className="text-xl font-extrabold text-forest">{formatarMoeda(custoTotal)}</p>
+            </div>
+            {!painelReajusteAberto && (
+              <button
+                onClick={() => {
+                  setNovoSalario(String(salarioAtual));
+                  setPainelReajusteAberto(true);
+                }}
+                className="shrink-0 rounded-full bg-ink text-white px-3 py-1.5 text-xs font-bold hover:bg-forest transition-colors"
+              >
+                Reajuste / Aumento
+              </button>
+            )}
+          </div>
           <p className="text-xs text-ink/40 mt-3 pt-3 border-t border-black/5">
-            Salário base: {formatarMoeda(funcionario.salario)} + FGTS {formatarMoeda(encargos.fgts)} · {dias} dias úteis este mês
+            Salário base: {formatarMoeda(salarioAtual)} + FGTS {formatarMoeda(encargos.fgts)} · {dias} dias úteis este mês
           </p>
         </div>
+
+        {painelReajusteAberto && (
+          <form onSubmit={registrarReajuste} className="rounded-2xl bg-card p-4 mb-4 shadow-sm space-y-3">
+            <p className="text-sm font-bold text-ink">Registrar reajuste / aumento</p>
+            <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
+              <button
+                type="button"
+                onClick={() => setTipoReajuste("reajuste")}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  tipoReajuste === "reajuste" ? "bg-ink text-white" : "text-ink/60"
+                }`}
+              >
+                Reajuste
+              </button>
+              <button
+                type="button"
+                onClick={() => setTipoReajuste("aumento")}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  tipoReajuste === "aumento" ? "bg-ink text-white" : "text-ink/60"
+                }`}
+              >
+                Aumento
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="block text-xs font-medium text-ink/70 mb-1">Salário anterior</span>
+                <input value={formatarMoeda(salarioAtual)} disabled className="input text-sm opacity-60" />
+              </label>
+              <label className="block">
+                <span className="block text-xs font-medium text-ink/70 mb-1">Novo salário (R$) *</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={novoSalario}
+                  onChange={(e) => setNovoSalario(e.target.value)}
+                  className="input text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-xs font-medium text-ink/70 mb-1">Data *</span>
+                <input
+                  type="date"
+                  value={dataReajuste}
+                  onChange={(e) => setDataReajuste(e.target.value)}
+                  className="input text-sm"
+                />
+              </label>
+              <label className="block col-span-2">
+                <span className="block text-xs font-medium text-ink/70 mb-1">Observação</span>
+                <input
+                  value={observacaoReajuste}
+                  onChange={(e) => setObservacaoReajuste(e.target.value)}
+                  className="input text-sm"
+                  placeholder="Motivo, referência..."
+                />
+              </label>
+            </div>
+
+            {erroReajuste && <p className="text-sm text-red-600">{erroReajuste}</p>}
+
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={salvandoReajuste}
+                className="rounded-full bg-forest text-white px-5 py-2 text-xs font-bold hover:bg-ink transition-colors disabled:opacity-50"
+              >
+                {salvandoReajuste ? "Salvando..." : "Confirmar"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPainelReajusteAberto(false)}
+                className="text-xs font-semibold text-ink/60 hover:text-ink"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        )}
+
+        {historico.length > 0 && (
+          <div className="mb-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Histórico salarial</p>
+            <div className="rounded-2xl bg-card p-4 shadow-sm space-y-3">
+              {historico.map((h) => (
+                <div key={h.id} className="text-sm border-b border-black/5 last:border-0 pb-2 last:pb-0">
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        h.tipo === "aumento" ? "bg-mint text-forest" : "bg-black/5 text-ink/60"
+                      }`}
+                    >
+                      {h.tipo === "aumento" ? "Aumento" : "Reajuste"}
+                    </span>
+                    <span className="text-xs text-ink/40">
+                      {new Date(h.data_alteracao + "T00:00:00").toLocaleDateString("pt-BR")}
+                    </span>
+                  </div>
+                  <p className="text-ink/70 mt-1">
+                    {formatarMoeda(h.salario_anterior)} → <span className="font-semibold text-ink">{formatarMoeda(h.salario_novo)}</span>
+                  </p>
+                  {h.observacao && <p className="text-xs text-ink/40 mt-0.5">{h.observacao}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mb-4">
           <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Benefícios</p>
