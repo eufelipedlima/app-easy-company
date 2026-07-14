@@ -26,6 +26,18 @@ function valorMensalBeneficio(b: Beneficio, ano: number, mes: number) {
   return b.tipo_valor === "diario" ? b.valor * diasUteisNoMes(ano, mes) : b.valor;
 }
 
+function calcularEncargos(salario: number) {
+  const fgts = salario * 0.08;
+  return {
+    fgts,
+    decimoTerceiro: salario * 0.0833,
+    ferias: salario * 0.0833,
+    umTercoFerias: salario * 0.0278,
+    avisoPrevio: salario * 0.0833,
+    multaFgts: fgts * 0.4,
+  };
+}
+
 interface Funcionario {
   id: string;
   papel_id: string;
@@ -102,8 +114,10 @@ export default function FuncionariosPage() {
   function custoTotal(f: Funcionario) {
     const beneficios = beneficiosPorFuncionario[f.id] ?? [];
     const hoje = new Date();
+    const fgts = calcularEncargos(f.salario).fgts;
     return (
       f.salario +
+      fgts +
       beneficios.reduce((s, b) => s + valorMensalBeneficio(b, hoje.getFullYear(), hoje.getMonth()), 0)
     );
   }
@@ -213,8 +227,10 @@ function DetalheFuncionario({
 
   const hoje = new Date();
   const dias = diasUteisNoMes(hoje.getFullYear(), hoje.getMonth());
+  const encargos = calcularEncargos(funcionario.salario);
   const custoTotal =
     funcionario.salario +
+    encargos.fgts +
     beneficios.reduce((s, b) => s + valorMensalBeneficio(b, hoje.getFullYear(), hoje.getMonth()), 0);
 
   async function adicionarBeneficio(e: React.FormEvent) {
@@ -263,7 +279,7 @@ function DetalheFuncionario({
           <p className="text-xs text-ink/50 mb-0.5">Custo total mensal (mês atual)</p>
           <p className="text-xl font-extrabold text-forest">{formatarMoeda(custoTotal)}</p>
           <p className="text-xs text-ink/40 mt-3 pt-3 border-t border-black/5">
-            Salário base: {formatarMoeda(funcionario.salario)} · {dias} dias úteis este mês
+            Salário base: {formatarMoeda(funcionario.salario)} + FGTS {formatarMoeda(encargos.fgts)} · {dias} dias úteis este mês
           </p>
         </div>
 
@@ -343,12 +359,37 @@ function DetalheFuncionario({
           </div>
         </div>
 
+        <div className="mb-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">
+            Provisões trabalhistas <span className="normal-case font-normal text-ink/30">(reserva, não é custo mensal em caixa)</span>
+          </p>
+          <div className="rounded-2xl bg-card p-4 shadow-sm space-y-2">
+            <ProvisaoLinha label="Provisão 13º" percentual="8,33%" valor={formatarMoeda(encargos.decimoTerceiro)} />
+            <ProvisaoLinha label="Provisão de Férias" percentual="8,33%" valor={formatarMoeda(encargos.ferias)} />
+            <ProvisaoLinha label="Provisão 1/3 Férias" percentual="2,78%" valor={formatarMoeda(encargos.umTercoFerias)} />
+            <ProvisaoLinha label="Provisão Aviso Prévio" percentual="8,33%" valor={formatarMoeda(encargos.avisoPrevio)} />
+            <ProvisaoLinha label="Multa FGTS" percentual="40,00%" valor={formatarMoeda(encargos.multaFgts)} />
+          </div>
+        </div>
+
         <button
           onClick={onRemover}
           className="w-full rounded-full border-2 border-red-200 text-red-600 px-5 py-2.5 text-sm font-bold hover:bg-red-50 transition-colors"
         >
           Desativar funcionário
         </button>
+      </div>
+    </div>
+  );
+}
+
+function ProvisaoLinha({ label, percentual, valor }: { label: string; percentual: string; valor: string }) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-ink/70">{label}</span>
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-ink/40 w-14 text-right">{percentual}</span>
+        <span className="font-semibold text-ink w-20 text-right">{valor}</span>
       </div>
     </div>
   );

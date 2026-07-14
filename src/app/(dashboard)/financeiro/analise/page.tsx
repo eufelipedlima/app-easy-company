@@ -168,7 +168,7 @@ export default function AnaliseFinanceiraPage() {
   const mesReferencia = modo === "mensal" ? mes : hoje.getMonth();
   const diasUteisReferencia = diasUteisNoMes(ano, mesReferencia);
   const totalFolha =
-    funcionarios.reduce((s, f) => s + f.salario, 0) +
+    funcionarios.reduce((s, f) => s + f.salario + f.salario * 0.08, 0) +
     beneficios.reduce(
       (s, b) => s + (b.tipo_valor === "diario" ? b.valor * diasUteisReferencia : b.valor),
       0
@@ -331,7 +331,7 @@ function FolhaDePagamento({
 
       <div className="grid grid-cols-3 gap-4">
         <Metrica icon={<Users size={16} />} label="Colaboradores" valor={String(totalColaboradores)} />
-        <Metrica icon={<Wallet size={16} />} label="Valor total (salário + benefícios)" valor={formatarMoeda(totalFolha)} />
+        <Metrica icon={<Wallet size={16} />} label="Valor total (salário + FGTS + benefícios)" valor={formatarMoeda(totalFolha)} />
         <Metrica icon={<TrendingUp size={16} />} label="Média por colaborador" valor={formatarMoeda(mediaFolha)} />
       </div>
     </section>
