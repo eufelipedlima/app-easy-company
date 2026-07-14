@@ -375,7 +375,7 @@ export default function ContratosRecorrentesPage() {
                       <DetalheLinha label="Pagamento da entrada" valor={formatarData(detalhe.data_pagamento_entrada)} />
                     )}
                     <DetalheLinha label="Início" valor={formatarData(detalhe.data_primeira_mensalidade)} />
-                    <DetalheLinha label="Tempo inicial" valor={`${detalhe.tempo_inicial_meses ?? "—"} meses`} />
+                    <DetalheLinha label="Compromisso mínimo" valor={`${detalhe.tempo_inicial_meses ?? "—"} meses`} />
                     <DetalheLinha label="Renovação automática" valor={dataRenovacao} />
                     {detalhe.status === "encerrado" && (
                       <DetalheLinha label="Encerramento" valor={formatarData(detalhe.data_encerramento)} />
@@ -863,7 +863,7 @@ function ContratoRecorrenteForm({
           </select>
         </Campo>
 
-        <Campo label="Tempo inicial" required>
+        <Campo label="Compromisso mínimo" required>
           <select value={tempoInicial} onChange={(e) => setTempoInicial(Number(e.target.value))} className="input">
             {OPCOES_TEMPO_INICIAL.map((m) => (
               <option key={m} value={m}>
@@ -943,7 +943,9 @@ function ContratoRecorrenteForm({
 
       {!editando && (
         <p className="text-xs text-ink/40">
-          🔁 Renova automaticamente todo mês após os {tempoInicial} meses iniciais.
+          🔁 O contrato é recorrente por padrão — as mensalidades continuam sendo lançadas
+          automaticamente no financeiro até você encerrar o contrato. O compromisso mínimo
+          acima é só o período combinado com o cliente, pra controle de churn e permanência.
         </p>
       )}
 
