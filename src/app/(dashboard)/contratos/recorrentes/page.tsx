@@ -23,6 +23,9 @@ interface Contrato {
   arquivo_path: string | null;
   arquivo_nome: string | null;
   ultima_verificacao_parcelas: string | null;
+  eh_migracao: boolean;
+  valor_pago_historico: number | null;
+  data_proxima_cobranca: string | null;
   clientes: {
     papeis: {
       pessoas: {
@@ -89,6 +92,25 @@ export default function ContratosRecorrentesPage() {
   const [editando, setEditando] = useState<Contrato | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("ativo");
   const [detalhe, setDetalhe] = useState<Contrato | null>(null);
+  const [totalPagoReal, setTotalPagoReal] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!detalhe) {
+      setTotalPagoReal(null);
+      return;
+    }
+    async function carregarTotalPago() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("lancamentos")
+        .select("valor")
+        .eq("contrato_id", detalhe!.id)
+        .eq("situacao", "pago");
+      const somaPago = (data ?? []).reduce((s, l) => s + l.valor, 0);
+      setTotalPagoReal((detalhe!.valor_pago_historico ?? 0) + somaPago);
+    }
+    carregarTotalPago();
+  }, [detalhe]);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -98,7 +120,7 @@ export default function ContratosRecorrentesPage() {
       .select(
         `id, numero_contrato, status, forma_pagamento, valor_mensal, valor_entrada, data_pagamento_entrada, data_primeira_mensalidade,
          data_encerramento, tempo_inicial_meses, servico_id, banco_id, plano_conta_id, descricao, comentarios_extras,
-         arquivo_path, arquivo_nome, ultima_verificacao_parcelas,
+         arquivo_path, arquivo_nome, ultima_verificacao_parcelas, eh_migracao, valor_pago_historico, data_proxima_cobranca,
          clientes ( papeis ( pessoas ( nome, razao_social, documento, email ) ) ),
          servicos ( nome ),
          bancos ( nome ),
@@ -369,12 +391,19 @@ export default function ContratosRecorrentesPage() {
                         <p className="text-xl font-extrabold text-forest">{formatarMoeda(detalhe.valor_mensal)}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-ink/50 mb-0.5">LTV atual</p>
+                        <p className="text-xs text-ink/50 mb-0.5">LTV atual (estimado)</p>
                         <p className="text-xl font-extrabold text-ink">{formatarMoeda(ltv)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-ink/50 mb-0.5">Total pago (real)</p>
+                        <p className="text-lg font-bold text-forest">
+                          {totalPagoReal != null ? formatarMoeda(totalPagoReal) : "…"}
+                        </p>
                       </div>
                     </div>
                     <p className="text-xs text-ink/40 mt-3 pt-3 border-t border-black/5">
                       Recorrente · {meses} {meses === 1 ? "mês" : "meses"} de casa
+                      {detalhe.eh_migracao && " · cliente migrado"}
                     </p>
                   </div>
 
@@ -529,6 +558,14 @@ function ContratoRecorrenteForm({
   const [status, setStatus] = useState<"ativo" | "encerrado">(contratoEditando?.status ?? "ativo");
   const [dataEncerramento, setDataEncerramento] = useState(contratoEditando?.data_encerramento ?? "");
 
+  const [ehMigracao, setEhMigracao] = useState(contratoEditando?.eh_migracao ?? false);
+  const [valorPagoHistorico, setValorPagoHistorico] = useState(
+    contratoEditando?.valor_pago_historico != null ? String(contratoEditando.valor_pago_historico) : ""
+  );
+  const [dataProximaCobranca, setDataProximaCobranca] = useState(
+    contratoEditando?.data_proxima_cobranca ?? ""
+  );
+
   const [descricao, setDescricao] = useState(contratoEditando?.descricao ?? "");
   const [comentariosExtras, setComentariosExtras] = useState(contratoEditando?.comentarios_extras ?? "");
   const [arquivo, setArquivo] = useState<File | null>(null);
@@ -646,6 +683,10 @@ function ContratoRecorrenteForm({
       setErro("Selecione um cliente.");
       return;
     }
+    if (!editando && ehMigracao && !dataProximaCobranca) {
+      setErro("Informe a data da próxima cobrança.");
+      return;
+    }
     setSaving(true);
     setErro(null);
 
@@ -705,6 +746,9 @@ function ContratoRecorrenteForm({
             data_encerramento: status === "encerrado" ? dataEncerramento || null : null,
             descricao: descricao || null,
             comentarios_extras: comentariosExtras || null,
+            eh_migracao: ehMigracao,
+            valor_pago_historico: ehMigracao && valorPagoHistorico ? Number(valorPagoHistorico) : null,
+            data_proxima_cobranca: ehMigracao ? dataProximaCobranca || null : null,
           })
           .eq("id", contratoEditando.id);
         if (error) throw error;
@@ -740,6 +784,9 @@ function ContratoRecorrenteForm({
             comentarios_extras: comentariosExtras || null,
             banco_id: bancoFinalId,
             plano_conta_id: planoContaFinalId,
+            eh_migracao: ehMigracao,
+            valor_pago_historico: ehMigracao && valorPagoHistorico ? Number(valorPagoHistorico) : null,
+            data_proxima_cobranca: ehMigracao ? dataProximaCobranca || null : null,
             ...(numeroContrato.trim() ? { numero_contrato: numeroContrato.trim() } : {}),
           })
           .select("id")
@@ -750,7 +797,10 @@ function ContratoRecorrenteForm({
           await enviarArquivo(novoContrato.id, arquivo);
         }
 
-        // Gera os lançamentos automaticamente: entrada (se houver) + 12 meses de mensalidade
+        // Gera os lançamentos automaticamente. Em contratos normais: entrada (se houver) +
+        // 12 meses de mensalidade a partir da data da primeira mensalidade. Em contratos
+        // de migração (cliente já existente antes do sistema): sem entrada, e a partir da
+        // "data da próxima cobrança" em vez da data histórica de início.
         if (novoContrato) {
           const linhas: Record<string, unknown>[] = [];
           const nomeCliente = pessoaSelecionada!.nome;
@@ -758,7 +808,7 @@ function ContratoRecorrenteForm({
             ? `${nomeCliente} — ${nomeServicoParaDescricao}`
             : nomeCliente;
 
-          if (valorEntrada && Number(valorEntrada) > 0) {
+          if (!ehMigracao && valorEntrada && Number(valorEntrada) > 0) {
             linhas.push({
               contrato_id: novoContrato.id,
               cliente_id: clienteId,
@@ -774,10 +824,11 @@ function ContratoRecorrenteForm({
             });
           }
 
+          const dataAncora = ehMigracao ? dataProximaCobranca : dataPrimeiraMensalidade;
           const grupoId = crypto.randomUUID();
           const MESES_GERADOS = 12;
           for (let i = 0; i < MESES_GERADOS; i++) {
-            const venc = new Date(dataPrimeiraMensalidade + "T00:00:00");
+            const venc = new Date(dataAncora + "T00:00:00");
             venc.setMonth(venc.getMonth() + i);
             linhas.push({
               contrato_id: novoContrato.id,
@@ -882,6 +933,51 @@ function ContratoRecorrenteForm({
           </div>
         )}
       </div>
+
+      {!editando && (
+        <div className="rounded-2xl bg-surface p-3">
+          <label className="flex items-center gap-2 text-sm font-semibold text-ink cursor-pointer">
+            <input
+              type="checkbox"
+              checked={ehMigracao}
+              onChange={(e) => setEhMigracao(e.target.checked)}
+              className="h-4 w-4 rounded accent-forest"
+            />
+            Contrato já existente (cliente antigo, migração pro sistema)
+          </label>
+
+          {ehMigracao && (
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <Campo label="Data da próxima cobrança" required>
+                <input
+                  type="date"
+                  required
+                  value={dataProximaCobranca}
+                  onChange={(e) => setDataProximaCobranca(e.target.value)}
+                  className="input"
+                />
+                <span className="block text-xs text-ink/40 mt-1">
+                  As mensalidades serão lançadas a partir daqui, não da data de início real.
+                </span>
+              </Campo>
+              <Campo label="Valor já pago antes de entrar no sistema (R$)">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={valorPagoHistorico}
+                  onChange={(e) => setValorPagoHistorico(e.target.value)}
+                  className="input"
+                  placeholder="Opcional"
+                />
+                <span className="block text-xs text-ink/40 mt-1">
+                  Só pra cálculo de LTV/total pago — não gera lançamento nenhum.
+                </span>
+              </Campo>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="relative">
