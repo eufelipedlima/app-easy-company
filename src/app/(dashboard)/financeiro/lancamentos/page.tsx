@@ -19,6 +19,7 @@ interface Lancamento {
   servico_id: string | null;
   numero_parcela: number | null;
   total_parcelas: number | null;
+  grupo_id: string | null;
   recorrencia_tipo: "mensal" | "semanal" | "anual" | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
   pessoas: { nome: string } | null;
@@ -163,6 +164,10 @@ export default function LancamentosPage() {
   const [loading, setLoading] = useState(true);
   const [painelAberto, setPainelAberto] = useState(false);
   const [editando, setEditando] = useState<Lancamento | null>(null);
+  const [escopoEdicao, setEscopoEdicao] = useState<"unico" | "grupo">("unico");
+  const [perguntaEscopo, setPerguntaEscopo] = useState<{ acao: "editar" | "excluir"; lancamento: Lancamento } | null>(
+    null
+  );
   const [detalhe, setDetalhe] = useState<Lancamento | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [resumoAberto, setResumoAberto] = useState(false);
@@ -197,7 +202,7 @@ export default function LancamentosPage() {
       .from("lancamentos")
       .select(
         `id, descricao, valor, tipo, situacao, data_vencimento, data_quitacao, data_competencia, codigo_transacao,
-         banco_id, plano_conta_id, servico_id, numero_parcela, total_parcelas, recorrencia_tipo,
+         banco_id, plano_conta_id, servico_id, numero_parcela, total_parcelas, recorrencia_tipo, grupo_id,
          clientes ( papeis ( pessoas ( nome ) ) ),
          pessoas ( nome ),
          bancos ( nome ),
@@ -231,6 +236,54 @@ export default function LancamentosPage() {
     const supabase = createClient();
     await supabase.from("lancamentos").delete().eq("id", id);
     carregar();
+  }
+
+  async function removerGrupo(l: Lancamento) {
+    const supabase = createClient();
+    await supabase
+      .from("lancamentos")
+      .delete()
+      .eq("grupo_id", l.grupo_id)
+      .eq("situacao", "pendente")
+      .gte("data_vencimento", l.data_vencimento);
+    carregar();
+  }
+
+  function clicarEditar(l: Lancamento) {
+    if (l.grupo_id) {
+      setPerguntaEscopo({ acao: "editar", lancamento: l });
+    } else {
+      setEscopoEdicao("unico");
+      setEditando(l);
+      setPainelAberto(false);
+    }
+  }
+
+  function clicarExcluir(l: Lancamento) {
+    if (l.grupo_id) {
+      setPerguntaEscopo({ acao: "excluir", lancamento: l });
+    } else {
+      remover(l.id);
+    }
+  }
+
+  function confirmarEscopo(escolha: "unico" | "grupo") {
+    if (!perguntaEscopo) return;
+    const { acao, lancamento } = perguntaEscopo;
+    setPerguntaEscopo(null);
+
+    if (acao === "excluir") {
+      if (escolha === "unico") {
+        remover(lancamento.id);
+      } else {
+        if (!window.confirm("Excluir este e todos os lançamentos pendentes futuros dessa série?")) return;
+        removerGrupo(lancamento);
+      }
+    } else {
+      setEscopoEdicao(escolha);
+      setEditando(lancamento);
+      setPainelAberto(false);
+    }
   }
 
   const filtrados = lancamentosDoPeriodo
@@ -270,7 +323,10 @@ export default function LancamentosPage() {
         </div>
         {!painelAberto && !editando && (
           <button
-            onClick={() => setPainelAberto(true)}
+            onClick={() => {
+              setEscopoEdicao("unico");
+              setPainelAberto(true);
+            }}
             className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
           >
             + Novo lançamento
@@ -485,11 +541,20 @@ export default function LancamentosPage() {
             className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold text-ink mb-5">
+            <h2 className="text-lg font-bold text-ink mb-1">
               {editando ? "Editar lançamento" : "Novo lançamento"}
             </h2>
+            {editando?.grupo_id && (
+              <p className="text-xs text-ink/40 mb-4">
+                {escopoEdicao === "grupo"
+                  ? "Alterando este e os próximos lançamentos pendentes da série."
+                  : "Alterando apenas este lançamento."}
+              </p>
+            )}
+            {!editando?.grupo_id && <div className="mb-5" />}
             <LancamentoForm
               lancamentoEditando={editando}
+              escopoEdicao={escopoEdicao}
               onSaved={() => {
                 setPainelAberto(false);
                 setEditando(null);
@@ -500,6 +565,42 @@ export default function LancamentosPage() {
                 setEditando(null);
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {perguntaEscopo && (
+        <div
+          className="fixed inset-0 z-30 bg-ink/50 flex items-center justify-center p-6"
+          onClick={() => setPerguntaEscopo(null)}
+        >
+          <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-ink mb-2">
+              {perguntaEscopo.acao === "editar" ? "Editar lançamento" : "Excluir lançamento"}
+            </h3>
+            <p className="text-sm text-ink/60 mb-5">
+              Esse lançamento faz parte de um parcelamento ou recorrência. O que você quer fazer?
+            </p>
+            <div className="space-y-2">
+              <button
+                onClick={() => confirmarEscopo("unico")}
+                className="w-full rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+              >
+                Apenas este
+              </button>
+              <button
+                onClick={() => confirmarEscopo("grupo")}
+                className="w-full rounded-full border-2 border-ink/20 text-ink px-5 py-2.5 text-sm font-semibold hover:bg-surface transition-colors"
+              >
+                Este e os próximos
+              </button>
+              <button
+                onClick={() => setPerguntaEscopo(null)}
+                className="w-full text-sm font-semibold text-ink/50 hover:text-ink py-2"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -585,16 +686,13 @@ export default function LancamentosPage() {
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1.5">
                       <button
-                        onClick={() => {
-                          setEditando(l);
-                          setPainelAberto(false);
-                        }}
+                        onClick={() => clicarEditar(l)}
                         className="rounded-full px-3 py-1.5 text-xs font-bold bg-forest text-white hover:bg-ink transition-colors shadow-sm"
                       >
                         Editar
                       </button>
                       <button
-                        onClick={() => remover(l.id)}
+                        onClick={() => clicarExcluir(l)}
                         className="rounded-full px-2.5 py-1.5 text-xs font-semibold text-ink/40 hover:text-red-600 transition-colors"
                       >
                         Excluir
@@ -687,8 +785,8 @@ export default function LancamentosPage() {
 
             <button
               onClick={() => {
-                remover(detalhe.id);
                 setDetalhe(null);
+                clicarExcluir(detalhe);
               }}
               className="w-full rounded-full border-2 border-red-200 text-red-600 px-5 py-2.5 text-sm font-bold hover:bg-red-50 transition-colors"
             >
@@ -747,10 +845,12 @@ function DetalheLinha({ label, valor }: { label: string; valor: string }) {
 
 function LancamentoForm({
   lancamentoEditando,
+  escopoEdicao,
   onSaved,
   onCancel,
 }: {
   lancamentoEditando: Lancamento | null;
+  escopoEdicao: "unico" | "grupo";
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -938,6 +1038,19 @@ function LancamentoForm({
         };
         const { error } = await supabase.from("lancamentos").update(payload).eq("id", lancamentoEditando.id);
         if (error) throw error;
+
+        if (escopoEdicao === "grupo" && lancamentoEditando.grupo_id) {
+          // Aplica os campos "de conteúdo" (incluindo valor, útil pra reajuste) às próximas
+          // parcelas/recorrências pendentes — situação, vencimento e quitação continuam
+          // sendo por lançamento individual
+          await supabase
+            .from("lancamentos")
+            .update({ ...payloadBase, valor: Number(valor) })
+            .eq("grupo_id", lancamentoEditando.grupo_id)
+            .eq("situacao", "pendente")
+            .gt("data_vencimento", lancamentoEditando.data_vencimento)
+            .neq("id", lancamentoEditando.id);
+        }
       } else if (repeticao === "parcelado") {
         const n = Number(totalParcelas);
         const grupoId = crypto.randomUUID();
