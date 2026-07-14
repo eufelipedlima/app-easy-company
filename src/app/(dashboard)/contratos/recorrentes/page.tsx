@@ -68,8 +68,6 @@ export default function ContratosRecorrentesPage() {
   const [painelAberto, setPainelAberto] = useState(false);
   const [editando, setEditando] = useState<Contrato | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("ativo");
-  const [alterandoStatusId, setAlterandoStatusId] = useState<string | null>(null);
-  const [dataEncerramento, setDataEncerramento] = useState("");
   const [detalhe, setDetalhe] = useState<Contrato | null>(null);
 
   const carregar = useCallback(async () => {
@@ -92,18 +90,6 @@ export default function ContratosRecorrentesPage() {
   useEffect(() => {
     carregar();
   }, [carregar]);
-
-  async function confirmarEncerramento(id: string) {
-    if (!dataEncerramento) return;
-    const supabase = createClient();
-    await supabase
-      .from("contratos")
-      .update({ status: "encerrado", data_encerramento: dataEncerramento })
-      .eq("id", id);
-    setAlterandoStatusId(null);
-    setDataEncerramento("");
-    carregar();
-  }
 
   const contratosFiltrados = contratos.filter((c) => filtro === "todos" || c.status === filtro);
 
@@ -206,50 +192,16 @@ export default function ContratosRecorrentesPage() {
                       </span>
                     </td>
                     <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                      {alterandoStatusId === c.id ? (
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="date"
-                            value={dataEncerramento}
-                            onChange={(e) => setDataEncerramento(e.target.value)}
-                            className="input py-1 px-2 text-xs"
-                          />
-                          <button
-                            onClick={() => confirmarEncerramento(c.id)}
-                            className="text-xs font-semibold text-forest"
-                          >
-                            OK
-                          </button>
-                          <button
-                            onClick={() => setAlterandoStatusId(null)}
-                            className="text-xs font-semibold text-ink/40"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => {
-                              setEditando(c);
-                              setPainelAberto(false);
-                            }}
-                            title="Editar contrato"
-                            className="rounded-full px-2.5 py-1 text-xs font-semibold text-ink/50 hover:bg-surface hover:text-ink transition-colors"
-                          >
-                            Editar
-                          </button>
-                          {c.status === "ativo" && (
-                            <button
-                              onClick={() => setAlterandoStatusId(c.id)}
-                              title="Encerrar contrato"
-                              className="rounded-full px-2.5 py-1 text-xs font-semibold bg-mint text-forest hover:bg-forest hover:text-white transition-colors"
-                            >
-                              Status
-                            </button>
-                          )}
-                        </div>
-                      )}
+                      <button
+                        onClick={() => {
+                          setEditando(c);
+                          setPainelAberto(false);
+                        }}
+                        title="Editar contrato"
+                        className="rounded-full px-3 py-1.5 text-xs font-bold bg-forest text-white hover:bg-ink transition-colors shadow-sm"
+                      >
+                        Editar
+                      </button>
                     </td>
                   </tr>
                 );
@@ -402,6 +354,8 @@ function ContratoRecorrenteForm({
     contratoEditando?.data_primeira_mensalidade ?? ""
   );
   const [tempoInicial, setTempoInicial] = useState(contratoEditando?.tempo_inicial_meses ?? 3);
+  const [status, setStatus] = useState<"ativo" | "encerrado">(contratoEditando?.status ?? "ativo");
+  const [dataEncerramento, setDataEncerramento] = useState(contratoEditando?.data_encerramento ?? "");
 
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -498,6 +452,8 @@ function ContratoRecorrenteForm({
             data_primeira_mensalidade: dataPrimeiraMensalidade,
             tempo_inicial_meses: tempoInicial,
             numero_contrato: numeroContrato.trim() || null,
+            status,
+            data_encerramento: status === "encerrado" ? dataEncerramento || null : null,
           })
           .eq("id", contratoEditando.id);
         if (error) throw error;
@@ -692,6 +648,29 @@ function ContratoRecorrenteForm({
             ))}
           </select>
         </Campo>
+
+        {editando && (
+          <>
+            <Campo label="Status" required>
+              <select value={status} onChange={(e) => setStatus(e.target.value as "ativo" | "encerrado")} className="input">
+                <option value="ativo">Ativo</option>
+                <option value="encerrado">Encerrado</option>
+              </select>
+            </Campo>
+
+            {status === "encerrado" && (
+              <Campo label="Data de encerramento" required>
+                <input
+                  type="date"
+                  required
+                  value={dataEncerramento}
+                  onChange={(e) => setDataEncerramento(e.target.value)}
+                  className="input"
+                />
+              </Campo>
+            )}
+          </>
+        )}
       </div>
 
       {!editando && (

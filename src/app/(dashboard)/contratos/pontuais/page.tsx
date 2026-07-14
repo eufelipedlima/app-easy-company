@@ -63,9 +63,6 @@ export default function ContratosPontuaisPage() {
   const [painelAberto, setPainelAberto] = useState(false);
   const [editando, setEditando] = useState<Contrato | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("ativo");
-  const [alterandoId, setAlterandoId] = useState<string | null>(null);
-  const [novoStatus, setNovoStatus] = useState<"concluido" | "arquivado">("concluido");
-  const [dataEncerramento, setDataEncerramento] = useState("");
   const [detalhe, setDetalhe] = useState<Contrato | null>(null);
 
   const carregar = useCallback(async () => {
@@ -88,18 +85,6 @@ export default function ContratosPontuaisPage() {
   useEffect(() => {
     carregar();
   }, [carregar]);
-
-  async function confirmarMudancaStatus(id: string) {
-    if (!dataEncerramento) return;
-    const supabase = createClient();
-    await supabase
-      .from("contratos")
-      .update({ status: novoStatus, data_encerramento: dataEncerramento })
-      .eq("id", id);
-    setAlterandoId(null);
-    setDataEncerramento("");
-    carregar();
-  }
 
   const contratosFiltrados = contratos.filter((c) => filtro === "todos" || c.status === filtro);
 
@@ -213,58 +198,16 @@ export default function ContratosPontuaisPage() {
                     </span>
                   </td>
                   <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                    {alterandoId === c.id ? (
-                      <div className="flex items-center gap-1.5">
-                        <select
-                          value={novoStatus}
-                          onChange={(e) => setNovoStatus(e.target.value as "concluido" | "arquivado")}
-                          className="input py-1 px-2 text-xs"
-                        >
-                          <option value="concluido">Concluído</option>
-                          <option value="arquivado">Arquivado</option>
-                        </select>
-                        <input
-                          type="date"
-                          value={dataEncerramento}
-                          onChange={(e) => setDataEncerramento(e.target.value)}
-                          className="input py-1 px-2 text-xs"
-                        />
-                        <button
-                          onClick={() => confirmarMudancaStatus(c.id)}
-                          className="text-xs font-semibold text-forest"
-                        >
-                          OK
-                        </button>
-                        <button
-                          onClick={() => setAlterandoId(null)}
-                          className="text-xs font-semibold text-ink/40"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => {
-                            setEditando(c);
-                            setPainelAberto(false);
-                          }}
-                          title="Editar contrato"
-                          className="rounded-full px-2.5 py-1 text-xs font-semibold text-ink/50 hover:bg-surface hover:text-ink transition-colors"
-                        >
-                          Editar
-                        </button>
-                        {c.status === "ativo" && (
-                          <button
-                            onClick={() => setAlterandoId(c.id)}
-                            title="Mudar status"
-                            className="rounded-full px-2.5 py-1 text-xs font-semibold bg-mint text-forest hover:bg-forest hover:text-white transition-colors"
-                          >
-                            Status
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    <button
+                      onClick={() => {
+                        setEditando(c);
+                        setPainelAberto(false);
+                      }}
+                      title="Editar contrato"
+                      className="rounded-full px-3 py-1.5 text-xs font-bold bg-forest text-white hover:bg-ink transition-colors shadow-sm"
+                    >
+                      Editar
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -395,6 +338,10 @@ function ContratoPontualForm({
     contratoEditando?.valor_total != null ? String(contratoEditando.valor_total) : ""
   );
   const [dataInicio, setDataInicio] = useState(contratoEditando?.data_fechamento ?? "");
+  const [status, setStatus] = useState<"ativo" | "concluido" | "arquivado">(
+    contratoEditando?.status ?? "ativo"
+  );
+  const [dataEncerramento, setDataEncerramento] = useState(contratoEditando?.data_encerramento ?? "");
 
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -490,6 +437,8 @@ function ContratoPontualForm({
             valor_total: Number(valorTotal),
             data_fechamento: dataInicio,
             numero_contrato: numeroContrato.trim() || null,
+            status,
+            data_encerramento: status !== "ativo" ? dataEncerramento || null : null,
           })
           .eq("id", contratoEditando.id);
         if (error) throw error;
@@ -673,6 +622,34 @@ function ContratoPontualForm({
             placeholder="0,00"
           />
         </Campo>
+
+        {editando && (
+          <>
+            <Campo label="Status" required>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as "ativo" | "concluido" | "arquivado")}
+                className="input"
+              >
+                <option value="ativo">Ativo</option>
+                <option value="concluido">Concluído</option>
+                <option value="arquivado">Arquivado</option>
+              </select>
+            </Campo>
+
+            {status !== "ativo" && (
+              <Campo label="Data de encerramento" required>
+                <input
+                  type="date"
+                  required
+                  value={dataEncerramento}
+                  onChange={(e) => setDataEncerramento(e.target.value)}
+                  className="input"
+                />
+              </Campo>
+            )}
+          </>
+        )}
       </div>
 
       {erro && <p className="text-sm text-red-600">{erro}</p>}
