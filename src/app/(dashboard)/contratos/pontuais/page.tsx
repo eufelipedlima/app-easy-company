@@ -57,6 +57,7 @@ export default function ContratosPontuaisPage() {
   const [alterandoId, setAlterandoId] = useState<string | null>(null);
   const [novoStatus, setNovoStatus] = useState<"concluido" | "arquivado">("concluido");
   const [dataEncerramento, setDataEncerramento] = useState("");
+  const [detalhe, setDetalhe] = useState<Contrato | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -150,8 +151,8 @@ export default function ContratosPontuaisPage() {
           <table className="w-full text-sm table-fixed">
             <colgroup>
               <col className="w-16" />
+              <col className="w-40" />
               <col className="w-auto" />
-              <col className="w-36" />
               <col className="w-28" />
               <col className="w-24" />
               <col className="w-24" />
@@ -172,7 +173,11 @@ export default function ContratosPontuaisPage() {
             </thead>
             <tbody>
               {contratosFiltrados.map((c) => (
-                <tr key={c.id} className="border-b border-black/5 last:border-0 hover:bg-surface/60">
+                <tr
+                  key={c.id}
+                  onClick={() => setDetalhe(c)}
+                  className="border-b border-black/5 last:border-0 hover:bg-surface/60 cursor-pointer"
+                >
                   <td className="px-3 py-3 text-ink/50 font-mono text-xs truncate">
                     {c.numero_contrato ?? "—"}
                   </td>
@@ -198,7 +203,7 @@ export default function ContratosPontuaisPage() {
                       {STATUS_LABEL[c.status]}
                     </span>
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                     {alterandoId === c.id ? (
                       <div className="flex items-center gap-1.5">
                         <select
@@ -258,6 +263,46 @@ export default function ContratosPontuaisPage() {
           </table>
         )}
       </div>
+
+      {detalhe && (
+        <div
+          className="fixed inset-0 z-20 bg-ink/40 flex items-center justify-center p-6"
+          onClick={() => setDetalhe(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-ink">Detalhes do contrato</h3>
+              <button onClick={() => setDetalhe(null)} className="text-ink/40 hover:text-ink text-sm font-semibold">
+                Fechar
+              </button>
+            </div>
+            <dl className="space-y-3 text-sm">
+              <DetalheLinha label="Nº do contrato" valor={detalhe.numero_contrato ?? "—"} />
+              <DetalheLinha label="Cliente" valor={detalhe.clientes?.papeis?.pessoas?.nome ?? "—"} />
+              <DetalheLinha label="Serviço" valor={detalhe.servicos?.nome ?? "—"} />
+              <DetalheLinha label="Valor total" valor={formatarMoeda(detalhe.valor_total)} />
+              <DetalheLinha label="Forma de pagamento" valor={detalhe.forma_pagamento ?? "—"} />
+              <DetalheLinha label="Início do contrato" valor={formatarData(detalhe.data_fechamento)} />
+              {detalhe.status !== "ativo" && (
+                <DetalheLinha label="Data de encerramento" valor={formatarData(detalhe.data_encerramento)} />
+              )}
+              <DetalheLinha label="Status" valor={STATUS_LABEL[detalhe.status]} />
+            </dl>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetalheLinha({ label, valor }: { label: string; valor: string }) {
+  return (
+    <div className="flex items-center justify-between border-b border-black/5 pb-2 last:border-0">
+      <dt className="text-ink/50">{label}</dt>
+      <dd className="font-semibold text-ink text-right">{valor}</dd>
     </div>
   );
 }

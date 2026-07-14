@@ -61,6 +61,7 @@ export default function ContratosRecorrentesPage() {
   const [filtro, setFiltro] = useState<Filtro>("ativo");
   const [alterandoStatusId, setAlterandoStatusId] = useState<string | null>(null);
   const [dataEncerramento, setDataEncerramento] = useState("");
+  const [detalhe, setDetalhe] = useState<Contrato | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -155,12 +156,10 @@ export default function ContratosRecorrentesPage() {
             <colgroup>
               <col className="w-16" />
               <col className="w-auto" />
-              <col className="w-36" />
+              <col className="w-40" />
               <col className="w-28" />
-              <col className="w-24" />
-              <col className="w-20" />
+              <col className="w-16" />
               <col className="w-28" />
-              <col className="w-24" />
               <col className="w-24" />
               <col className="w-24" />
             </colgroup>
@@ -170,10 +169,8 @@ export default function ContratosRecorrentesPage() {
                 <th className="px-3 py-3 font-medium">Cliente</th>
                 <th className="px-3 py-3 font-medium">Serviço</th>
                 <th className="px-3 py-3 font-medium">Valor</th>
-                <th className="px-3 py-3 font-medium">Início</th>
                 <th className="px-3 py-3 font-medium">Meses</th>
                 <th className="px-3 py-3 font-medium">LTV atual</th>
-                <th className="px-3 py-3 font-medium">Encerr.</th>
                 <th className="px-3 py-3 font-medium">Status</th>
                 <th className="px-3 py-3 font-medium"></th>
               </tr>
@@ -183,7 +180,11 @@ export default function ContratosRecorrentesPage() {
                 const meses = mesesDeCasa(c.data_primeira_mensalidade, c.data_encerramento);
                 const ltv = meses * (c.valor_mensal ?? 0);
                 return (
-                  <tr key={c.id} className="border-b border-black/5 last:border-0 hover:bg-surface/60">
+                  <tr
+                    key={c.id}
+                    onClick={() => setDetalhe(c)}
+                    className="border-b border-black/5 last:border-0 hover:bg-surface/60 cursor-pointer"
+                  >
                     <td className="px-3 py-3 text-ink/50 font-mono text-xs truncate">
                       {c.numero_contrato ?? "—"}
                     </td>
@@ -191,13 +192,9 @@ export default function ContratosRecorrentesPage() {
                       {c.clientes?.papeis?.pessoas?.nome ?? "—"}
                     </td>
                     <td className="px-3 py-3 text-ink/70 truncate">{c.servicos?.nome ?? "—"}</td>
-                    <td className="px-3 py-3 text-ink/70">{formatarMoeda(c.valor_mensal)}/mês</td>
-                    <td className="px-3 py-3 text-ink/70">{formatarData(c.data_primeira_mensalidade)}</td>
+                    <td className="px-3 py-3 text-ink/70">{formatarMoeda(c.valor_mensal)}</td>
                     <td className="px-3 py-3 text-ink/70">{meses}</td>
                     <td className="px-3 py-3 font-semibold text-ink">{formatarMoeda(ltv)}</td>
-                    <td className="px-3 py-3 text-ink/70">
-                      {c.status === "encerrado" ? formatarData(c.data_encerramento) : "—"}
-                    </td>
                     <td className="px-3 py-3">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
@@ -207,7 +204,7 @@ export default function ContratosRecorrentesPage() {
                         {c.status === "ativo" ? "Ativo" : "Encerrado"}
                       </span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                       {alterandoStatusId === c.id ? (
                         <div className="flex items-center gap-1.5">
                           <input
@@ -260,6 +257,60 @@ export default function ContratosRecorrentesPage() {
           </table>
         )}
       </div>
+
+      {detalhe && (
+        <div
+          className="fixed inset-0 z-20 bg-ink/40 flex items-center justify-center p-6"
+          onClick={() => setDetalhe(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-ink">Detalhes do contrato</h3>
+              <button onClick={() => setDetalhe(null)} className="text-ink/40 hover:text-ink text-sm font-semibold">
+                Fechar
+              </button>
+            </div>
+            <dl className="space-y-3 text-sm">
+              {(() => {
+                const meses = mesesDeCasa(detalhe.data_primeira_mensalidade, detalhe.data_encerramento);
+                const ltv = meses * (detalhe.valor_mensal ?? 0);
+                return (
+                  <>
+                    <DetalheLinha label="Nº do contrato" valor={detalhe.numero_contrato ?? "—"} />
+                    <DetalheLinha label="Cliente" valor={detalhe.clientes?.papeis?.pessoas?.nome ?? "—"} />
+                    <DetalheLinha label="Serviço" valor={detalhe.servicos?.nome ?? "—"} />
+                    <DetalheLinha label="Valor mensal" valor={formatarMoeda(detalhe.valor_mensal)} />
+                    <DetalheLinha label="Forma de pagamento" valor={detalhe.forma_pagamento ?? "—"} />
+                    <DetalheLinha label="Início do contrato" valor={formatarData(detalhe.data_primeira_mensalidade)} />
+                    <DetalheLinha label="Tempo inicial" valor={`${detalhe.tempo_inicial_meses ?? "—"} meses`} />
+                    <DetalheLinha label="Meses de casa" valor={String(meses)} />
+                    <DetalheLinha label="LTV atual" valor={formatarMoeda(ltv)} />
+                    {detalhe.status === "encerrado" && (
+                      <DetalheLinha label="Data de encerramento" valor={formatarData(detalhe.data_encerramento)} />
+                    )}
+                    <DetalheLinha
+                      label="Status"
+                      valor={detalhe.status === "ativo" ? "Ativo" : "Encerrado"}
+                    />
+                  </>
+                );
+              })()}
+            </dl>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetalheLinha({ label, valor }: { label: string; valor: string }) {
+  return (
+    <div className="flex items-center justify-between border-b border-black/5 pb-2 last:border-0">
+      <dt className="text-ink/50">{label}</dt>
+      <dd className="font-semibold text-ink text-right">{valor}</dd>
     </div>
   );
 }
