@@ -44,6 +44,107 @@ function formatarData(data: string | null) {
   return new Date(data + "T00:00:00").toLocaleDateString("pt-BR");
 }
 
+function toISODate(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+type PeriodoPreset =
+  | "hoje"
+  | "esta_semana"
+  | "semana_passada"
+  | "proxima_semana"
+  | "ultimos_7"
+  | "ultimos_14"
+  | "este_mes"
+  | "mes_passado"
+  | "proximo_mes"
+  | "personalizado";
+
+const PERIODO_LABEL: Record<PeriodoPreset, string> = {
+  hoje: "Hoje",
+  esta_semana: "Esta semana",
+  semana_passada: "Semana passada",
+  proxima_semana: "Próxima semana",
+  ultimos_7: "Últimos 7 dias",
+  ultimos_14: "Últimos 14 dias",
+  este_mes: "Este mês",
+  mes_passado: "Mês passado",
+  proximo_mes: "Próximo mês",
+  personalizado: "Personalizado",
+};
+
+const PERIODO_ORDEM: PeriodoPreset[] = [
+  "este_mes",
+  "hoje",
+  "esta_semana",
+  "semana_passada",
+  "proxima_semana",
+  "ultimos_7",
+  "ultimos_14",
+  "mes_passado",
+  "proximo_mes",
+  "personalizado",
+];
+
+function calcularPeriodo(preset: PeriodoPreset): { inicio: string; fim: string } {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  const inicioSemana = new Date(hoje);
+  const diaSemana = (hoje.getDay() + 6) % 7; // 0 = segunda
+  inicioSemana.setDate(hoje.getDate() - diaSemana);
+
+  switch (preset) {
+    case "hoje":
+      return { inicio: toISODate(hoje), fim: toISODate(hoje) };
+    case "esta_semana": {
+      const fim = new Date(inicioSemana);
+      fim.setDate(inicioSemana.getDate() + 6);
+      return { inicio: toISODate(inicioSemana), fim: toISODate(fim) };
+    }
+    case "semana_passada": {
+      const inicio = new Date(inicioSemana);
+      inicio.setDate(inicioSemana.getDate() - 7);
+      const fim = new Date(inicio);
+      fim.setDate(inicio.getDate() + 6);
+      return { inicio: toISODate(inicio), fim: toISODate(fim) };
+    }
+    case "proxima_semana": {
+      const inicio = new Date(inicioSemana);
+      inicio.setDate(inicioSemana.getDate() + 7);
+      const fim = new Date(inicio);
+      fim.setDate(inicio.getDate() + 6);
+      return { inicio: toISODate(inicio), fim: toISODate(fim) };
+    }
+    case "ultimos_7": {
+      const inicio = new Date(hoje);
+      inicio.setDate(hoje.getDate() - 6);
+      return { inicio: toISODate(inicio), fim: toISODate(hoje) };
+    }
+    case "ultimos_14": {
+      const inicio = new Date(hoje);
+      inicio.setDate(hoje.getDate() - 13);
+      return { inicio: toISODate(inicio), fim: toISODate(hoje) };
+    }
+    case "mes_passado": {
+      const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+      const fim = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+      return { inicio: toISODate(inicio), fim: toISODate(fim) };
+    }
+    case "proximo_mes": {
+      const inicio = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1);
+      const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 2, 0);
+      return { inicio: toISODate(inicio), fim: toISODate(fim) };
+    }
+    case "este_mes":
+    default: {
+      const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+      const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+      return { inicio: toISODate(inicio), fim: toISODate(fim) };
+    }
+  }
+}
+
 type Filtro = "todos" | "pendente" | "pago";
 
 export default function LancamentosPage() {
@@ -52,7 +153,11 @@ export default function LancamentosPage() {
   const [painelAberto, setPainelAberto] = useState(false);
   const [editando, setEditando] = useState<Lancamento | null>(null);
   const [detalhe, setDetalhe] = useState<Lancamento | null>(null);
-  const [filtro, setFiltro] = useState<Filtro>("pendente");
+  const [filtro, setFiltro] = useState<Filtro>("todos");
+
+  const [presetPeriodo, setPresetPeriodo] = useState<PeriodoPreset>("este_mes");
+  const [periodoPersonalizado, setPeriodoPersonalizado] = useState(calcularPeriodo("este_mes"));
+  const periodo = presetPeriodo === "personalizado" ? periodoPersonalizado : calcularPeriodo(presetPeriodo);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -75,7 +180,25 @@ export default function LancamentosPage() {
     carregar();
   }, [carregar]);
 
-  const filtrados = lancamentos.filter((l) => filtro === "todos" || l.situacao === filtro);
+  const noPeriodo = (data: string) => data >= periodo.inicio && data <= periodo.fim;
+
+  const lancamentosDoPeriodo = lancamentos.filter((l) => noPeriodo(l.data_vencimento));
+  const filtrados = lancamentosDoPeriodo.filter((l) => filtro === "todos" || l.situacao === filtro);
+
+  function somar(lista: Lancamento[], tipo: "receita" | "despesa") {
+    return lista.filter((l) => l.tipo === tipo).reduce((soma, l) => soma + l.valor, 0);
+  }
+
+  const previsaoReceitas = somar(lancamentosDoPeriodo, "receita");
+  const previsaoDespesas = somar(lancamentosDoPeriodo, "despesa");
+
+  const realizados = lancamentosDoPeriodo.filter((l) => l.situacao === "pago");
+  const realizadoReceitas = somar(realizados, "receita");
+  const realizadoDespesas = somar(realizados, "despesa");
+
+  const pendentes = lancamentosDoPeriodo.filter((l) => l.situacao === "pendente");
+  const pendenteReceitas = somar(pendentes, "receita");
+  const pendenteDespesas = somar(pendentes, "despesa");
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
@@ -94,18 +217,90 @@ export default function LancamentosPage() {
         )}
       </div>
 
-      <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner mb-6">
-        {(["pendente", "pago", "todos"] as Filtro[]).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFiltro(f)}
-            className={`rounded-full px-5 py-2 text-sm font-bold transition-all ${
-              filtro === f ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
-            }`}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-2">
+          <select
+            value={presetPeriodo}
+            onChange={(e) => {
+              const preset = e.target.value as PeriodoPreset;
+              setPresetPeriodo(preset);
+              if (preset === "personalizado") setPeriodoPersonalizado(calcularPeriodo("este_mes"));
+            }}
+            className="input w-auto"
           >
-            {f === "pendente" ? "Pendentes" : f === "pago" ? "Pagos" : "Todos"}
-          </button>
-        ))}
+            {PERIODO_ORDEM.map((p) => (
+              <option key={p} value={p}>
+                {PERIODO_LABEL[p]}
+              </option>
+            ))}
+          </select>
+
+          {presetPeriodo === "personalizado" && (
+            <>
+              <input
+                type="date"
+                value={periodoPersonalizado.inicio}
+                onChange={(e) => setPeriodoPersonalizado((p) => ({ ...p, inicio: e.target.value }))}
+                className="input w-auto"
+              />
+              <span className="text-ink/40 text-sm">até</span>
+              <input
+                type="date"
+                value={periodoPersonalizado.fim}
+                onChange={(e) => setPeriodoPersonalizado((p) => ({ ...p, fim: e.target.value }))}
+                className="input w-auto"
+              />
+            </>
+          )}
+        </div>
+
+        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner">
+          {(["todos", "pendente", "pago"] as Filtro[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFiltro(f)}
+              className={`rounded-full px-5 py-2 text-sm font-bold transition-all ${
+                filtro === f ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
+              }`}
+            >
+              {f === "todos" ? "Todos" : f === "pendente" ? "Pendentes" : "Pagos"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-3xl bg-card border border-black/5 overflow-hidden mb-8">
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th className="w-1/4"></th>
+              <th className="bg-mint/60 text-forest text-center py-3 text-sm font-bold">Receitas</th>
+              <th className="bg-red-50 text-red-600 text-center py-3 text-sm font-bold">Despesas</th>
+              <th className="bg-ink text-white text-center py-3 text-sm font-bold rounded-tr-3xl">Resultado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <LinhaResumo
+              titulo="Previsão do período"
+              receitas={previsaoReceitas}
+              despesas={previsaoDespesas}
+            />
+            <LinhaResumo
+              titulo="Realizado no período"
+              receitas={realizadoReceitas}
+              despesas={realizadoDespesas}
+            />
+            <LinhaResumo
+              titulo="Pendente no período"
+              receitas={pendenteReceitas}
+              despesas={pendenteDespesas}
+              ultima
+            />
+          </tbody>
+        </table>
+        <p className="text-xs text-ink/40 px-5 py-3 border-t border-black/5">
+          Período: {formatarData(periodo.inicio)} até {formatarData(periodo.fim)}
+        </p>
       </div>
 
       {(painelAberto || editando) && (
@@ -261,6 +456,31 @@ export default function LancamentosPage() {
         </div>
       )}
     </main>
+  );
+}
+
+function LinhaResumo({
+  titulo,
+  receitas,
+  despesas,
+  ultima,
+}: {
+  titulo: string;
+  receitas: number;
+  despesas: number;
+  ultima?: boolean;
+}) {
+  const resultado = receitas - despesas;
+  return (
+    <tr className={ultima ? "" : "border-b border-black/5"}>
+      <td className="px-5 py-3.5 text-sm font-medium text-ink/70">{titulo}</td>
+      <td className="text-center py-3.5 text-sm font-bold text-forest">{formatarMoeda(receitas)}</td>
+      <td className="text-center py-3.5 text-sm font-bold text-red-600">{formatarMoeda(despesas)}</td>
+      <td className={`text-center py-3.5 text-sm font-bold ${resultado < 0 ? "text-red-400" : "text-mint"} bg-ink`}>
+        {resultado < 0 ? "-" : ""}
+        {formatarMoeda(Math.abs(resultado))}
+      </td>
+    </tr>
   );
 }
 
