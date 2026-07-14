@@ -41,7 +41,7 @@ interface Servico {
   nome: string;
 }
 
-const FORMAS_PAGAMENTO = ["Pix", "Boleto", "Cartão de crédito", "Transferência"];
+const FORMAS_PAGAMENTO = ["Pix", "Cartão de crédito"];
 
 function formatarMoeda(valor: number | null) {
   if (valor == null) return "—";
@@ -579,12 +579,12 @@ function ContratoPontualForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="relative sm:col-span-2">
-          <span className="block text-sm font-medium text-ink/70 mb-1">
-            Cliente<span className="text-forest"> *</span>
-          </span>
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="rounded-2xl bg-surface p-4">
+        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
+          <span className="text-forest">👤</span> Cliente
+        </p>
+        <div className="relative">
           <input
             disabled={editando}
             value={buscaCliente}
@@ -626,93 +626,112 @@ function ContratoPontualForm({
             </div>
           )}
         </div>
+      </div>
 
-        <Campo label="Serviço">
-          {!novoServico ? (
-            <div className="flex gap-2">
-              <select value={servicoId} onChange={(e) => setServicoId(e.target.value)} className="input">
-                <option value="">Selecione...</option>
-                {servicos.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nome}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setNovoServico(true)}
-                className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
-              >
-                + Novo
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                autoFocus
-                value={nomeNovoServico}
-                onChange={(e) => setNomeNovoServico(e.target.value)}
-                className="input"
-                placeholder="Nome do novo serviço"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  setNovoServico(false);
-                  setNomeNovoServico("");
-                }}
-                className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
-              >
-                Cancelar
-              </button>
-            </div>
-          )}
-        </Campo>
+      <div className="rounded-2xl bg-surface p-4">
+        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
+          <span className="text-forest">🧾</span> Detalhes do contrato
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Campo label="Serviço">
+            {!novoServico ? (
+              <div className="flex gap-2">
+                <select value={servicoId} onChange={(e) => setServicoId(e.target.value)} className="input">
+                  <option value="">Selecione...</option>
+                  {servicos.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nome}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setNovoServico(true)}
+                  className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
+                >
+                  + Novo
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  value={nomeNovoServico}
+                  onChange={(e) => setNomeNovoServico(e.target.value)}
+                  className="input"
+                  placeholder="Nome do novo serviço"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNovoServico(false);
+                    setNomeNovoServico("");
+                  }}
+                  className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
+          </Campo>
 
-        <Campo label="Número do contrato">
-          <input
-            value={numeroContrato}
-            onChange={(e) => setNumeroContrato(e.target.value)}
-            className="input"
-            placeholder="Gerado automaticamente se em branco"
-          />
-        </Campo>
+          <Campo label="Número do contrato">
+            <input
+              value={numeroContrato}
+              onChange={(e) => setNumeroContrato(e.target.value)}
+              className="input"
+              placeholder="Gerado automaticamente se em branco"
+            />
+          </Campo>
 
-        <Campo label="Forma de pagamento" required>
-          <select value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} className="input">
-            {FORMAS_PAGAMENTO.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </Campo>
+          <Campo label="Forma de pagamento" required>
+            <select value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} className="input">
+              {FORMAS_PAGAMENTO.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </Campo>
+        </div>
+      </div>
 
-        <Campo label="Início do contrato" required>
-          <input
-            type="date"
-            required
-            value={dataInicio}
-            onChange={(e) => setDataInicio(e.target.value)}
-            className="input"
-          />
-        </Campo>
+      <div className="rounded-2xl bg-surface p-4">
+        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
+          <span className="text-forest">💰</span> Valores e datas
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Campo label="Início do contrato" required>
+            <input
+              type="date"
+              required
+              value={dataInicio}
+              onChange={(e) => setDataInicio(e.target.value)}
+              className="input"
+            />
+          </Campo>
 
-        <Campo label="Valor total (R$)" required>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            required
-            value={valorTotal}
-            onChange={(e) => setValorTotal(e.target.value)}
-            className="input"
-            placeholder="0,00"
-          />
-        </Campo>
+          <Campo label="Valor total (R$)" required>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              required
+              value={valorTotal}
+              onChange={(e) => setValorTotal(e.target.value)}
+              className="input"
+              placeholder="0,00"
+            />
+          </Campo>
+        </div>
+      </div>
 
-        {editando && (
-          <>
+      {editando && (
+        <div className="rounded-2xl bg-surface p-4">
+          <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
+            <span className="text-forest">⚙️</span> Status do contrato
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Campo label="Status" required>
               <select
                 value={status}
@@ -736,9 +755,9 @@ function ContratoPontualForm({
                 />
               </Campo>
             )}
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl bg-surface p-4">
         <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">

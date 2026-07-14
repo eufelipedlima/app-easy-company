@@ -10,6 +10,7 @@ interface Contrato {
   status: "ativo" | "encerrado";
   forma_pagamento: string | null;
   valor_mensal: number | null;
+  valor_entrada: number | null;
   data_primeira_mensalidade: string | null;
   data_encerramento: string | null;
   tempo_inicial_meses: number | null;
@@ -42,7 +43,7 @@ interface Servico {
   nome: string;
 }
 
-const FORMAS_PAGAMENTO = ["Pix", "Boleto", "Cartão de crédito", "Transferência"];
+const FORMAS_PAGAMENTO = ["Pix", "Cartão de crédito"];
 const OPCOES_TEMPO_INICIAL = [3, 6, 9, 12];
 
 function formatarMoeda(valor: number | null) {
@@ -80,7 +81,7 @@ export default function ContratosRecorrentesPage() {
     const { data } = await supabase
       .from("contratos")
       .select(
-        `id, numero_contrato, status, forma_pagamento, valor_mensal, data_primeira_mensalidade,
+        `id, numero_contrato, status, forma_pagamento, valor_mensal, valor_entrada, data_primeira_mensalidade,
          data_encerramento, tempo_inicial_meses, servico_id, descricao, comentarios_extras,
          arquivo_path, arquivo_nome,
          clientes ( papeis ( pessoas ( nome, razao_social, documento, email ) ) ),
@@ -155,9 +156,9 @@ export default function ContratosRecorrentesPage() {
           <table className="w-full text-sm table-fixed">
             <colgroup>
               <col className="w-16" />
-              <col className="w-44" />
-              <col className="w-28" />
-              <col className="w-auto" />
+              <col className="w-48" />
+              <col className="w-40" />
+              <col className="w-24" />
               <col className="w-24" />
               <col className="w-24" />
               <col className="w-24" />
@@ -289,6 +290,9 @@ export default function ContratosRecorrentesPage() {
                   </SecaoDetalhe>
 
                   <SecaoDetalhe titulo="Período">
+                    {detalhe.valor_entrada != null && (
+                      <DetalheLinha label="Entrada" valor={formatarMoeda(detalhe.valor_entrada)} />
+                    )}
                     <DetalheLinha label="Início" valor={formatarData(detalhe.data_primeira_mensalidade)} />
                     <DetalheLinha label="Tempo inicial" valor={`${detalhe.tempo_inicial_meses ?? "—"} meses`} />
                     <DetalheLinha label="Renovação automática" valor={dataRenovacao} />
@@ -391,6 +395,9 @@ function ContratoRecorrenteForm({
   );
   const [valorMensal, setValorMensal] = useState(
     contratoEditando?.valor_mensal != null ? String(contratoEditando.valor_mensal) : ""
+  );
+  const [valorEntrada, setValorEntrada] = useState(
+    contratoEditando?.valor_entrada != null ? String(contratoEditando.valor_entrada) : ""
   );
   const [dataPrimeiraMensalidade, setDataPrimeiraMensalidade] = useState(
     contratoEditando?.data_primeira_mensalidade ?? ""
@@ -525,6 +532,7 @@ function ContratoRecorrenteForm({
             forma_pagamento: formaPagamento,
             servico_id: servicoFinalId,
             valor_mensal: Number(valorMensal),
+            valor_entrada: valorEntrada ? Number(valorEntrada) : null,
             data_primeira_mensalidade: dataPrimeiraMensalidade,
             tempo_inicial_meses: tempoInicial,
             numero_contrato: numeroContrato.trim() || null,
@@ -549,6 +557,7 @@ function ContratoRecorrenteForm({
             forma_pagamento: formaPagamento,
             servico_id: servicoFinalId,
             valor_mensal: Number(valorMensal),
+            valor_entrada: valorEntrada ? Number(valorEntrada) : null,
             data_primeira_mensalidade: dataPrimeiraMensalidade,
             tempo_inicial_meses: tempoInicial,
             descricao: descricao || null,
@@ -599,12 +608,12 @@ function ContratoRecorrenteForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="relative sm:col-span-2">
-          <span className="block text-sm font-medium text-ink/70 mb-1">
-            Cliente<span className="text-forest"> *</span>
-          </span>
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="rounded-2xl bg-surface p-4">
+        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
+          <span className="text-forest">👤</span> Cliente
+        </p>
+        <div className="relative">
           <input
             disabled={editando}
             value={buscaCliente}
@@ -646,103 +655,145 @@ function ContratoRecorrenteForm({
             </div>
           )}
         </div>
+      </div>
 
-        <Campo label="Serviço">
-          {!novoServico ? (
-            <div className="flex gap-2">
-              <select value={servicoId} onChange={(e) => setServicoId(e.target.value)} className="input">
-                <option value="">Selecione...</option>
-                {servicos.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nome}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setNovoServico(true)}
-                className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
-              >
-                + Novo
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                autoFocus
-                value={nomeNovoServico}
-                onChange={(e) => setNomeNovoServico(e.target.value)}
-                className="input"
-                placeholder="Nome do novo serviço"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  setNovoServico(false);
-                  setNomeNovoServico("");
-                }}
-                className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
-              >
-                Cancelar
-              </button>
-            </div>
-          )}
-        </Campo>
+      <div className="rounded-2xl bg-surface p-4">
+        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
+          <span className="text-forest">🧾</span> Detalhes do contrato
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Campo label="Serviço">
+            {!novoServico ? (
+              <div className="flex gap-2">
+                <select value={servicoId} onChange={(e) => setServicoId(e.target.value)} className="input">
+                  <option value="">Selecione...</option>
+                  {servicos.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nome}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setNovoServico(true)}
+                  className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
+                >
+                  + Novo
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  value={nomeNovoServico}
+                  onChange={(e) => setNomeNovoServico(e.target.value)}
+                  className="input"
+                  placeholder="Nome do novo serviço"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNovoServico(false);
+                    setNomeNovoServico("");
+                  }}
+                  className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
+          </Campo>
 
-        <Campo label="Número do contrato">
-          <input
-            value={numeroContrato}
-            onChange={(e) => setNumeroContrato(e.target.value)}
-            className="input"
-            placeholder="Gerado automaticamente se em branco"
-          />
-        </Campo>
+          <Campo label="Número do contrato">
+            <input
+              value={numeroContrato}
+              onChange={(e) => setNumeroContrato(e.target.value)}
+              className="input"
+              placeholder="Gerado automaticamente se em branco"
+            />
+          </Campo>
 
-        <Campo label="Forma de pagamento" required>
-          <select value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} className="input">
-            {FORMAS_PAGAMENTO.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </Campo>
+          <Campo label="Forma de pagamento" required>
+            <select value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} className="input">
+              {FORMAS_PAGAMENTO.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </Campo>
+        </div>
+      </div>
 
-        <Campo label="Data da primeira mensalidade" required>
-          <input
-            type="date"
-            required
-            value={dataPrimeiraMensalidade}
-            onChange={(e) => setDataPrimeiraMensalidade(e.target.value)}
-            className="input"
-          />
-        </Campo>
+      <div className="rounded-2xl bg-surface p-4">
+        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
+          <span className="text-forest">💰</span> Valores e datas
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Campo label="Entrada (R$)">
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={valorEntrada}
+              onChange={(e) => setValorEntrada(e.target.value)}
+              className="input"
+              placeholder="Opcional — valor proporcional na assinatura"
+            />
+            <span className="block text-xs text-ink/40 mt-1">
+              Use quando o cliente fecha fora do dia de vencimento e paga um valor proporcional antes
+              da primeira mensalidade cheia.
+            </span>
+          </Campo>
 
-        <Campo label="Valor mensal (R$)" required>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            required
-            value={valorMensal}
-            onChange={(e) => setValorMensal(e.target.value)}
-            className="input"
-            placeholder="0,00"
-          />
-        </Campo>
+          <Campo label="Data da primeira mensalidade" required>
+            <input
+              type="date"
+              required
+              value={dataPrimeiraMensalidade}
+              onChange={(e) => setDataPrimeiraMensalidade(e.target.value)}
+              className="input"
+            />
+          </Campo>
 
-        <Campo label="Tempo inicial de contrato" required>
-          <select value={tempoInicial} onChange={(e) => setTempoInicial(Number(e.target.value))} className="input">
-            {OPCOES_TEMPO_INICIAL.map((m) => (
-              <option key={m} value={m}>
-                {m} meses
-              </option>
-            ))}
-          </select>
-        </Campo>
+          <Campo label="Valor mensal (R$)" required>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              required
+              value={valorMensal}
+              onChange={(e) => setValorMensal(e.target.value)}
+              className="input"
+              placeholder="0,00"
+            />
+          </Campo>
 
-        {editando && (
-          <>
+          <Campo label="Tempo inicial de contrato" required>
+            <select value={tempoInicial} onChange={(e) => setTempoInicial(Number(e.target.value))} className="input">
+              {OPCOES_TEMPO_INICIAL.map((m) => (
+                <option key={m} value={m}>
+                  {m} meses
+                </option>
+              ))}
+            </select>
+          </Campo>
+        </div>
+
+        {!editando && (
+          <p className="text-xs text-ink/50 mt-4 pt-4 border-t border-black/5">
+            🔁 Após os {tempoInicial} meses iniciais, o contrato renova automaticamente todo mês até
+            ser encerrado manualmente.
+          </p>
+        )}
+      </div>
+
+      {editando && (
+        <div className="rounded-2xl bg-surface p-4">
+          <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
+            <span className="text-forest">⚙️</span> Status do contrato
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Campo label="Status" required>
               <select value={status} onChange={(e) => setStatus(e.target.value as "ativo" | "encerrado")} className="input">
                 <option value="ativo">Ativo</option>
@@ -761,15 +812,8 @@ function ContratoRecorrenteForm({
                 />
               </Campo>
             )}
-          </>
-        )}
-      </div>
-
-      {!editando && (
-        <p className="text-xs text-ink/50">
-          Após os {tempoInicial} meses iniciais, o contrato renova automaticamente todo mês até ser
-          encerrado manualmente.
-        </p>
+          </div>
+        </div>
       )}
 
       <div className="rounded-2xl bg-surface p-4">
