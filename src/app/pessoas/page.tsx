@@ -46,12 +46,24 @@ export default function PessoasPage() {
           </p>
         </div>
         {!painelAberto && (
-          <button
-            onClick={() => setPainelAberto(true)}
-            className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
-          >
-            + Nova pessoa
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPainelAberto(true)}
+              className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+            >
+              + Nova pessoa
+            </button>
+            <button
+              onClick={async () => {
+                const supabase = createClient();
+                await supabase.auth.signOut();
+                window.location.href = "/login";
+              }}
+              className="text-sm font-semibold text-ink/50 hover:text-ink"
+            >
+              Sair
+            </button>
+          </div>
         )}
       </div>
 
