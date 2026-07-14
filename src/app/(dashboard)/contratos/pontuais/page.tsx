@@ -13,7 +13,16 @@ interface Contrato {
   data_fechamento: string | null;
   data_encerramento: string | null;
   servico_id: string | null;
-  clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
+  clientes: {
+    papeis: {
+      pessoas: {
+        nome: string;
+        razao_social: string | null;
+        documento: string;
+        email: string | null;
+      } | null;
+    } | null;
+  } | null;
   servicos: { nome: string } | null;
 }
 
@@ -67,7 +76,7 @@ export default function ContratosPontuaisPage() {
       .select(
         `id, numero_contrato, status, forma_pagamento, valor_total, data_fechamento,
          data_encerramento, servico_id,
-         clientes ( papeis ( pessoas ( nome ) ) ),
+         clientes ( papeis ( pessoas ( nome, razao_social, documento, email ) ) ),
          servicos ( nome )`
       )
       .eq("tipo_contrato", "pontual")
@@ -152,12 +161,12 @@ export default function ContratosPontuaisPage() {
             <colgroup>
               <col className="w-16" />
               <col className="w-40" />
-              <col className="w-auto" />
+              <col className="w-32" />
               <col className="w-28" />
               <col className="w-24" />
               <col className="w-24" />
               <col className="w-24" />
-              <col className="w-28" />
+              <col className="w-24" />
             </colgroup>
             <thead>
               <tr className="text-left text-ink/50 border-b border-black/5">
@@ -266,31 +275,71 @@ export default function ContratosPontuaisPage() {
 
       {detalhe && (
         <div
-          className="fixed inset-0 z-20 bg-ink/40 flex items-center justify-center p-6"
+          className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6"
           onClick={() => setDetalhe(null)}
         >
           <div
-            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-xl"
+            className="w-full max-w-md rounded-3xl bg-surface p-5 shadow-2xl max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-ink">Detalhes do contrato</h3>
-              <button onClick={() => setDetalhe(null)} className="text-ink/40 hover:text-ink text-sm font-semibold">
-                Fechar
-              </button>
-            </div>
-            <dl className="space-y-3 text-sm">
-              <DetalheLinha label="Nº do contrato" valor={detalhe.numero_contrato ?? "—"} />
-              <DetalheLinha label="Cliente" valor={detalhe.clientes?.papeis?.pessoas?.nome ?? "—"} />
-              <DetalheLinha label="Serviço" valor={detalhe.servicos?.nome ?? "—"} />
-              <DetalheLinha label="Valor total" valor={formatarMoeda(detalhe.valor_total)} />
-              <DetalheLinha label="Forma de pagamento" valor={detalhe.forma_pagamento ?? "—"} />
-              <DetalheLinha label="Início do contrato" valor={formatarData(detalhe.data_fechamento)} />
-              {detalhe.status !== "ativo" && (
-                <DetalheLinha label="Data de encerramento" valor={formatarData(detalhe.data_encerramento)} />
-              )}
-              <DetalheLinha label="Status" valor={STATUS_LABEL[detalhe.status]} />
-            </dl>
+            {(() => {
+              const pessoa = detalhe.clientes?.papeis?.pessoas;
+              return (
+                <>
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-11 w-11 rounded-2xl bg-mint flex items-center justify-center text-forest font-bold text-sm">
+                        {(pessoa?.nome ?? "?").slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-mono text-xs text-ink/50">{detalhe.numero_contrato ?? "—"}</p>
+                        <p className="font-bold text-ink leading-tight">{pessoa?.nome ?? "—"}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                          detalhe.status === "ativo"
+                            ? "bg-mint text-forest"
+                            : detalhe.status === "concluido"
+                            ? "bg-black/5 text-ink/60"
+                            : "bg-black/5 text-ink/40"
+                        }`}
+                      >
+                        {STATUS_LABEL[detalhe.status]}
+                      </span>
+                      <button onClick={() => setDetalhe(null)} className="text-ink/40 hover:text-ink text-lg leading-none">
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-card p-4 mb-4 shadow-sm">
+                    <p className="text-xs text-ink/50 mb-0.5">Valor total</p>
+                    <p className="text-xl font-extrabold text-forest">{formatarMoeda(detalhe.valor_total)}</p>
+                    <p className="text-xs text-ink/40 mt-3 pt-3 border-t border-black/5">Pontual</p>
+                  </div>
+
+                  <SecaoDetalhe titulo="Cliente">
+                    <DetalheLinha label={pessoa?.razao_social ? "Razão social" : "Nome"} valor={pessoa?.nome ?? "—"} />
+                    <DetalheLinha label="Documento" valor={pessoa?.documento ?? "—"} />
+                    <DetalheLinha label="E-mail" valor={pessoa?.email ?? "—"} />
+                  </SecaoDetalhe>
+
+                  <SecaoDetalhe titulo="Período">
+                    <DetalheLinha label="Início" valor={formatarData(detalhe.data_fechamento)} />
+                    {detalhe.status !== "ativo" && (
+                      <DetalheLinha label="Encerramento" valor={formatarData(detalhe.data_encerramento)} />
+                    )}
+                  </SecaoDetalhe>
+
+                  <SecaoDetalhe titulo="Pagamento">
+                    <DetalheLinha label="Serviço" valor={detalhe.servicos?.nome ?? "—"} />
+                    <DetalheLinha label="Forma de pagamento" valor={detalhe.forma_pagamento ?? "—"} />
+                  </SecaoDetalhe>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -298,9 +347,18 @@ export default function ContratosPontuaisPage() {
   );
 }
 
+function SecaoDetalhe({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-4">
+      <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">{titulo}</p>
+      <div className="rounded-2xl bg-card p-4 shadow-sm space-y-2.5">{children}</div>
+    </div>
+  );
+}
+
 function DetalheLinha({ label, valor }: { label: string; valor: string }) {
   return (
-    <div className="flex items-center justify-between border-b border-black/5 pb-2 last:border-0">
+    <div className="flex items-center justify-between text-sm">
       <dt className="text-ink/50">{label}</dt>
       <dd className="font-semibold text-ink text-right">{valor}</dd>
     </div>

@@ -14,7 +14,16 @@ interface Contrato {
   data_encerramento: string | null;
   tempo_inicial_meses: number | null;
   servico_id: string | null;
-  clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
+  clientes: {
+    papeis: {
+      pessoas: {
+        nome: string;
+        razao_social: string | null;
+        documento: string;
+        email: string | null;
+      } | null;
+    } | null;
+  } | null;
   servicos: { nome: string } | null;
 }
 
@@ -71,7 +80,7 @@ export default function ContratosRecorrentesPage() {
       .select(
         `id, numero_contrato, status, forma_pagamento, valor_mensal, data_primeira_mensalidade,
          data_encerramento, tempo_inicial_meses, servico_id,
-         clientes ( papeis ( pessoas ( nome ) ) ),
+         clientes ( papeis ( pessoas ( nome, razao_social, documento, email ) ) ),
          servicos ( nome )`
       )
       .eq("tipo_contrato", "recorrente")
@@ -155,10 +164,8 @@ export default function ContratosRecorrentesPage() {
           <table className="w-full text-sm table-fixed">
             <colgroup>
               <col className="w-16" />
+              <col className="w-44" />
               <col className="w-auto" />
-              <col className="w-40" />
-              <col className="w-28" />
-              <col className="w-16" />
               <col className="w-28" />
               <col className="w-24" />
               <col className="w-24" />
@@ -169,16 +176,12 @@ export default function ContratosRecorrentesPage() {
                 <th className="px-3 py-3 font-medium">Cliente</th>
                 <th className="px-3 py-3 font-medium">Serviço</th>
                 <th className="px-3 py-3 font-medium">Valor</th>
-                <th className="px-3 py-3 font-medium">Meses</th>
-                <th className="px-3 py-3 font-medium">LTV atual</th>
                 <th className="px-3 py-3 font-medium">Status</th>
                 <th className="px-3 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
               {contratosFiltrados.map((c) => {
-                const meses = mesesDeCasa(c.data_primeira_mensalidade, c.data_encerramento);
-                const ltv = meses * (c.valor_mensal ?? 0);
                 return (
                   <tr
                     key={c.id}
@@ -193,8 +196,6 @@ export default function ContratosRecorrentesPage() {
                     </td>
                     <td className="px-3 py-3 text-ink/70 truncate">{c.servicos?.nome ?? "—"}</td>
                     <td className="px-3 py-3 text-ink/70">{formatarMoeda(c.valor_mensal)}</td>
-                    <td className="px-3 py-3 text-ink/70">{meses}</td>
-                    <td className="px-3 py-3 font-semibold text-ink">{formatarMoeda(ltv)}</td>
                     <td className="px-3 py-3">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
@@ -260,45 +261,89 @@ export default function ContratosRecorrentesPage() {
 
       {detalhe && (
         <div
-          className="fixed inset-0 z-20 bg-ink/40 flex items-center justify-center p-6"
+          className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6"
           onClick={() => setDetalhe(null)}
         >
           <div
-            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-xl"
+            className="w-full max-w-md rounded-3xl bg-surface p-5 shadow-2xl max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-ink">Detalhes do contrato</h3>
-              <button onClick={() => setDetalhe(null)} className="text-ink/40 hover:text-ink text-sm font-semibold">
-                Fechar
-              </button>
-            </div>
-            <dl className="space-y-3 text-sm">
-              {(() => {
-                const meses = mesesDeCasa(detalhe.data_primeira_mensalidade, detalhe.data_encerramento);
-                const ltv = meses * (detalhe.valor_mensal ?? 0);
-                return (
-                  <>
-                    <DetalheLinha label="Nº do contrato" valor={detalhe.numero_contrato ?? "—"} />
-                    <DetalheLinha label="Cliente" valor={detalhe.clientes?.papeis?.pessoas?.nome ?? "—"} />
-                    <DetalheLinha label="Serviço" valor={detalhe.servicos?.nome ?? "—"} />
-                    <DetalheLinha label="Valor mensal" valor={formatarMoeda(detalhe.valor_mensal)} />
-                    <DetalheLinha label="Forma de pagamento" valor={detalhe.forma_pagamento ?? "—"} />
-                    <DetalheLinha label="Início do contrato" valor={formatarData(detalhe.data_primeira_mensalidade)} />
+            {(() => {
+              const meses = mesesDeCasa(detalhe.data_primeira_mensalidade, detalhe.data_encerramento);
+              const ltv = meses * (detalhe.valor_mensal ?? 0);
+              const dataRenovacao = detalhe.data_primeira_mensalidade
+                ? (() => {
+                    const d = new Date(detalhe.data_primeira_mensalidade + "T00:00:00");
+                    d.setMonth(d.getMonth() + (detalhe.tempo_inicial_meses ?? 3));
+                    return d.toLocaleDateString("pt-BR");
+                  })()
+                : "—";
+              const pessoa = detalhe.clientes?.papeis?.pessoas;
+
+              return (
+                <>
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-11 w-11 rounded-2xl bg-mint flex items-center justify-center text-forest font-bold text-sm">
+                        {(pessoa?.nome ?? "?").slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-mono text-xs text-ink/50">{detalhe.numero_contrato ?? "—"}</p>
+                        <p className="font-bold text-ink leading-tight">{pessoa?.nome ?? "—"}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                          detalhe.status === "ativo" ? "bg-mint text-forest" : "bg-black/5 text-ink/50"
+                        }`}
+                      >
+                        {detalhe.status === "ativo" ? "Ativo" : "Encerrado"}
+                      </span>
+                      <button onClick={() => setDetalhe(null)} className="text-ink/40 hover:text-ink text-lg leading-none">
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-card p-4 mb-4 shadow-sm">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs text-ink/50 mb-0.5">Valor mensal</p>
+                        <p className="text-xl font-extrabold text-forest">{formatarMoeda(detalhe.valor_mensal)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-ink/50 mb-0.5">LTV atual</p>
+                        <p className="text-xl font-extrabold text-ink">{formatarMoeda(ltv)}</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-ink/40 mt-3 pt-3 border-t border-black/5">
+                      Recorrente · {meses} {meses === 1 ? "mês" : "meses"} de casa
+                    </p>
+                  </div>
+
+                  <SecaoDetalhe titulo="Cliente">
+                    <DetalheLinha label={pessoa?.razao_social ? "Razão social" : "Nome"} valor={pessoa?.nome ?? "—"} />
+                    <DetalheLinha label="Documento" valor={pessoa?.documento ?? "—"} />
+                    <DetalheLinha label="E-mail" valor={pessoa?.email ?? "—"} />
+                  </SecaoDetalhe>
+
+                  <SecaoDetalhe titulo="Período">
+                    <DetalheLinha label="Início" valor={formatarData(detalhe.data_primeira_mensalidade)} />
                     <DetalheLinha label="Tempo inicial" valor={`${detalhe.tempo_inicial_meses ?? "—"} meses`} />
-                    <DetalheLinha label="Meses de casa" valor={String(meses)} />
-                    <DetalheLinha label="LTV atual" valor={formatarMoeda(ltv)} />
+                    <DetalheLinha label="Renovação automática" valor={dataRenovacao} />
                     {detalhe.status === "encerrado" && (
-                      <DetalheLinha label="Data de encerramento" valor={formatarData(detalhe.data_encerramento)} />
+                      <DetalheLinha label="Encerramento" valor={formatarData(detalhe.data_encerramento)} />
                     )}
-                    <DetalheLinha
-                      label="Status"
-                      valor={detalhe.status === "ativo" ? "Ativo" : "Encerrado"}
-                    />
-                  </>
-                );
-              })()}
-            </dl>
+                  </SecaoDetalhe>
+
+                  <SecaoDetalhe titulo="Pagamento">
+                    <DetalheLinha label="Serviço" valor={detalhe.servicos?.nome ?? "—"} />
+                    <DetalheLinha label="Forma de pagamento" valor={detalhe.forma_pagamento ?? "—"} />
+                  </SecaoDetalhe>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -306,9 +351,18 @@ export default function ContratosRecorrentesPage() {
   );
 }
 
+function SecaoDetalhe({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-4">
+      <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">{titulo}</p>
+      <div className="rounded-2xl bg-card p-4 shadow-sm space-y-2.5">{children}</div>
+    </div>
+  );
+}
+
 function DetalheLinha({ label, valor }: { label: string; valor: string }) {
   return (
-    <div className="flex items-center justify-between border-b border-black/5 pb-2 last:border-0">
+    <div className="flex items-center justify-between text-sm">
       <dt className="text-ink/50">{label}</dt>
       <dd className="font-semibold text-ink text-right">{valor}</dd>
     </div>
