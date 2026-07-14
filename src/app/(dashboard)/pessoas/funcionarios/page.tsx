@@ -303,9 +303,9 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
   const [cadastrandoPessoa, setCadastrandoPessoa] = useState(false);
   const [cargos, setCargos] = useState<Cargo[]>([]);
-  const [cargoId, setCargoId] = useState("");
-  const [novoCargo, setNovoCargo] = useState(false);
-  const [nomeNovoCargo, setNomeNovoCargo] = useState("");
+  const [cargoSelecionado, setCargoSelecionado] = useState<Cargo | null>(null);
+  const [buscaCargo, setBuscaCargo] = useState("");
+  const [mostrarSugestoesCargo, setMostrarSugestoesCargo] = useState(false);
   const [tipoContrato, setTipoContrato] = useState<"CLT" | "PJ">("CLT");
   const [salario, setSalario] = useState("");
   const [dataAdmissao, setDataAdmissao] = useState("");
@@ -328,6 +328,7 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
   }, []);
 
   const sugestoes = pessoas.filter((p) => p.nome.toLowerCase().includes(busca.toLowerCase()));
+  const sugestoesCargo = cargos.filter((c) => c.nome.toLowerCase().includes(buscaCargo.toLowerCase()));
 
   async function garantirFuncionarioPapelId(pessoaId: string): Promise<string> {
     const supabase = createClient();
@@ -360,11 +361,11 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
       const supabase = createClient();
       const papelId = await garantirFuncionarioPapelId(pessoaSelecionada.id);
 
-      let cargoFinalId = cargoId || null;
-      if (novoCargo && nomeNovoCargo.trim()) {
+      let cargoFinalId = cargoSelecionado?.id ?? null;
+      if (!cargoFinalId && buscaCargo.trim()) {
         const { data, error } = await supabase
           .from("cargos")
-          .insert({ nome: nomeNovoCargo.trim() })
+          .insert({ nome: buscaCargo.trim() })
           .select("id")
           .single();
         if (error) throw error;
@@ -465,45 +466,45 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <label className="block">
+        <label className="block relative">
           <span className="block text-sm font-medium text-ink/70 mb-1">Cargo</span>
-          {!novoCargo ? (
-            <div className="flex gap-2">
-              <select value={cargoId} onChange={(e) => setCargoId(e.target.value)} className="input">
-                <option value="">Selecione...</option>
-                {cargos.map((c) => (
-                  <option key={c.id} value={c.id}>
+          <input
+            value={buscaCargo}
+            onChange={(e) => {
+              setBuscaCargo(e.target.value);
+              setCargoSelecionado(null);
+              setMostrarSugestoesCargo(true);
+            }}
+            onFocus={() => setMostrarSugestoesCargo(true)}
+            className="input"
+            placeholder="Digite o cargo..."
+          />
+          {mostrarSugestoesCargo && buscaCargo && !cargoSelecionado && (
+            <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
+              {sugestoesCargo.length > 0 ? (
+                sugestoesCargo.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      setCargoSelecionado(c);
+                      setBuscaCargo(c.nome);
+                      setMostrarSugestoesCargo(false);
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
+                  >
                     {c.nome}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setNovoCargo(true)}
-                className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
-              >
-                + Novo
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                autoFocus
-                value={nomeNovoCargo}
-                onChange={(e) => setNomeNovoCargo(e.target.value)}
-                className="input"
-                placeholder="Nome do cargo"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  setNovoCargo(false);
-                  setNomeNovoCargo("");
-                }}
-                className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
-              >
-                Cancelar
-              </button>
+                  </button>
+                ))
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMostrarSugestoesCargo(false)}
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-forest hover:bg-surface"
+                >
+                  + Cadastrar &ldquo;{buscaCargo}&rdquo; como novo cargo
+                </button>
+              )}
             </div>
           )}
         </label>
