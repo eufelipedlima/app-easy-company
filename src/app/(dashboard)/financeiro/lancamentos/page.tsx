@@ -257,13 +257,69 @@ export default function LancamentosPage() {
         )}
       </div>
 
-      <div className="mb-6">
-        <button
-          onClick={() => setBuscaAvancadaAberta((v) => !v)}
-          className="text-sm font-bold text-forest hover:text-ink flex items-center gap-1.5"
-        >
-          🔍 Busca avançada {buscaAvancadaAberta ? "▲" : "▼"}
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-2">
+          <select
+            value={presetPeriodo}
+            onChange={(e) => {
+              const preset = e.target.value as PeriodoPreset;
+              setPresetPeriodo(preset);
+              if (preset === "personalizado") setPeriodoPersonalizado(calcularPeriodo("este_mes"));
+            }}
+            className="input w-auto"
+          >
+            {PERIODO_ORDEM.map((p) => (
+              <option key={p} value={p}>
+                {PERIODO_LABEL[p]}
+              </option>
+            ))}
+          </select>
+
+          {presetPeriodo === "personalizado" && (
+            <>
+              <input
+                type="date"
+                value={periodoPersonalizado.inicio}
+                onChange={(e) => setPeriodoPersonalizado((p) => ({ ...p, inicio: e.target.value }))}
+                className="input w-auto"
+              />
+              <span className="text-ink/40 text-sm">até</span>
+              <input
+                type="date"
+                value={periodoPersonalizado.fim}
+                onChange={(e) => setPeriodoPersonalizado((p) => ({ ...p, fim: e.target.value }))}
+                className="input w-auto"
+              />
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setBuscaAvancadaAberta((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold border-2 transition-colors ${
+              buscaAvancadaAberta
+                ? "bg-forest text-white border-forest"
+                : "bg-white text-forest border-forest hover:bg-mint"
+            }`}
+          >
+            🔍 Busca avançada
+          </button>
+
+          <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner">
+            {(["todos", "pendente", "pago"] as Filtro[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFiltro(f)}
+                className={`rounded-full px-5 py-2 text-sm font-bold transition-all ${
+                  filtro === f ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
+                }`}
+              >
+                {f === "todos" ? "Todos" : f === "pendente" ? "Pendentes" : "Pagos"}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {buscaAvancadaAberta && (
@@ -349,58 +405,6 @@ export default function LancamentosPage() {
           </button>
         </div>
       )}
-
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div className="flex items-center gap-2">
-          <select
-            value={presetPeriodo}
-            onChange={(e) => {
-              const preset = e.target.value as PeriodoPreset;
-              setPresetPeriodo(preset);
-              if (preset === "personalizado") setPeriodoPersonalizado(calcularPeriodo("este_mes"));
-            }}
-            className="input w-auto"
-          >
-            {PERIODO_ORDEM.map((p) => (
-              <option key={p} value={p}>
-                {PERIODO_LABEL[p]}
-              </option>
-            ))}
-          </select>
-
-          {presetPeriodo === "personalizado" && (
-            <>
-              <input
-                type="date"
-                value={periodoPersonalizado.inicio}
-                onChange={(e) => setPeriodoPersonalizado((p) => ({ ...p, inicio: e.target.value }))}
-                className="input w-auto"
-              />
-              <span className="text-ink/40 text-sm">até</span>
-              <input
-                type="date"
-                value={periodoPersonalizado.fim}
-                onChange={(e) => setPeriodoPersonalizado((p) => ({ ...p, fim: e.target.value }))}
-                className="input w-auto"
-              />
-            </>
-          )}
-        </div>
-
-        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner">
-          {(["todos", "pendente", "pago"] as Filtro[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFiltro(f)}
-              className={`rounded-full px-5 py-2 text-sm font-bold transition-all ${
-                filtro === f ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
-              }`}
-            >
-              {f === "todos" ? "Todos" : f === "pendente" ? "Pendentes" : "Pagos"}
-            </button>
-          ))}
-        </div>
-      </div>
 
       <div className="rounded-3xl bg-card border border-black/5 overflow-hidden mb-8">
         <table className="w-full text-sm">
