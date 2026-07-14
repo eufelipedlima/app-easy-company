@@ -11,6 +11,7 @@ interface Contrato {
   forma_pagamento: string | null;
   valor_mensal: number | null;
   valor_entrada: number | null;
+  data_pagamento_entrada: string | null;
   data_primeira_mensalidade: string | null;
   data_encerramento: string | null;
   tempo_inicial_meses: number | null;
@@ -81,7 +82,7 @@ export default function ContratosRecorrentesPage() {
     const { data } = await supabase
       .from("contratos")
       .select(
-        `id, numero_contrato, status, forma_pagamento, valor_mensal, valor_entrada, data_primeira_mensalidade,
+        `id, numero_contrato, status, forma_pagamento, valor_mensal, valor_entrada, data_pagamento_entrada, data_primeira_mensalidade,
          data_encerramento, tempo_inicial_meses, servico_id, descricao, comentarios_extras,
          arquivo_path, arquivo_nome,
          clientes ( papeis ( pessoas ( nome, razao_social, documento, email ) ) ),
@@ -304,6 +305,9 @@ export default function ContratosRecorrentesPage() {
                     {detalhe.valor_entrada != null && (
                       <DetalheLinha label="Entrada" valor={formatarMoeda(detalhe.valor_entrada)} />
                     )}
+                    {detalhe.data_pagamento_entrada && (
+                      <DetalheLinha label="Pagamento da entrada" valor={formatarData(detalhe.data_pagamento_entrada)} />
+                    )}
                     <DetalheLinha label="Início" valor={formatarData(detalhe.data_primeira_mensalidade)} />
                     <DetalheLinha label="Tempo inicial" valor={`${detalhe.tempo_inicial_meses ?? "—"} meses`} />
                     <DetalheLinha label="Renovação automática" valor={dataRenovacao} />
@@ -396,9 +400,13 @@ function ContratoRecorrenteForm({
   const [cadastrandoCliente, setCadastrandoCliente] = useState(false);
 
   const [servicos, setServicos] = useState<Servico[]>([]);
-  const [servicoId, setServicoId] = useState(contratoEditando?.servico_id ?? "");
-  const [novoServico, setNovoServico] = useState(false);
-  const [nomeNovoServico, setNomeNovoServico] = useState("");
+  const [servicoSelecionado, setServicoSelecionado] = useState<Servico | null>(
+    contratoEditando?.servico_id && contratoEditando.servicos
+      ? { id: contratoEditando.servico_id, nome: contratoEditando.servicos.nome }
+      : null
+  );
+  const [buscaServico, setBuscaServico] = useState(contratoEditando?.servicos?.nome ?? "");
+  const [mostrarSugestoesServico, setMostrarSugestoesServico] = useState(false);
 
   const [numeroContrato, setNumeroContrato] = useState(contratoEditando?.numero_contrato ?? "");
   const [formaPagamento, setFormaPagamento] = useState(
@@ -409,6 +417,9 @@ function ContratoRecorrenteForm({
   );
   const [valorEntrada, setValorEntrada] = useState(
     contratoEditando?.valor_entrada != null ? String(contratoEditando.valor_entrada) : ""
+  );
+  const [dataPagamentoEntrada, setDataPagamentoEntrada] = useState(
+    contratoEditando?.data_pagamento_entrada ?? ""
   );
   const [dataPrimeiraMensalidade, setDataPrimeiraMensalidade] = useState(
     contratoEditando?.data_primeira_mensalidade ?? ""
@@ -526,11 +537,11 @@ function ContratoRecorrenteForm({
     try {
       const supabase = createClient();
 
-      let servicoFinalId = servicoId || null;
-      if (novoServico && nomeNovoServico.trim()) {
+      let servicoFinalId = servicoSelecionado?.id ?? null;
+      if (!servicoFinalId && buscaServico.trim()) {
         const { data: srv, error: srvError } = await supabase
           .from("servicos")
-          .insert({ nome: nomeNovoServico.trim() })
+          .insert({ nome: buscaServico.trim() })
           .select("id")
           .single();
         if (srvError) throw srvError;
@@ -545,6 +556,7 @@ function ContratoRecorrenteForm({
             servico_id: servicoFinalId,
             valor_mensal: Number(valorMensal),
             valor_entrada: valorEntrada ? Number(valorEntrada) : null,
+            data_pagamento_entrada: dataPagamentoEntrada || null,
             data_primeira_mensalidade: dataPrimeiraMensalidade,
             tempo_inicial_meses: tempoInicial,
             numero_contrato: numeroContrato.trim() || null,
@@ -570,6 +582,7 @@ function ContratoRecorrenteForm({
             servico_id: servicoFinalId,
             valor_mensal: Number(valorMensal),
             valor_entrada: valorEntrada ? Number(valorEntrada) : null,
+            data_pagamento_entrada: dataPagamentoEntrada || null,
             data_primeira_mensalidade: dataPrimeiraMensalidade,
             tempo_inicial_meses: tempoInicial,
             descricao: descricao || null,
@@ -668,47 +681,50 @@ function ContratoRecorrenteForm({
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Campo label="Serviço">
-          {!novoServico ? (
-            <div className="flex gap-2">
-              <select value={servicoId} onChange={(e) => setServicoId(e.target.value)} className="input">
-                <option value="">Selecione...</option>
-                {servicos.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nome}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setNovoServico(true)}
-                className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
-              >
-                + Novo
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                autoFocus
-                value={nomeNovoServico}
-                onChange={(e) => setNomeNovoServico(e.target.value)}
-                className="input"
-                placeholder="Nome do novo serviço"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  setNovoServico(false);
-                  setNomeNovoServico("");
-                }}
-                className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
-              >
-                Cancelar
-              </button>
+        <div className="relative">
+          <span className="block text-sm font-medium text-ink/70 mb-1">Serviço</span>
+          <input
+            value={buscaServico}
+            onChange={(e) => {
+              setBuscaServico(e.target.value);
+              setServicoSelecionado(null);
+              setMostrarSugestoesServico(true);
+            }}
+            onFocus={() => setMostrarSugestoesServico(true)}
+            className="input"
+            placeholder="Digite o serviço..."
+          />
+          {mostrarSugestoesServico && buscaServico && !servicoSelecionado && (
+            <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
+              {servicos.filter((s) => s.nome.toLowerCase().includes(buscaServico.toLowerCase())).length > 0 ? (
+                servicos
+                  .filter((s) => s.nome.toLowerCase().includes(buscaServico.toLowerCase()))
+                  .map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        setServicoSelecionado(s);
+                        setBuscaServico(s.nome);
+                        setMostrarSugestoesServico(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
+                    >
+                      {s.nome}
+                    </button>
+                  ))
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMostrarSugestoesServico(false)}
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-forest hover:bg-surface"
+                >
+                  + Cadastrar &ldquo;{buscaServico}&rdquo; como novo serviço
+                </button>
+              )}
             </div>
           )}
-        </Campo>
+        </div>
 
         <Campo label="Número do contrato">
           <input
@@ -773,6 +789,17 @@ function ContratoRecorrenteForm({
             placeholder="Opcional"
           />
         </Campo>
+
+        {valorEntrada && (
+          <Campo label="Data de pagamento da entrada">
+            <input
+              type="date"
+              value={dataPagamentoEntrada}
+              onChange={(e) => setDataPagamentoEntrada(e.target.value)}
+              className="input"
+            />
+          </Campo>
+        )}
 
         {editando && (
           <Campo label="Status" required>

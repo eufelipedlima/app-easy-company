@@ -17,6 +17,12 @@ interface Contrato {
   comentarios_extras: string | null;
   arquivo_path: string | null;
   arquivo_nome: string | null;
+  tipo_pagamento: "avista" | "parcelado" | null;
+  data_pagamento: string | null;
+  situacao_pagamento: "pago" | "pendente" | null;
+  valor_entrada: number | null;
+  quantidade_parcelas: number | null;
+  data_primeira_parcela: string | null;
   clientes: {
     papeis: {
       pessoas: {
@@ -77,6 +83,7 @@ export default function ContratosPontuaisPage() {
       .select(
         `id, numero_contrato, status, forma_pagamento, valor_total, data_fechamento,
          data_encerramento, servico_id, descricao, comentarios_extras, arquivo_path, arquivo_nome,
+         tipo_pagamento, data_pagamento, situacao_pagamento, valor_entrada, quantidade_parcelas, data_primeira_parcela,
          clientes ( papeis ( pessoas ( nome, razao_social, documento, email ) ) ),
          servicos ( nome )`
       )
@@ -294,6 +301,30 @@ export default function ContratosPontuaisPage() {
                   <SecaoDetalhe titulo="Pagamento">
                     <DetalheLinha label="Serviço" valor={detalhe.servicos?.nome ?? "—"} />
                     <DetalheLinha label="Forma de pagamento" valor={detalhe.forma_pagamento ?? "—"} />
+                    <DetalheLinha
+                      label="Estrutura"
+                      valor={detalhe.tipo_pagamento === "parcelado" ? "Parcelado" : "À vista"}
+                    />
+                    {detalhe.tipo_pagamento === "avista" ? (
+                      <>
+                        <DetalheLinha label="Data de pagamento" valor={formatarData(detalhe.data_pagamento)} />
+                        <DetalheLinha
+                          label="Situação"
+                          valor={detalhe.situacao_pagamento === "pago" ? "Pago" : "Pendente"}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        {detalhe.valor_entrada != null && (
+                          <DetalheLinha label="Entrada" valor={formatarMoeda(detalhe.valor_entrada)} />
+                        )}
+                        <DetalheLinha label="Parcelas" valor={String(detalhe.quantidade_parcelas ?? "—")} />
+                        <DetalheLinha
+                          label="1ª parcela"
+                          valor={formatarData(detalhe.data_primeira_parcela)}
+                        />
+                      </>
+                    )}
                   </SecaoDetalhe>
 
                   {(detalhe.descricao || detalhe.comentarios_extras) && (
@@ -375,9 +406,13 @@ function ContratoPontualForm({
   const [cadastrandoCliente, setCadastrandoCliente] = useState(false);
 
   const [servicos, setServicos] = useState<Servico[]>([]);
-  const [servicoId, setServicoId] = useState(contratoEditando?.servico_id ?? "");
-  const [novoServico, setNovoServico] = useState(false);
-  const [nomeNovoServico, setNomeNovoServico] = useState("");
+  const [servicoSelecionado, setServicoSelecionado] = useState<Servico | null>(
+    contratoEditando?.servico_id && contratoEditando.servicos
+      ? { id: contratoEditando.servico_id, nome: contratoEditando.servicos.nome }
+      : null
+  );
+  const [buscaServico, setBuscaServico] = useState(contratoEditando?.servicos?.nome ?? "");
+  const [mostrarSugestoesServico, setMostrarSugestoesServico] = useState(false);
 
   const [numeroContrato, setNumeroContrato] = useState(contratoEditando?.numero_contrato ?? "");
   const [formaPagamento, setFormaPagamento] = useState(
@@ -387,6 +422,24 @@ function ContratoPontualForm({
     contratoEditando?.valor_total != null ? String(contratoEditando.valor_total) : ""
   );
   const [dataInicio, setDataInicio] = useState(contratoEditando?.data_fechamento ?? "");
+
+  const [tipoPagamento, setTipoPagamento] = useState<"avista" | "parcelado">(
+    contratoEditando?.tipo_pagamento ?? "avista"
+  );
+  const [dataPagamento, setDataPagamento] = useState(contratoEditando?.data_pagamento ?? "");
+  const [situacaoPagamento, setSituacaoPagamento] = useState<"pago" | "pendente">(
+    contratoEditando?.situacao_pagamento ?? "pendente"
+  );
+  const [valorEntrada, setValorEntrada] = useState(
+    contratoEditando?.valor_entrada != null ? String(contratoEditando.valor_entrada) : ""
+  );
+  const [quantidadeParcelas, setQuantidadeParcelas] = useState(
+    contratoEditando?.quantidade_parcelas != null ? String(contratoEditando.quantidade_parcelas) : "2"
+  );
+  const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(
+    contratoEditando?.data_primeira_parcela ?? ""
+  );
+
   const [status, setStatus] = useState<"ativo" | "concluido" | "arquivado">(
     contratoEditando?.status ?? "ativo"
   );
@@ -501,11 +554,11 @@ function ContratoPontualForm({
     try {
       const supabase = createClient();
 
-      let servicoFinalId = servicoId || null;
-      if (novoServico && nomeNovoServico.trim()) {
+      let servicoFinalId = servicoSelecionado?.id ?? null;
+      if (!servicoFinalId && buscaServico.trim()) {
         const { data: srv, error: srvError } = await supabase
           .from("servicos")
-          .insert({ nome: nomeNovoServico.trim() })
+          .insert({ nome: buscaServico.trim() })
           .select("id")
           .single();
         if (srvError) throw srvError;
@@ -525,6 +578,12 @@ function ContratoPontualForm({
             data_encerramento: status !== "ativo" ? dataEncerramento || null : null,
             descricao: descricao || null,
             comentarios_extras: comentariosExtras || null,
+            tipo_pagamento: tipoPagamento,
+            data_pagamento: tipoPagamento === "avista" ? dataPagamento || null : null,
+            situacao_pagamento: tipoPagamento === "avista" ? situacaoPagamento : null,
+            valor_entrada: tipoPagamento === "parcelado" && valorEntrada ? Number(valorEntrada) : null,
+            quantidade_parcelas: tipoPagamento === "parcelado" ? Number(quantidadeParcelas) : null,
+            data_primeira_parcela: tipoPagamento === "parcelado" ? dataPrimeiraParcela || null : null,
           })
           .eq("id", contratoEditando.id);
         if (error) throw error;
@@ -545,6 +604,12 @@ function ContratoPontualForm({
             data_fechamento: dataInicio,
             descricao: descricao || null,
             comentarios_extras: comentariosExtras || null,
+            tipo_pagamento: tipoPagamento,
+            data_pagamento: tipoPagamento === "avista" ? dataPagamento || null : null,
+            situacao_pagamento: tipoPagamento === "avista" ? situacaoPagamento : null,
+            valor_entrada: tipoPagamento === "parcelado" && valorEntrada ? Number(valorEntrada) : null,
+            quantidade_parcelas: tipoPagamento === "parcelado" ? Number(quantidadeParcelas) : null,
+            data_primeira_parcela: tipoPagamento === "parcelado" ? dataPrimeiraParcela || null : null,
             ...(numeroContrato.trim() ? { numero_contrato: numeroContrato.trim() } : {}),
           })
           .select("id")
@@ -639,47 +704,50 @@ function ContratoPontualForm({
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Campo label="Serviço">
-          {!novoServico ? (
-            <div className="flex gap-2">
-              <select value={servicoId} onChange={(e) => setServicoId(e.target.value)} className="input">
-                <option value="">Selecione...</option>
-                {servicos.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nome}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setNovoServico(true)}
-                className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
-              >
-                + Novo
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                autoFocus
-                value={nomeNovoServico}
-                onChange={(e) => setNomeNovoServico(e.target.value)}
-                className="input"
-                placeholder="Nome do novo serviço"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  setNovoServico(false);
-                  setNomeNovoServico("");
-                }}
-                className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
-              >
-                Cancelar
-              </button>
+        <div className="relative">
+          <span className="block text-sm font-medium text-ink/70 mb-1">Serviço</span>
+          <input
+            value={buscaServico}
+            onChange={(e) => {
+              setBuscaServico(e.target.value);
+              setServicoSelecionado(null);
+              setMostrarSugestoesServico(true);
+            }}
+            onFocus={() => setMostrarSugestoesServico(true)}
+            className="input"
+            placeholder="Digite o serviço..."
+          />
+          {mostrarSugestoesServico && buscaServico && !servicoSelecionado && (
+            <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
+              {servicos.filter((s) => s.nome.toLowerCase().includes(buscaServico.toLowerCase())).length > 0 ? (
+                servicos
+                  .filter((s) => s.nome.toLowerCase().includes(buscaServico.toLowerCase()))
+                  .map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        setServicoSelecionado(s);
+                        setBuscaServico(s.nome);
+                        setMostrarSugestoesServico(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
+                    >
+                      {s.nome}
+                    </button>
+                  ))
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMostrarSugestoesServico(false)}
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-forest hover:bg-surface"
+                >
+                  + Cadastrar &ldquo;{buscaServico}&rdquo; como novo serviço
+                </button>
+              )}
             </div>
           )}
-        </Campo>
+        </div>
 
         <Campo label="Número do contrato">
           <input
@@ -722,6 +790,94 @@ function ContratoPontualForm({
             placeholder="0,00"
           />
         </Campo>
+
+        <div>
+          <span className="block text-sm font-medium text-ink/70 mb-1">Pagamento</span>
+          <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
+            <button
+              type="button"
+              onClick={() => setTipoPagamento("avista")}
+              className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                tipoPagamento === "avista" ? "bg-ink text-white" : "text-ink/60"
+              }`}
+            >
+              À vista
+            </button>
+            <button
+              type="button"
+              onClick={() => setTipoPagamento("parcelado")}
+              className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                tipoPagamento === "parcelado" ? "bg-ink text-white" : "text-ink/60"
+              }`}
+            >
+              Parcelado
+            </button>
+          </div>
+        </div>
+
+        {tipoPagamento === "avista" ? (
+          <>
+            <Campo label="Data de pagamento">
+              <input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="input" />
+            </Campo>
+            <div>
+              <span className="block text-sm font-medium text-ink/70 mb-1">Situação</span>
+              <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
+                <button
+                  type="button"
+                  onClick={() => setSituacaoPagamento("pendente")}
+                  className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                    situacaoPagamento === "pendente" ? "bg-ink text-white" : "text-ink/60"
+                  }`}
+                >
+                  Pendente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSituacaoPagamento("pago")}
+                  className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                    situacaoPagamento === "pago" ? "bg-forest text-white" : "text-ink/60"
+                  }`}
+                >
+                  Pago
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <Campo label="Entrada (R$)">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={valorEntrada}
+                onChange={(e) => setValorEntrada(e.target.value)}
+                className="input"
+                placeholder="Opcional"
+              />
+            </Campo>
+            <Campo label="Quantidade de parcelas" required>
+              <input
+                type="number"
+                min="2"
+                required
+                value={quantidadeParcelas}
+                onChange={(e) => setQuantidadeParcelas(e.target.value)}
+                className="input"
+              />
+            </Campo>
+            <Campo label="Data da primeira parcela" required>
+              <input
+                type="date"
+                required
+                value={dataPrimeiraParcela}
+                onChange={(e) => setDataPrimeiraParcela(e.target.value)}
+                className="input"
+              />
+            </Campo>
+          </>
+        )}
 
         {editando && (
           <Campo label="Status" required>
