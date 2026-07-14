@@ -8,7 +8,7 @@ interface Lancamento {
   id: string;
   descricao: string | null;
   valor: number;
-  tipo: "receita" | "despesa";
+  tipo: "receita" | "despesa" | "transferencia";
   situacao: "pendente" | "pago";
   data_vencimento: string;
   data_quitacao: string | null;
@@ -161,6 +161,7 @@ export default function LancamentosPage() {
   const [editando, setEditando] = useState<Lancamento | null>(null);
   const [detalhe, setDetalhe] = useState<Lancamento | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [resumoAberto, setResumoAberto] = useState(false);
 
   const [presetPeriodo, setPresetPeriodo] = useState<PeriodoPreset>("este_mes");
   const [periodoPersonalizado, setPeriodoPersonalizado] = useState(calcularPeriodo("este_mes"));
@@ -174,7 +175,7 @@ export default function LancamentosPage() {
   const [filtroPlanoContaId, setFiltroPlanoContaId] = useState("");
   const [filtroBancoId, setFiltroBancoId] = useState("");
   const [filtroValor, setFiltroValor] = useState("");
-  const [filtroTipo, setFiltroTipo] = useState<"" | "receita" | "despesa">("");
+  const [filtroTipo, setFiltroTipo] = useState<"" | "receita" | "despesa" | "transferencia">("");
 
   function limparFiltrosAvancados() {
     setFiltroCliente("");
@@ -390,12 +391,13 @@ export default function LancamentosPage() {
             <CampoEscuro label="Tipo de lançamento">
               <select
                 value={filtroTipo}
-                onChange={(e) => setFiltroTipo(e.target.value as "" | "receita" | "despesa")}
+                onChange={(e) => setFiltroTipo(e.target.value as "" | "receita" | "despesa" | "transferencia")}
                 className="input-escuro"
               >
                 <option value="">Todos</option>
                 <option value="receita">Receitas</option>
                 <option value="despesa">Despesas</option>
+                <option value="transferencia">Transferências</option>
               </select>
             </CampoEscuro>
             <CampoEscuro label="Situação do lançamento">
@@ -415,57 +417,79 @@ export default function LancamentosPage() {
         </div>
       )}
 
-      <div className="rounded-3xl bg-card border border-black/5 overflow-hidden mb-8">
-        <table className="w-full text-sm">
-          <thead>
-            <tr>
-              <th className="w-1/4"></th>
-              <th className="bg-mint/60 text-forest text-center py-3 text-sm font-bold">Receitas</th>
-              <th className="bg-red-50 text-red-600 text-center py-3 text-sm font-bold">Despesas</th>
-              <th className="bg-ink text-white text-center py-3 text-sm font-bold rounded-tr-3xl">Resultado</th>
-            </tr>
-          </thead>
-          <tbody>
-            <LinhaResumo
-              titulo="Previsão do período"
-              receitas={previsaoReceitas}
-              despesas={previsaoDespesas}
-            />
-            <LinhaResumo
-              titulo="Realizado no período"
-              receitas={realizadoReceitas}
-              despesas={realizadoDespesas}
-            />
-            <LinhaResumo
-              titulo="Pendente no período"
-              receitas={pendenteReceitas}
-              despesas={pendenteDespesas}
-              ultima
-            />
-          </tbody>
-        </table>
-        <p className="text-xs text-ink/40 px-5 py-3 border-t border-black/5">
-          Período: {formatarData(periodo.inicio)} até {formatarData(periodo.fim)}
-        </p>
+      <div className="mb-6">
+        <button
+          onClick={() => setResumoAberto((v) => !v)}
+          className="flex items-center gap-2 rounded-full bg-gradient-to-r from-forest to-ink text-white px-5 py-2.5 text-sm font-bold shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+        >
+          📊 Resumo {resumoAberto ? "▲" : "▼"}
+        </button>
       </div>
 
+      {resumoAberto && (
+        <div className="rounded-3xl bg-card border border-black/5 overflow-hidden mb-8">
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                <th className="w-1/4"></th>
+                <th className="bg-mint/60 text-forest text-center py-3 text-sm font-bold">Receitas</th>
+                <th className="bg-red-50 text-red-600 text-center py-3 text-sm font-bold">Despesas</th>
+                <th className="bg-ink text-white text-center py-3 text-sm font-bold rounded-tr-3xl">Resultado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <LinhaResumo
+                titulo="Previsão do período"
+                receitas={previsaoReceitas}
+                despesas={previsaoDespesas}
+              />
+              <LinhaResumo
+                titulo="Realizado no período"
+                receitas={realizadoReceitas}
+                despesas={realizadoDespesas}
+              />
+              <LinhaResumo
+                titulo="Pendente no período"
+                receitas={pendenteReceitas}
+                despesas={pendenteDespesas}
+                ultima
+              />
+            </tbody>
+          </table>
+          <p className="text-xs text-ink/40 px-5 py-3 border-t border-black/5">
+            Período: {formatarData(periodo.inicio)} até {formatarData(periodo.fim)}
+          </p>
+        </div>
+      )}
+
       {(painelAberto || editando) && (
-        <div className="mb-8 rounded-3xl bg-card border border-black/5 p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-ink mb-6">
-            {editando ? "Editar lançamento" : "Novo lançamento"}
-          </h2>
-          <LancamentoForm
-            lancamentoEditando={editando}
-            onSaved={() => {
-              setPainelAberto(false);
-              setEditando(null);
-              carregar();
-            }}
-            onCancel={() => {
-              setPainelAberto(false);
-              setEditando(null);
-            }}
-          />
+        <div
+          className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6"
+          onClick={() => {
+            setPainelAberto(false);
+            setEditando(null);
+          }}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold text-ink mb-5">
+              {editando ? "Editar lançamento" : "Novo lançamento"}
+            </h2>
+            <LancamentoForm
+              lancamentoEditando={editando}
+              onSaved={() => {
+                setPainelAberto(false);
+                setEditando(null);
+                carregar();
+              }}
+              onCancel={() => {
+                setPainelAberto(false);
+                setEditando(null);
+              }}
+            />
+          </div>
         </div>
       )}
 
@@ -502,17 +526,25 @@ export default function LancamentosPage() {
                     {nomePessoaLancamento(l) ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-ink/70">{l.descricao ?? "—"}</td>
-                  <td className={`px-4 py-3 font-semibold ${l.tipo === "receita" ? "text-forest" : "text-red-600"}`}>
+                  <td
+                    className={`px-4 py-3 font-semibold ${
+                      l.tipo === "receita" ? "text-forest" : l.tipo === "despesa" ? "text-red-600" : "text-ink/70"
+                    }`}
+                  >
                     {l.tipo === "despesa" ? "- " : ""}
                     {formatarMoeda(l.valor)}
                   </td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                        l.tipo === "receita" ? "bg-mint text-forest" : "bg-red-50 text-red-600"
+                        l.tipo === "receita"
+                          ? "bg-mint text-forest"
+                          : l.tipo === "despesa"
+                          ? "bg-red-50 text-red-600"
+                          : "bg-black/5 text-ink/60"
                       }`}
                     >
-                      {l.tipo === "receita" ? "Receita" : "Despesa"}
+                      {l.tipo === "receita" ? "Receita" : l.tipo === "despesa" ? "Despesa" : "Transferência"}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-ink/70">{formatarData(l.data_vencimento)}</td>
@@ -579,12 +611,16 @@ export default function LancamentosPage() {
 
             <div className="rounded-2xl bg-card p-4 mb-4 shadow-sm">
               <p className="text-xs text-ink/50 mb-0.5">Valor</p>
-              <p className={`text-xl font-extrabold ${detalhe.tipo === "receita" ? "text-forest" : "text-red-600"}`}>
+              <p
+                className={`text-xl font-extrabold ${
+                  detalhe.tipo === "receita" ? "text-forest" : detalhe.tipo === "despesa" ? "text-red-600" : "text-ink"
+                }`}
+              >
                 {detalhe.tipo === "despesa" ? "- " : ""}
                 {formatarMoeda(detalhe.valor)}
               </p>
               <p className="text-xs text-ink/40 mt-3 pt-3 border-t border-black/5">
-                {detalhe.tipo === "receita" ? "Receita" : "Despesa"}
+                {detalhe.tipo === "receita" ? "Receita" : detalhe.tipo === "despesa" ? "Despesa" : "Transferência"}
               </p>
             </div>
 
@@ -648,6 +684,7 @@ function DetalheLinha({ label, valor }: { label: string; valor: string }) {
   );
 }
 
+
 function LancamentoForm({
   lancamentoEditando,
   onSaved,
@@ -659,72 +696,86 @@ function LancamentoForm({
 }) {
   const editando = !!lancamentoEditando;
 
-  const [tipo, setTipo] = useState<"receita" | "despesa">(lancamentoEditando?.tipo ?? "receita");
+  const [tipo, setTipo] = useState<"receita" | "despesa" | "transferencia">(lancamentoEditando?.tipo ?? "receita");
+
   const [pessoas, setPessoas] = useState<PessoaOpcao[]>([]);
   const [pessoaSelecionada, setPessoaSelecionada] = useState<PessoaOpcao | null>(null);
   const [buscaCliente, setBuscaCliente] = useState(
-    (lancamentoEditando ? nomePessoaLancamento(lancamentoEditando) : "") ?? ""
+    lancamentoEditando ? nomePessoaLancamento(lancamentoEditando) ?? "" : ""
   );
-  const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
+  const [mostrarSugCliente, setMostrarSugCliente] = useState(false);
   const [cadastrandoCliente, setCadastrandoCliente] = useState(false);
 
   const [bancos, setBancos] = useState<Opcao[]>([]);
-  const [bancoId, setBancoId] = useState(lancamentoEditando?.banco_id ?? "");
-  const [novoBanco, setNovoBanco] = useState(false);
-  const [nomeNovoBanco, setNomeNovoBanco] = useState("");
+  const [bancoSelecionado, setBancoSelecionado] = useState<Opcao | null>(null);
+  const [buscaBanco, setBuscaBanco] = useState("");
+  const [mostrarSugBanco, setMostrarSugBanco] = useState(false);
 
   const [planosConta, setPlanosConta] = useState<PlanoContaOpcao[]>([]);
-  const [planoContaId, setPlanoContaId] = useState(lancamentoEditando?.plano_conta_id ?? "");
-  const [novoPlanoConta, setNovoPlanoConta] = useState(false);
-  const [nomeNovoPlanoConta, setNomeNovoPlanoConta] = useState("");
+  const [planoContaSelecionado, setPlanoContaSelecionado] = useState<PlanoContaOpcao | null>(null);
+  const [buscaPlanoConta, setBuscaPlanoConta] = useState("");
+  const [mostrarSugPlanoConta, setMostrarSugPlanoConta] = useState(false);
 
   const [servicos, setServicos] = useState<Opcao[]>([]);
-  const [servicoId, setServicoId] = useState(lancamentoEditando?.servico_id ?? "");
-  const [novoServico, setNovoServico] = useState(false);
-  const [nomeNovoServico, setNomeNovoServico] = useState("");
+  const [servicoSelecionado, setServicoSelecionado] = useState<Opcao | null>(null);
+  const [buscaServico, setBuscaServico] = useState("");
+  const [mostrarSugServico, setMostrarSugServico] = useState(false);
 
   const [descricao, setDescricao] = useState(lancamentoEditando?.descricao ?? "");
   const [valor, setValor] = useState(lancamentoEditando ? String(lancamentoEditando.valor) : "");
   const [situacao, setSituacao] = useState<"pendente" | "pago">(lancamentoEditando?.situacao ?? "pendente");
   const [dataVencimento, setDataVencimento] = useState(lancamentoEditando?.data_vencimento ?? "");
   const [dataQuitacao, setDataQuitacao] = useState(lancamentoEditando?.data_quitacao ?? "");
-  const [codigoTransacao, setCodigoTransacao] = useState(lancamentoEditando?.codigo_transacao ?? "");
 
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
-    carregarPessoas();
-    carregarBancos();
-    carregarPlanosConta();
-    carregarServicos();
+    async function carregarTudo() {
+      const supabase = createClient();
+      const [{ data: p }, { data: b }, { data: pc }, { data: s }] = await Promise.all([
+        supabase.from("pessoas").select("id, nome, tipo_pessoa").order("nome"),
+        supabase.from("bancos").select("id, nome").order("nome"),
+        supabase.from("planos_conta").select("id, nome, tipo").order("nome"),
+        supabase.from("servicos").select("id, nome").order("nome"),
+      ]);
+      setPessoas(p ?? []);
+      setBancos(b ?? []);
+      setPlanosConta((pc as PlanoContaOpcao[]) ?? []);
+      setServicos(s ?? []);
+
+      if (lancamentoEditando?.banco_id) {
+        const banco = b?.find((x) => x.id === lancamentoEditando.banco_id);
+        if (banco) {
+          setBancoSelecionado(banco);
+          setBuscaBanco(banco.nome);
+        }
+      }
+      if (lancamentoEditando?.plano_conta_id) {
+        const plano = pc?.find((x) => x.id === lancamentoEditando.plano_conta_id);
+        if (plano) {
+          setPlanoContaSelecionado(plano as PlanoContaOpcao);
+          setBuscaPlanoConta(plano.nome);
+        }
+      }
+      if (lancamentoEditando?.servico_id) {
+        const servico = s?.find((x) => x.id === lancamentoEditando.servico_id);
+        if (servico) {
+          setServicoSelecionado(servico);
+          setBuscaServico(servico.nome);
+        }
+      }
+    }
+    carregarTudo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function carregarPessoas() {
-    const supabase = createClient();
-    const { data } = await supabase.from("pessoas").select("id, nome, tipo_pessoa").order("nome");
-    setPessoas(data ?? []);
-  }
-
-  async function carregarBancos() {
-    const supabase = createClient();
-    const { data } = await supabase.from("bancos").select("id, nome").order("nome");
-    setBancos(data ?? []);
-  }
-
-  async function carregarPlanosConta() {
-    const supabase = createClient();
-    const { data } = await supabase.from("planos_conta").select("id, nome, tipo").order("nome");
-    setPlanosConta((data as PlanoContaOpcao[]) ?? []);
-  }
-
-  async function carregarServicos() {
-    const supabase = createClient();
-    const { data } = await supabase.from("servicos").select("id, nome").order("nome");
-    setServicos(data ?? []);
-  }
-
-  const sugestoes = pessoas.filter((p) => p.nome.toLowerCase().includes(buscaCliente.toLowerCase()));
+  const sugCliente = pessoas.filter((p) => p.nome.toLowerCase().includes(buscaCliente.toLowerCase()));
+  const sugBanco = bancos.filter((b) => b.nome.toLowerCase().includes(buscaBanco.toLowerCase()));
+  const sugPlanoConta = planosConta
+    .filter((p) => p.tipo === tipo)
+    .filter((p) => p.nome.toLowerCase().includes(buscaPlanoConta.toLowerCase()));
+  const sugServico = servicos.filter((s) => s.nome.toLowerCase().includes(buscaServico.toLowerCase()));
 
   async function garantirClienteId(pessoaId: string): Promise<string> {
     const supabase = createClient();
@@ -770,38 +821,33 @@ function LancamentoForm({
     try {
       const supabase = createClient();
 
-      let bancoFinalId = bancoId || null;
-      if (novoBanco && nomeNovoBanco.trim()) {
-        const { data, error } = await supabase.from("bancos").insert({ nome: nomeNovoBanco.trim() }).select("id").single();
+      let bancoFinalId = bancoSelecionado?.id ?? null;
+      if (!bancoFinalId && buscaBanco.trim()) {
+        const { data, error } = await supabase.from("bancos").insert({ nome: buscaBanco.trim() }).select("id").single();
         if (error) throw error;
         bancoFinalId = data.id;
       }
 
-      let planoContaFinalId = planoContaId || null;
-      if (novoPlanoConta && nomeNovoPlanoConta.trim()) {
+      let planoContaFinalId = planoContaSelecionado?.id ?? null;
+      if (!planoContaFinalId && buscaPlanoConta.trim() && tipo !== "transferencia") {
         const { data, error } = await supabase
           .from("planos_conta")
-          .insert({ nome: nomeNovoPlanoConta.trim(), tipo })
+          .insert({ nome: buscaPlanoConta.trim(), tipo })
           .select("id")
           .single();
         if (error) throw error;
         planoContaFinalId = data.id;
       }
 
-      let servicoFinalId = servicoId || null;
-      if (novoServico && nomeNovoServico.trim()) {
-        const { data, error } = await supabase
-          .from("servicos")
-          .insert({ nome: nomeNovoServico.trim() })
-          .select("id")
-          .single();
+      let servicoFinalId = servicoSelecionado?.id ?? null;
+      if (!servicoFinalId && buscaServico.trim() && tipo === "receita") {
+        const { data, error } = await supabase.from("servicos").insert({ nome: buscaServico.trim() }).select("id").single();
         if (error) throw error;
         servicoFinalId = data.id;
       }
 
       let clienteId: string | null = null;
       if (pessoaSelecionada && tipo === "receita") {
-        // Só receita precisa do papel de cliente (usado no ticket médio e nos relatórios de contrato)
         clienteId = await garantirClienteId(pessoaSelecionada.id);
       }
 
@@ -813,9 +859,8 @@ function LancamentoForm({
         data_vencimento: dataVencimento,
         data_quitacao: situacao === "pago" ? dataQuitacao || null : null,
         banco_id: bancoFinalId,
-        plano_conta_id: planoContaFinalId,
-        servico_id: servicoFinalId,
-        codigo_transacao: codigoTransacao || null,
+        plano_conta_id: tipo === "transferencia" ? null : planoContaFinalId,
+        servico_id: tipo === "receita" ? servicoFinalId : null,
         pessoa_id: pessoaSelecionada?.id ?? null,
         ...(clienteId ? { cliente_id: clienteId } : {}),
       };
@@ -844,7 +889,7 @@ function LancamentoForm({
           onClick={() => setCadastrandoCliente(false)}
           className="text-sm font-semibold text-ink/50 hover:text-ink mb-4"
         >
-          ← Voltar para o lançamento
+          ← Voltar
         </button>
         <PessoaForm
           nomeInicial={buscaCliente}
@@ -863,279 +908,237 @@ function LancamentoForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <div className="rounded-2xl bg-surface p-4">
-        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
-          <span className="text-forest">🔀</span> Tipo
-        </p>
-        <div className="flex items-center gap-2 rounded-full bg-white p-1 w-fit">
-          <button
-            type="button"
-            onClick={() => setTipo("receita")}
-            className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-              tipo === "receita" ? "bg-forest text-white" : "text-ink/60"
-            }`}
-          >
-            Receita
-          </button>
-          <button
-            type="button"
-            onClick={() => setTipo("despesa")}
-            className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-              tipo === "despesa" ? "bg-red-600 text-white" : "text-ink/60"
-            }`}
-          >
-            Despesa
-          </button>
-        </div>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
+        <button
+          type="button"
+          onClick={() => setTipo("receita")}
+          className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+            tipo === "receita" ? "bg-forest text-white" : "text-ink/60"
+          }`}
+        >
+          Receita
+        </button>
+        <button
+          type="button"
+          onClick={() => setTipo("despesa")}
+          className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+            tipo === "despesa" ? "bg-red-600 text-white" : "text-ink/60"
+          }`}
+        >
+          Despesa
+        </button>
+        <button
+          type="button"
+          onClick={() => setTipo("transferencia")}
+          className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+            tipo === "transferencia" ? "bg-ink text-white" : "text-ink/60"
+          }`}
+        >
+          Transferência
+        </button>
       </div>
 
-      <div className="rounded-2xl bg-surface p-4">
-        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
-          <span className="text-forest">👤</span> Pessoa <span className="text-xs font-normal text-ink/40">(cliente, funcionário ou prestador — opcional)</span>
-        </p>
-        <div className="relative">
+      <div className="relative">
+        <Busca
+          label="Cliente / Fornecedor (opcional)"
+          valor={buscaCliente}
+          onChange={(v) => {
+            setBuscaCliente(v);
+            setPessoaSelecionada(null);
+            setMostrarSugCliente(true);
+          }}
+          onFocus={() => setMostrarSugCliente(true)}
+          placeholder="Digite o nome..."
+        />
+        {mostrarSugCliente && buscaCliente && !pessoaSelecionada && (
+          <ListaSugestoes>
+            {sugCliente.length > 0 ? (
+              sugCliente.map((p) => (
+                <ItemSugestao
+                  key={p.id}
+                  onClick={() => {
+                    setPessoaSelecionada(p);
+                    setBuscaCliente(p.nome);
+                    setMostrarSugCliente(false);
+                  }}
+                >
+                  {p.nome}
+                </ItemSugestao>
+              ))
+            ) : (
+              <ItemSugestao destaque onClick={() => setCadastrandoCliente(true)}>
+                + Cadastrar &ldquo;{buscaCliente}&rdquo; como nova pessoa
+              </ItemSugestao>
+            )}
+          </ListaSugestoes>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Campo label="Descrição">
+          <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="input" placeholder="Ex: Mensalidade julho" />
+        </Campo>
+        <Campo label="Valor (R$)" required>
           <input
-            value={buscaCliente}
-            onChange={(e) => {
-              setBuscaCliente(e.target.value);
-              setPessoaSelecionada(null);
-              setMostrarSugestoes(true);
-            }}
-            onFocus={() => setMostrarSugestoes(true)}
+            type="number"
+            step="0.01"
+            min="0"
+            required
+            value={valor}
+            onChange={(e) => setValor(e.target.value)}
             className="input"
-            placeholder="Digite o nome do cliente..."
+            placeholder="0,00"
           />
-          {mostrarSugestoes && buscaCliente && !pessoaSelecionada && (
-            <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
-              {sugestoes.length > 0 ? (
-                sugestoes.map((p) => (
-                  <button
+        </Campo>
+        <Campo label="Data de vencimento" required>
+          <input type="date" required value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} className="input" />
+        </Campo>
+        <div>
+          <span className="block text-sm font-medium text-ink/70 mb-1">Situação</span>
+          <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
+            <button
+              type="button"
+              onClick={() => setSituacao("pendente")}
+              className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                situacao === "pendente" ? "bg-ink text-white" : "text-ink/60"
+              }`}
+            >
+              Pendente
+            </button>
+            <button
+              type="button"
+              onClick={() => setSituacao("pago")}
+              className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                situacao === "pago" ? "bg-forest text-white" : "text-ink/60"
+              }`}
+            >
+              Pago
+            </button>
+          </div>
+        </div>
+        {situacao === "pago" && (
+          <Campo label="Data de quitação" required>
+            <input type="date" required value={dataQuitacao} onChange={(e) => setDataQuitacao(e.target.value)} className="input" />
+          </Campo>
+        )}
+      </div>
+
+      <div className="relative">
+        <Busca
+          label="Banco"
+          valor={buscaBanco}
+          onChange={(v) => {
+            setBuscaBanco(v);
+            setBancoSelecionado(null);
+            setMostrarSugBanco(true);
+          }}
+          onFocus={() => setMostrarSugBanco(true)}
+          placeholder="Digite o banco..."
+        />
+        {mostrarSugBanco && buscaBanco && !bancoSelecionado && (
+          <ListaSugestoes>
+            {sugBanco.length > 0 ? (
+              sugBanco.map((b) => (
+                <ItemSugestao
+                  key={b.id}
+                  onClick={() => {
+                    setBancoSelecionado(b);
+                    setBuscaBanco(b.nome);
+                    setMostrarSugBanco(false);
+                  }}
+                >
+                  {b.nome}
+                </ItemSugestao>
+              ))
+            ) : (
+              <ItemSugestao destaque onClick={() => setMostrarSugBanco(false)}>
+                + Cadastrar &ldquo;{buscaBanco}&rdquo; como novo banco
+              </ItemSugestao>
+            )}
+          </ListaSugestoes>
+        )}
+      </div>
+
+      {tipo !== "transferencia" && (
+        <div className="relative">
+          <Busca
+            label="Plano de conta"
+            valor={buscaPlanoConta}
+            onChange={(v) => {
+              setBuscaPlanoConta(v);
+              setPlanoContaSelecionado(null);
+              setMostrarSugPlanoConta(true);
+            }}
+            onFocus={() => setMostrarSugPlanoConta(true)}
+            placeholder="Digite o plano de conta..."
+          />
+          {mostrarSugPlanoConta && buscaPlanoConta && !planoContaSelecionado && (
+            <ListaSugestoes>
+              {sugPlanoConta.length > 0 ? (
+                sugPlanoConta.map((p) => (
+                  <ItemSugestao
                     key={p.id}
-                    type="button"
                     onClick={() => {
-                      setPessoaSelecionada(p);
-                      setBuscaCliente(p.nome);
-                      setMostrarSugestoes(false);
+                      setPlanoContaSelecionado(p);
+                      setBuscaPlanoConta(p.nome);
+                      setMostrarSugPlanoConta(false);
                     }}
-                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
                   >
-                    {p.nome} <span className="text-xs text-ink/40">({p.tipo_pessoa})</span>
-                  </button>
+                    {p.nome}
+                  </ItemSugestao>
                 ))
               ) : (
-                <button
-                  type="button"
-                  onClick={() => setCadastrandoCliente(true)}
-                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-forest hover:bg-surface"
-                >
-                  + Cadastrar &ldquo;{buscaCliente}&rdquo; como novo cliente
-                </button>
+                <ItemSugestao destaque onClick={() => setMostrarSugPlanoConta(false)}>
+                  + Cadastrar &ldquo;{buscaPlanoConta}&rdquo; como novo plano de {tipo}
+                </ItemSugestao>
               )}
-            </div>
+            </ListaSugestoes>
           )}
         </div>
-      </div>
+      )}
 
-      <div className="rounded-2xl bg-surface p-4">
-        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
-          <span className="text-forest">💰</span> Valores e datas
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Campo label="Descrição">
-            <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="input" placeholder="Ex: Mensalidade julho" />
-          </Campo>
-          <Campo label="Valor (R$)" required>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              required
-              value={valor}
-              onChange={(e) => setValor(e.target.value)}
-              className="input"
-              placeholder="0,00"
-            />
-          </Campo>
-          <Campo label="Data de vencimento" required>
-            <input
-              type="date"
-              required
-              value={dataVencimento}
-              onChange={(e) => setDataVencimento(e.target.value)}
-              className="input"
-            />
-          </Campo>
-          <Campo label="Situação" required>
-            <select value={situacao} onChange={(e) => setSituacao(e.target.value as "pendente" | "pago")} className="input">
-              <option value="pendente">Pendente</option>
-              <option value="pago">Pago</option>
-            </select>
-          </Campo>
-          {situacao === "pago" && (
-            <Campo label="Data de quitação" required>
-              <input
-                type="date"
-                required
-                value={dataQuitacao}
-                onChange={(e) => setDataQuitacao(e.target.value)}
-                className="input"
-              />
-            </Campo>
-          )}
-          <Campo label="Código da transação">
-            <input
-              value={codigoTransacao}
-              onChange={(e) => setCodigoTransacao(e.target.value)}
-              className="input"
-              placeholder="Opcional"
-            />
-          </Campo>
-        </div>
-      </div>
-
-      <div className="rounded-2xl bg-surface p-4">
-        <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
-          <span className="text-forest">🏷️</span> Classificação
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Campo label="Banco">
-            {!novoBanco ? (
-              <div className="flex gap-2">
-                <select value={bancoId} onChange={(e) => setBancoId(e.target.value)} className="input">
-                  <option value="">Selecione...</option>
-                  {bancos.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.nome}
-                    </option>
-                  ))}
-                </select>
-                <button type="button" onClick={() => setNovoBanco(true)} className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap">
-                  + Novo
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <input
-                  autoFocus
-                  value={nomeNovoBanco}
-                  onChange={(e) => setNomeNovoBanco(e.target.value)}
-                  className="input"
-                  placeholder="Nome do banco"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNovoBanco(false);
-                    setNomeNovoBanco("");
-                  }}
-                  className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
-                >
-                  Cancelar
-                </button>
-              </div>
-            )}
-          </Campo>
-
-          <Campo label="Plano de conta">
-            {!novoPlanoConta ? (
-              <div className="flex gap-2">
-                <select value={planoContaId} onChange={(e) => setPlanoContaId(e.target.value)} className="input">
-                  <option value="">Selecione...</option>
-                  {planosConta
-                    .filter((p) => p.tipo === tipo)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nome}
-                      </option>
-                    ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setNovoPlanoConta(true)}
-                  className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
-                >
-                  + Novo
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <input
-                  autoFocus
-                  value={nomeNovoPlanoConta}
-                  onChange={(e) => setNomeNovoPlanoConta(e.target.value)}
-                  className="input"
-                  placeholder={`Nova conta de ${tipo}`}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNovoPlanoConta(false);
-                    setNomeNovoPlanoConta("");
-                  }}
-                  className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
-                >
-                  Cancelar
-                </button>
-              </div>
-            )}
-            <span className="block text-xs text-ink/40 mt-1">
-              Mostrando apenas contas de {tipo === "receita" ? "receita" : "despesa"}.
-            </span>
-          </Campo>
-
-          {tipo === "receita" && (
-            <Campo label="Serviço">
-              {!novoServico ? (
-                <div className="flex gap-2">
-                  <select value={servicoId} onChange={(e) => setServicoId(e.target.value)} className="input">
-                    <option value="">Selecione...</option>
-                    {servicos.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.nome}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setNovoServico(true)}
-                    className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
-                  >
-                    + Novo
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <input
-                    autoFocus
-                    value={nomeNovoServico}
-                    onChange={(e) => setNomeNovoServico(e.target.value)}
-                    className="input"
-                    placeholder="Nome do serviço"
-                  />
-                  <button
-                    type="button"
+      {tipo === "receita" && (
+        <div className="relative">
+          <Busca
+            label="Serviço"
+            valor={buscaServico}
+            onChange={(v) => {
+              setBuscaServico(v);
+              setServicoSelecionado(null);
+              setMostrarSugServico(true);
+            }}
+            onFocus={() => setMostrarSugServico(true)}
+            placeholder="Digite o serviço..."
+          />
+          {mostrarSugServico && buscaServico && !servicoSelecionado && (
+            <ListaSugestoes>
+              {sugServico.length > 0 ? (
+                sugServico.map((s) => (
+                  <ItemSugestao
+                    key={s.id}
                     onClick={() => {
-                      setNovoServico(false);
-                      setNomeNovoServico("");
+                      setServicoSelecionado(s);
+                      setBuscaServico(s.nome);
+                      setMostrarSugServico(false);
                     }}
-                    className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
                   >
-                    Cancelar
-                  </button>
-                </div>
+                    {s.nome}
+                  </ItemSugestao>
+                ))
+              ) : (
+                <ItemSugestao destaque onClick={() => setMostrarSugServico(false)}>
+                  + Cadastrar &ldquo;{buscaServico}&rdquo; como novo serviço
+                </ItemSugestao>
               )}
-              <span className="block text-xs text-ink/40 mt-1">
-                Usado na Análise pra mostrar de onde vem o faturamento.
-              </span>
-            </Campo>
+            </ListaSugestoes>
           )}
         </div>
-      </div>
+      )}
 
       {erro && <p className="text-sm text-red-600">{erro}</p>}
 
-      <div className="flex items-center gap-3 pt-2">
+      <div className="flex items-center gap-3 pt-1">
         <button
           type="submit"
           disabled={saving}
@@ -1148,6 +1151,63 @@ function LancamentoForm({
         </button>
       </div>
     </form>
+  );
+}
+
+function Busca({
+  label,
+  valor,
+  onChange,
+  onFocus,
+  placeholder,
+}: {
+  label: string;
+  valor: string;
+  onChange: (v: string) => void;
+  onFocus: () => void;
+  placeholder: string;
+}) {
+  return (
+    <label className="block">
+      <span className="block text-sm font-medium text-ink/70 mb-1">{label}</span>
+      <input
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={onFocus}
+        className="input"
+        placeholder={placeholder}
+      />
+    </label>
+  );
+}
+
+function ListaSugestoes({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
+      {children}
+    </div>
+  );
+}
+
+function ItemSugestao({
+  children,
+  onClick,
+  destaque,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  destaque?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface ${
+        destaque ? "font-semibold text-forest" : ""
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
