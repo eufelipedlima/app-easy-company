@@ -118,15 +118,15 @@ export default function AnaliseContratosPage() {
           <Metrica icon={<TrendingUp size={16} />} label="LTV médio" valor={formatarMoeda(ltvMedio)} />
           <Metrica icon={<TrendingDown size={16} />} label="Churn" valor={`${churn.toFixed(1)}%`} />
         </div>
-        <div className="rounded-3xl bg-card border border-black/5 p-5 h-64">
+        <div className="rounded-3xl bg-card border border-black/5 p-5 h-64 transition-shadow duration-200 hover:shadow-lg">
           <p className="text-sm font-semibold text-ink mb-3">Contratos por status</p>
           <ResponsiveContainer width="100%" height="85%">
             <BarChart data={dadosStatusRecorrente}>
               <CartesianGrid strokeDasharray="3 3" stroke="#02170B10" vertical={false} />
               <XAxis dataKey="nome" tick={{ fontSize: 12, fill: "#02170B99" }} axisLine={false} tickLine={false} />
               <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#02170B99" }} axisLine={false} tickLine={false} />
-              <Tooltip cursor={{ fill: "#E4FFEF" }} />
-              <Bar dataKey="total" fill="#143421" radius={[8, 8, 0, 0]} />
+              <Tooltip cursor={{ fill: "#E4FFEF" }} contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 24px rgba(2,23,11,0.15)" }} />
+              <Bar dataKey="total" fill="#143421" radius={[8, 8, 0, 0]} activeBar={{ fill: "#02170B" }} animationDuration={600} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -147,15 +147,15 @@ export default function AnaliseContratosPage() {
             valor={`${Math.round(tempoMedioConcluir)} dias`}
           />
         </div>
-        <div className="rounded-3xl bg-card border border-black/5 p-5 h-64">
+        <div className="rounded-3xl bg-card border border-black/5 p-5 h-64 transition-shadow duration-200 hover:shadow-lg">
           <p className="text-sm font-semibold text-ink mb-3">Contratos por status</p>
           <ResponsiveContainer width="100%" height="85%">
             <BarChart data={dadosStatusPontual}>
               <CartesianGrid strokeDasharray="3 3" stroke="#02170B10" vertical={false} />
               <XAxis dataKey="nome" tick={{ fontSize: 12, fill: "#02170B99" }} axisLine={false} tickLine={false} />
               <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#02170B99" }} axisLine={false} tickLine={false} />
-              <Tooltip cursor={{ fill: "#E4FFEF" }} />
-              <Bar dataKey="total" fill="#143421" radius={[8, 8, 0, 0]} />
+              <Tooltip cursor={{ fill: "#E4FFEF" }} contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 24px rgba(2,23,11,0.15)" }} />
+              <Bar dataKey="total" fill="#143421" radius={[8, 8, 0, 0]} activeBar={{ fill: "#02170B" }} animationDuration={600} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -166,8 +166,10 @@ export default function AnaliseContratosPage() {
 
 function Metrica({ icon, label, valor }: { icon: React.ReactNode; label: string; valor: string }) {
   return (
-    <div className="rounded-2xl bg-card border border-black/5 p-4">
-      <div className="flex items-center gap-2 text-forest mb-2">{icon}</div>
+    <div className="group rounded-2xl bg-card border border-black/5 p-4 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:border-forest/20">
+      <div className="inline-flex items-center justify-center h-9 w-9 rounded-xl bg-mint text-forest mb-3 transition-transform duration-200 group-hover:scale-110 group-hover:bg-forest group-hover:text-white">
+        {icon}
+      </div>
       <p className="text-xl font-extrabold text-ink leading-tight">{valor}</p>
       <p className="text-xs text-ink/50 mt-1">{label}</p>
     </div>

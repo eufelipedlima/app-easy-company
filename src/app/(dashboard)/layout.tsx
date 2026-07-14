@@ -20,14 +20,13 @@ interface Grupo {
 }
 
 const MENU: Grupo[] = [
-  { label: "Pessoas", icon: <Users size={18} />, href: "/pessoas" },
   {
     label: "Contratos",
     icon: <FileText size={18} />,
     itens: [
-      { href: "/contratos/recorrentes", label: "Recorrentes", icon: <Repeat size={15} /> },
-      { href: "/contratos/pontuais", label: "Pontuais", icon: <Package size={15} /> },
       { href: "/contratos/analise", label: "Análise", icon: <BarChart3 size={15} /> },
+      { href: "/contratos/pontuais", label: "Pontuais", icon: <Package size={15} /> },
+      { href: "/contratos/recorrentes", label: "Recorrentes", icon: <Repeat size={15} /> },
     ],
   },
   {
@@ -35,10 +34,11 @@ const MENU: Grupo[] = [
     icon: <DollarSign size={18} />,
     itens: [
       { href: "/financeiro/analise", label: "Análise", icon: <BarChart3 size={15} /> },
-      { href: "/financeiro/lancamentos", label: "Lançamentos", icon: <Receipt size={15} /> },
       { href: "/financeiro/configuracoes", label: "Configurações", icon: <Settings size={15} /> },
+      { href: "/financeiro/lancamentos", label: "Lançamentos", icon: <Receipt size={15} /> },
     ],
   },
+  { label: "Pessoas", icon: <Users size={18} />, href: "/pessoas" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

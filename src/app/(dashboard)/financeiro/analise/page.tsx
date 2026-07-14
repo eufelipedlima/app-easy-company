@@ -224,21 +224,21 @@ export default function AnaliseFinanceiraPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div className="rounded-3xl bg-card border border-black/5 p-5 h-72">
+        <div className="rounded-3xl bg-card border border-black/5 p-5 h-72 transition-shadow duration-200 hover:shadow-lg">
           <p className="text-sm font-semibold text-ink mb-3">Evolução de faturamento e despesa</p>
           <ResponsiveContainer width="100%" height="85%">
             <LineChart data={dadosEvolucao}>
               <CartesianGrid strokeDasharray="3 3" stroke="#02170B10" vertical={false} />
               <XAxis dataKey="nome" tick={{ fontSize: 12, fill: "#02170B99" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: "#02170B99" }} axisLine={false} tickLine={false} />
-              <Tooltip formatter={(v) => formatarMoeda(Number(v))} />
-              <Line type="monotone" dataKey="Faturamento" stroke="#143421" strokeWidth={2.5} dot={false} />
-              <Line type="monotone" dataKey="Despesa" stroke="#dc2626" strokeWidth={2.5} dot={false} />
+              <Tooltip formatter={(v) => formatarMoeda(Number(v))} contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 24px rgba(2,23,11,0.15)" }} cursor={{ fill: "#E4FFEF", opacity: 0.4 }} />
+              <Line type="monotone" dataKey="Faturamento" stroke="#143421" strokeWidth={3} dot={{ r: 3, fill: "#143421" }} activeDot={{ r: 6 }} animationDuration={700} />
+              <Line type="monotone" dataKey="Despesa" stroke="#dc2626" strokeWidth={3} dot={{ r: 3, fill: "#dc2626" }} activeDot={{ r: 6 }} animationDuration={700} />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="rounded-3xl bg-card border border-black/5 p-5 h-72">
+        <div className="rounded-3xl bg-card border border-black/5 p-5 h-72 transition-shadow duration-200 hover:shadow-lg">
           <p className="text-sm font-semibold text-ink mb-3">Faturamento por serviço</p>
           {distribuicaoServico.length === 0 ? (
             <p className="text-sm text-ink/40 mt-8 text-center">Nenhuma receita paga com serviço no período.</p>
@@ -255,8 +255,8 @@ export default function AnaliseFinanceiraPage() {
                   tickLine={false}
                   width={110}
                 />
-                <Tooltip formatter={(v) => formatarMoeda(Number(v))} />
-                <Bar dataKey="valor" fill="#143421" radius={[0, 8, 8, 0]} />
+                <Tooltip formatter={(v) => formatarMoeda(Number(v))} contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 24px rgba(2,23,11,0.15)" }} cursor={{ fill: "#E4FFEF", opacity: 0.4 }} />
+                <Bar dataKey="valor" fill="#143421" radius={[0, 8, 8, 0]} activeBar={{ fill: "#02170B" }} animationDuration={600} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -275,8 +275,10 @@ export default function AnaliseFinanceiraPage() {
 
 function Metrica({ icon, label, valor }: { icon: React.ReactNode; label: string; valor: string }) {
   return (
-    <div className="rounded-2xl bg-card border border-black/5 p-4">
-      <div className="flex items-center gap-2 text-forest mb-2">{icon}</div>
+    <div className="group rounded-2xl bg-card border border-black/5 p-4 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:border-forest/20">
+      <div className="inline-flex items-center justify-center h-9 w-9 rounded-xl bg-mint text-forest mb-3 transition-transform duration-200 group-hover:scale-110 group-hover:bg-forest group-hover:text-white">
+        {icon}
+      </div>
       <p className="text-xl font-extrabold text-ink leading-tight">{valor}</p>
       <p className="text-xs text-ink/50 mt-1">{label}</p>
     </div>
