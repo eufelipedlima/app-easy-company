@@ -17,6 +17,7 @@ interface Lancamento {
   plano_conta_id: string | null;
   servico_id: string | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
+  pessoas: { nome: string } | null;
   bancos: { nome: string } | null;
   planos_conta: { nome: string } | null;
   servicos: { nome: string } | null;
@@ -147,6 +148,10 @@ function calcularPeriodo(preset: PeriodoPreset): { inicio: string; fim: string }
   }
 }
 
+function nomePessoaLancamento(l: { clientes: Lancamento["clientes"]; pessoas: Lancamento["pessoas"] }) {
+  return l.clientes?.papeis?.pessoas?.nome ?? l.pessoas?.nome ?? null;
+}
+
 type Filtro = "todos" | "pendente" | "pago";
 
 export default function LancamentosPage() {
@@ -189,6 +194,7 @@ export default function LancamentosPage() {
         `id, descricao, valor, tipo, situacao, data_vencimento, data_quitacao, codigo_transacao,
          banco_id, plano_conta_id, servico_id,
          clientes ( papeis ( pessoas ( nome ) ) ),
+         pessoas ( nome ),
          bancos ( nome ),
          planos_conta ( nome ),
          servicos ( nome )`
@@ -221,7 +227,7 @@ export default function LancamentosPage() {
     .filter(
       (l) =>
         !filtroCliente ||
-        (l.clientes?.papeis?.pessoas?.nome ?? "").toLowerCase().includes(filtroCliente.toLowerCase())
+        (nomePessoaLancamento(l) ?? "").toLowerCase().includes(filtroCliente.toLowerCase())
     )
     .filter((l) => !filtroDescricao || (l.descricao ?? "").toLowerCase().includes(filtroDescricao.toLowerCase()))
     .filter((l) => !filtroPlanoContaId || l.plano_conta_id === filtroPlanoContaId)
@@ -493,7 +499,7 @@ export default function LancamentosPage() {
                   className="border-b border-black/5 last:border-0 hover:bg-surface/60 cursor-pointer"
                 >
                   <td className="px-4 py-3 font-semibold text-ink">
-                    {l.clientes?.papeis?.pessoas?.nome ?? "—"}
+                    {nomePessoaLancamento(l) ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-ink/70">{l.descricao ?? "—"}</td>
                   <td className={`px-4 py-3 font-semibold ${l.tipo === "receita" ? "text-forest" : "text-red-600"}`}>
@@ -554,7 +560,7 @@ export default function LancamentosPage() {
               <div>
                 <p className="font-mono text-xs text-ink/50">{detalhe.codigo_transacao ?? "—"}</p>
                 <p className="font-bold text-ink leading-tight">
-                  {detalhe.clientes?.papeis?.pessoas?.nome ?? detalhe.descricao ?? "Lançamento"}
+                  {nomePessoaLancamento(detalhe) ?? detalhe.descricao ?? "Lançamento"}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -657,7 +663,7 @@ function LancamentoForm({
   const [pessoas, setPessoas] = useState<PessoaOpcao[]>([]);
   const [pessoaSelecionada, setPessoaSelecionada] = useState<PessoaOpcao | null>(null);
   const [buscaCliente, setBuscaCliente] = useState(
-    lancamentoEditando?.clientes?.papeis?.pessoas?.nome ?? ""
+    (lancamentoEditando ? nomePessoaLancamento(lancamentoEditando) : "") ?? ""
   );
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
   const [cadastrandoCliente, setCadastrandoCliente] = useState(false);
@@ -794,7 +800,8 @@ function LancamentoForm({
       }
 
       let clienteId: string | null = null;
-      if (pessoaSelecionada) {
+      if (pessoaSelecionada && tipo === "receita") {
+        // Só receita precisa do papel de cliente (usado no ticket médio e nos relatórios de contrato)
         clienteId = await garantirClienteId(pessoaSelecionada.id);
       }
 
@@ -809,6 +816,7 @@ function LancamentoForm({
         plano_conta_id: planoContaFinalId,
         servico_id: servicoFinalId,
         codigo_transacao: codigoTransacao || null,
+        pessoa_id: pessoaSelecionada?.id ?? null,
         ...(clienteId ? { cliente_id: clienteId } : {}),
       };
 
@@ -884,7 +892,7 @@ function LancamentoForm({
 
       <div className="rounded-2xl bg-surface p-4">
         <p className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
-          <span className="text-forest">👤</span> Cliente <span className="text-xs font-normal text-ink/40">(opcional)</span>
+          <span className="text-forest">👤</span> Pessoa <span className="text-xs font-normal text-ink/40">(cliente, funcionário ou prestador — opcional)</span>
         </p>
         <div className="relative">
           <input

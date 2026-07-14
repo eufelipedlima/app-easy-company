@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Users, FileText, ChevronDown, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings } from "lucide-react";
+import { Users, FileText, ChevronDown, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -38,7 +38,15 @@ const MENU: Grupo[] = [
       { href: "/financeiro/lancamentos", label: "Lançamentos", icon: <Receipt size={15} /> },
     ],
   },
-  { label: "Pessoas", icon: <Users size={18} />, href: "/pessoas" },
+  {
+    label: "Pessoas",
+    icon: <Users size={18} />,
+    itens: [
+      { href: "/pessoas/clientes", label: "Clientes", icon: <UserCheck size={15} /> },
+      { href: "/pessoas/funcionarios", label: "Funcionários", icon: <Briefcase size={15} /> },
+      { href: "/pessoas/prestadores", label: "Prestadores", icon: <HardHat size={15} /> },
+    ],
+  },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

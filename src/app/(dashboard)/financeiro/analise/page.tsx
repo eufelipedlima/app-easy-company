@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { PessoaForm } from "@/components/pessoa-form";
+import Link from "next/link";
 import {
   Bar,
   BarChart,
@@ -27,16 +27,12 @@ interface LancamentoResumo {
 
 interface Funcionario {
   id: string;
-  cargo: string | null;
   salario: number;
-  data_admissao: string | null;
-  papeis: { pessoas: { nome: string } | null } | null;
 }
 
-interface PessoaOpcao {
-  id: string;
-  nome: string;
-  tipo_pessoa: "PF" | "PJ";
+interface Beneficio {
+  funcionario_id: string;
+  valor: number;
 }
 
 const MESES = [
@@ -55,6 +51,7 @@ function toISODate(d: Date) {
 export default function AnaliseFinanceiraPage() {
   const [lancamentos, setLancamentos] = useState<LancamentoResumo[]>([]);
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
+  const [beneficios, setBeneficios] = useState<Beneficio[]>([]);
   const [loading, setLoading] = useState(true);
 
   const hoje = new Date();
@@ -70,13 +67,21 @@ export default function AnaliseFinanceiraPage() {
         supabase
           .from("lancamentos")
           .select("valor, tipo, situacao, data_quitacao, cliente_id, servicos ( nome )"),
-        supabase
-          .from("funcionarios")
-          .select("id, cargo, salario, data_admissao, papeis ( pessoas ( nome ) )")
-          .eq("ativo", true),
+        supabase.from("funcionarios").select("id, salario").eq("ativo", true),
       ]);
       setLancamentos((lanc as unknown as LancamentoResumo[]) ?? []);
-      setFuncionarios((func as unknown as Funcionario[]) ?? []);
+      const listaFunc = (func as unknown as Funcionario[]) ?? [];
+      setFuncionarios(listaFunc);
+
+      if (listaFunc.length > 0) {
+        const { data: ben } = await supabase
+          .from("funcionario_beneficios")
+          .select("funcionario_id, valor")
+          .in("funcionario_id", listaFunc.map((f) => f.id));
+        setBeneficios((ben as unknown as Beneficio[]) ?? []);
+      } else {
+        setBeneficios([]);
+      }
       setLoading(false);
     },
     []
@@ -148,7 +153,8 @@ export default function AnaliseFinanceiraPage() {
       .sort((a, b) => b.valor - a.valor);
   }, [pagosNoPeriodo]);
 
-  const totalFolha = funcionarios.reduce((s, f) => s + f.salario, 0);
+  const totalFolha =
+    funcionarios.reduce((s, f) => s + f.salario, 0) + beneficios.reduce((s, b) => s + b.valor, 0);
   const mediaFolha = funcionarios.length > 0 ? totalFolha / funcionarios.length : 0;
 
   const anos = Array.from({ length: 5 }, (_, i) => hoje.getFullYear() - 2 + i);
@@ -264,10 +270,9 @@ export default function AnaliseFinanceiraPage() {
       </div>
 
       <FolhaDePagamento
-        funcionarios={funcionarios}
+        totalColaboradores={funcionarios.length}
         totalFolha={totalFolha}
         mediaFolha={mediaFolha}
-        onChange={carregar}
       />
     </main>
   );
@@ -286,246 +291,30 @@ function Metrica({ icon, label, valor }: { icon: React.ReactNode; label: string;
 }
 
 function FolhaDePagamento({
-  funcionarios,
+  totalColaboradores,
   totalFolha,
   mediaFolha,
-  onChange,
 }: {
-  funcionarios: Funcionario[];
+  totalColaboradores: number;
   totalFolha: number;
   mediaFolha: number;
-  onChange: () => void;
 }) {
-  const [painelAberto, setPainelAberto] = useState(false);
-  const [pessoas, setPessoas] = useState<PessoaOpcao[]>([]);
-  const [pessoaSelecionada, setPessoaSelecionada] = useState<PessoaOpcao | null>(null);
-  const [busca, setBusca] = useState("");
-  const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
-  const [cadastrandoPessoa, setCadastrandoPessoa] = useState(false);
-  const [cargo, setCargo] = useState("");
-  const [salario, setSalario] = useState("");
-  const [dataAdmissao, setDataAdmissao] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function carregarPessoas() {
-      const supabase = createClient();
-      const { data } = await supabase.from("pessoas").select("id, nome, tipo_pessoa").order("nome");
-      setPessoas(data ?? []);
-    }
-    carregarPessoas();
-  }, []);
-
-  const sugestoes = pessoas.filter((p) => p.nome.toLowerCase().includes(busca.toLowerCase()));
-
-  async function garantirFuncionarioPapelId(pessoaId: string): Promise<string> {
-    const supabase = createClient();
-    const { data: existente } = await supabase
-      .from("papeis")
-      .select("id")
-      .eq("pessoa_id", pessoaId)
-      .eq("papel", "funcionario")
-      .maybeSingle();
-    if (existente?.id) return existente.id;
-
-    const { data: novo, error } = await supabase
-      .from("papeis")
-      .insert({ pessoa_id: pessoaId, papel: "funcionario" })
-      .select("id")
-      .single();
-    if (error) throw error;
-    return novo.id;
-  }
-
-  async function adicionar(e: React.FormEvent) {
-    e.preventDefault();
-    if (!pessoaSelecionada || !salario) {
-      setErro("Selecione a pessoa e informe o salário.");
-      return;
-    }
-    setSaving(true);
-    setErro(null);
-    try {
-      const supabase = createClient();
-      const papelId = await garantirFuncionarioPapelId(pessoaSelecionada.id);
-      const { error } = await supabase.from("funcionarios").insert({
-        papel_id: papelId,
-        cargo: cargo || null,
-        salario: Number(salario),
-        data_admissao: dataAdmissao || null,
-      });
-      if (error) throw error;
-
-      setPessoaSelecionada(null);
-      setBusca("");
-      setCargo("");
-      setSalario("");
-      setDataAdmissao("");
-      setPainelAberto(false);
-      onChange();
-    } catch (err) {
-      setErro(err instanceof Error ? err.message : "Erro ao salvar.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function remover(id: string) {
-    const supabase = createClient();
-    await supabase.from("funcionarios").update({ ativo: false }).eq("id", id);
-    onChange();
-  }
-
-  if (cadastrandoPessoa) {
-    return (
-      <div className="rounded-3xl bg-card border border-black/5 p-6">
-        <button
-          type="button"
-          onClick={() => setCadastrandoPessoa(false)}
-          className="text-sm font-semibold text-ink/50 hover:text-ink mb-4"
-        >
-          ← Voltar
-        </button>
-        <PessoaForm
-          nomeInicial={busca}
-          onCancel={() => setCadastrandoPessoa(false)}
-          onSaved={async (pessoa) => {
-            const supabase = createClient();
-            const { data } = await supabase.from("pessoas").select("id, nome, tipo_pessoa").order("nome");
-            setPessoas(data ?? []);
-            setPessoaSelecionada(data?.find((p) => p.id === pessoa.id) ?? { id: pessoa.id, nome: pessoa.nome, tipo_pessoa: "PF" });
-            setBusca(pessoa.nome);
-            setCadastrandoPessoa(false);
-          }}
-        />
-      </div>
-    );
-  }
-
   return (
     <section>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-bold uppercase tracking-wide text-ink/40">Folha de pagamento</h2>
-        {!painelAberto && (
-          <button
-            onClick={() => setPainelAberto(true)}
-            className="rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors"
-          >
-            + Adicionar colaborador
-          </button>
-        )}
+        <Link
+          href="/pessoas/funcionarios"
+          className="rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors"
+        >
+          Gerenciar em Pessoas →
+        </Link>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <Metrica icon={<Users size={16} />} label="Colaboradores" valor={String(funcionarios.length)} />
-        <Metrica icon={<Wallet size={16} />} label="Valor total" valor={formatarMoeda(totalFolha)} />
-        <Metrica icon={<TrendingUp size={16} />} label="Média" valor={formatarMoeda(mediaFolha)} />
-      </div>
-
-      {painelAberto && (
-        <form onSubmit={adicionar} className="rounded-3xl bg-card border border-black/5 p-6 mb-6 space-y-4">
-          <div className="relative">
-            <span className="block text-sm font-medium text-ink/70 mb-1">Colaborador *</span>
-            <input
-              value={busca}
-              onChange={(e) => {
-                setBusca(e.target.value);
-                setPessoaSelecionada(null);
-                setMostrarSugestoes(true);
-              }}
-              onFocus={() => setMostrarSugestoes(true)}
-              className="input"
-              placeholder="Digite o nome..."
-            />
-            {mostrarSugestoes && busca && !pessoaSelecionada && (
-              <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
-                {sugestoes.length > 0 ? (
-                  sugestoes.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => {
-                        setPessoaSelecionada(p);
-                        setBusca(p.nome);
-                        setMostrarSugestoes(false);
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
-                    >
-                      {p.nome}
-                    </button>
-                  ))
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setCadastrandoPessoa(true)}
-                    className="w-full text-left px-4 py-2.5 text-sm font-semibold text-forest hover:bg-surface"
-                  >
-                    + Cadastrar &ldquo;{busca}&rdquo; como nova pessoa
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <label className="block">
-              <span className="block text-sm font-medium text-ink/70 mb-1">Cargo</span>
-              <input value={cargo} onChange={(e) => setCargo(e.target.value)} className="input" />
-            </label>
-            <label className="block">
-              <span className="block text-sm font-medium text-ink/70 mb-1">Salário (R$) *</span>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={salario}
-                onChange={(e) => setSalario(e.target.value)}
-                className="input"
-              />
-            </label>
-            <label className="block">
-              <span className="block text-sm font-medium text-ink/70 mb-1">Data de admissão</span>
-              <input type="date" value={dataAdmissao} onChange={(e) => setDataAdmissao(e.target.value)} className="input" />
-            </label>
-          </div>
-
-          {erro && <p className="text-sm text-red-600">{erro}</p>}
-
-          <div className="flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
-            >
-              {saving ? "Salvando..." : "Adicionar"}
-            </button>
-            <button type="button" onClick={() => setPainelAberto(false)} className="text-sm font-semibold text-ink/60 hover:text-ink">
-              Cancelar
-            </button>
-          </div>
-        </form>
-      )}
-
-      <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
-        {funcionarios.length === 0 ? (
-          <p className="p-4 text-sm text-ink/50">Nenhum colaborador cadastrado ainda.</p>
-        ) : (
-          funcionarios.map((f) => (
-            <div key={f.id} className="flex items-center justify-between px-4 py-3 border-b border-black/5 last:border-0">
-              <div>
-                <p className="text-sm font-semibold text-ink">{f.papeis?.pessoas?.nome ?? "—"}</p>
-                {f.cargo && <p className="text-xs text-ink/50">{f.cargo}</p>}
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="text-sm font-semibold text-ink">{formatarMoeda(f.salario)}</span>
-                <button onClick={() => remover(f.id)} className="text-xs font-semibold text-ink/40 hover:text-red-600">
-                  Remover
-                </button>
-              </div>
-            </div>
-          ))
-        )}
+      <div className="grid grid-cols-3 gap-4">
+        <Metrica icon={<Users size={16} />} label="Colaboradores" valor={String(totalColaboradores)} />
+        <Metrica icon={<Wallet size={16} />} label="Valor total (salário + benefícios)" valor={formatarMoeda(totalFolha)} />
+        <Metrica icon={<TrendingUp size={16} />} label="Média por colaborador" valor={formatarMoeda(mediaFolha)} />
       </div>
     </section>
   );
