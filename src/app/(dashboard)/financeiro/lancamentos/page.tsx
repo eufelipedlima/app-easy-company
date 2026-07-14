@@ -15,9 +15,11 @@ interface Lancamento {
   codigo_transacao: string | null;
   banco_id: string | null;
   plano_conta_id: string | null;
+  servico_id: string | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
   bancos: { nome: string } | null;
   planos_conta: { nome: string } | null;
+  servicos: { nome: string } | null;
 }
 
 interface PessoaOpcao {
@@ -185,10 +187,11 @@ export default function LancamentosPage() {
       .from("lancamentos")
       .select(
         `id, descricao, valor, tipo, situacao, data_vencimento, data_quitacao, codigo_transacao,
-         banco_id, plano_conta_id,
+         banco_id, plano_conta_id, servico_id,
          clientes ( papeis ( pessoas ( nome ) ) ),
          bancos ( nome ),
-         planos_conta ( nome )`
+         planos_conta ( nome ),
+         servicos ( nome )`
       )
       .order("data_vencimento", { ascending: true });
     setLancamentos((data as unknown as Lancamento[]) ?? []);
@@ -669,6 +672,11 @@ function LancamentoForm({
   const [novoPlanoConta, setNovoPlanoConta] = useState(false);
   const [nomeNovoPlanoConta, setNomeNovoPlanoConta] = useState("");
 
+  const [servicos, setServicos] = useState<Opcao[]>([]);
+  const [servicoId, setServicoId] = useState(lancamentoEditando?.servico_id ?? "");
+  const [novoServico, setNovoServico] = useState(false);
+  const [nomeNovoServico, setNomeNovoServico] = useState("");
+
   const [descricao, setDescricao] = useState(lancamentoEditando?.descricao ?? "");
   const [valor, setValor] = useState(lancamentoEditando ? String(lancamentoEditando.valor) : "");
   const [situacao, setSituacao] = useState<"pendente" | "pago">(lancamentoEditando?.situacao ?? "pendente");
@@ -683,6 +691,7 @@ function LancamentoForm({
     carregarPessoas();
     carregarBancos();
     carregarPlanosConta();
+    carregarServicos();
   }, []);
 
   async function carregarPessoas() {
@@ -701,6 +710,12 @@ function LancamentoForm({
     const supabase = createClient();
     const { data } = await supabase.from("planos_conta").select("id, nome, tipo").order("nome");
     setPlanosConta((data as PlanoContaOpcao[]) ?? []);
+  }
+
+  async function carregarServicos() {
+    const supabase = createClient();
+    const { data } = await supabase.from("servicos").select("id, nome").order("nome");
+    setServicos(data ?? []);
   }
 
   const sugestoes = pessoas.filter((p) => p.nome.toLowerCase().includes(buscaCliente.toLowerCase()));
@@ -767,6 +782,17 @@ function LancamentoForm({
         planoContaFinalId = data.id;
       }
 
+      let servicoFinalId = servicoId || null;
+      if (novoServico && nomeNovoServico.trim()) {
+        const { data, error } = await supabase
+          .from("servicos")
+          .insert({ nome: nomeNovoServico.trim() })
+          .select("id")
+          .single();
+        if (error) throw error;
+        servicoFinalId = data.id;
+      }
+
       let clienteId: string | null = null;
       if (pessoaSelecionada) {
         clienteId = await garantirClienteId(pessoaSelecionada.id);
@@ -781,6 +807,7 @@ function LancamentoForm({
         data_quitacao: situacao === "pago" ? dataQuitacao || null : null,
         banco_id: bancoFinalId,
         plano_conta_id: planoContaFinalId,
+        servico_id: servicoFinalId,
         codigo_transacao: codigoTransacao || null,
         ...(clienteId ? { cliente_id: clienteId } : {}),
       };
@@ -1048,6 +1075,53 @@ function LancamentoForm({
               Mostrando apenas contas de {tipo === "receita" ? "receita" : "despesa"}.
             </span>
           </Campo>
+
+          {tipo === "receita" && (
+            <Campo label="Serviço">
+              {!novoServico ? (
+                <div className="flex gap-2">
+                  <select value={servicoId} onChange={(e) => setServicoId(e.target.value)} className="input">
+                    <option value="">Selecione...</option>
+                    {servicos.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nome}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setNovoServico(true)}
+                    className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
+                  >
+                    + Novo
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    autoFocus
+                    value={nomeNovoServico}
+                    onChange={(e) => setNomeNovoServico(e.target.value)}
+                    className="input"
+                    placeholder="Nome do serviço"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNovoServico(false);
+                      setNomeNovoServico("");
+                    }}
+                    className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
+              <span className="block text-xs text-ink/40 mt-1">
+                Usado na Análise pra mostrar de onde vem o faturamento.
+              </span>
+            </Campo>
+          )}
         </div>
       </div>
 

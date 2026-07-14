@@ -35,6 +35,7 @@ const MENU: Grupo[] = [
     icon: <DollarSign size={18} />,
     itens: [
       { href: "/financeiro/lancamentos", label: "Lançamentos", icon: <Receipt size={15} /> },
+      { href: "/financeiro/analise", label: "Análise", icon: <BarChart3 size={15} /> },
       { href: "/financeiro/configuracoes", label: "Configurações", icon: <Settings size={15} /> },
     ],
   },
