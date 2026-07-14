@@ -20,6 +20,7 @@ interface Contrato {
   comentarios_extras: string | null;
   arquivo_path: string | null;
   arquivo_nome: string | null;
+  ultima_verificacao_parcelas: string | null;
   clientes: {
     papeis: {
       pessoas: {
@@ -84,7 +85,7 @@ export default function ContratosRecorrentesPage() {
       .select(
         `id, numero_contrato, status, forma_pagamento, valor_mensal, valor_entrada, data_pagamento_entrada, data_primeira_mensalidade,
          data_encerramento, tempo_inicial_meses, servico_id, descricao, comentarios_extras,
-         arquivo_path, arquivo_nome,
+         arquivo_path, arquivo_nome, ultima_verificacao_parcelas,
          clientes ( papeis ( pessoas ( nome, razao_social, documento, email ) ) ),
          servicos ( nome )`
       )
@@ -96,19 +97,26 @@ export default function ContratosRecorrentesPage() {
     garantirParcelasFuturas(lista);
   }, []);
 
-  // Mantém sempre pelo menos 6 meses de mensalidade gerados à frente pra cada contrato
-  // ativo; quando cai abaixo disso, completa de novo até 36 meses à frente. Roda toda
-  // vez que essa tela é aberta — como resultado, na prática nunca fica sem parcela
-  // lançada, sem precisar de um processo rodando sozinho no servidor.
+  // Mantém sempre pelo menos 3 meses de mensalidade gerados à frente pra cada contrato
+  // ativo; quando cai abaixo disso, completa de novo até 12 meses à frente. Só verifica
+  // uma vez por mês por contrato (guarda a data da última verificação no próprio
+  // contrato), pra não fazer essa checagem toda vez que a tela é aberta.
   async function garantirParcelasFuturas(lista: Contrato[]) {
     const supabase = createClient();
     const hoje = new Date();
     const limiteMinimo = new Date(hoje);
-    limiteMinimo.setMonth(limiteMinimo.getMonth() + 6);
+    limiteMinimo.setMonth(limiteMinimo.getMonth() + 3);
     const alvoFinal = new Date(hoje);
-    alvoFinal.setMonth(alvoFinal.getMonth() + 36);
+    alvoFinal.setMonth(alvoFinal.getMonth() + 12);
+
+    const trintaDiasAtras = new Date(hoje);
+    trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30);
 
     for (const c of lista.filter((c) => c.status === "ativo")) {
+      if (c.ultima_verificacao_parcelas && new Date(c.ultima_verificacao_parcelas) > trintaDiasAtras) {
+        continue; // já verificado nos últimos 30 dias
+      }
+
       const { data: ultimos } = await supabase
         .from("lancamentos")
         .select("data_vencimento, grupo_id, cliente_id, pessoa_id, descricao")
@@ -121,29 +129,34 @@ export default function ContratosRecorrentesPage() {
       if (!ultimo) continue; // contrato sem lançamentos gerados ainda (ex: criado antes dessa função existir)
 
       const maxData = new Date(ultimo.data_vencimento + "T00:00:00");
-      if (maxData >= limiteMinimo) continue; // ainda tem margem suficiente
+      if (maxData < limiteMinimo) {
+        const linhas: Record<string, unknown>[] = [];
+        const cursor = new Date(maxData);
+        while (cursor < alvoFinal) {
+          cursor.setMonth(cursor.getMonth() + 1);
+          linhas.push({
+            contrato_id: c.id,
+            cliente_id: ultimo.cliente_id,
+            pessoa_id: ultimo.pessoa_id,
+            tipo: "receita",
+            situacao: "pendente",
+            descricao: ultimo.descricao,
+            valor: c.valor_mensal,
+            data_vencimento: cursor.toISOString().slice(0, 10),
+            servico_id: c.servico_id,
+            grupo_id: ultimo.grupo_id,
+            recorrencia_tipo: "mensal",
+          });
+        }
+        if (linhas.length > 0) {
+          await supabase.from("lancamentos").insert(linhas);
+        }
+      }
 
-      const linhas: Record<string, unknown>[] = [];
-      const cursor = new Date(maxData);
-      while (cursor < alvoFinal) {
-        cursor.setMonth(cursor.getMonth() + 1);
-        linhas.push({
-          contrato_id: c.id,
-          cliente_id: ultimo.cliente_id,
-          pessoa_id: ultimo.pessoa_id,
-          tipo: "receita",
-          situacao: "pendente",
-          descricao: ultimo.descricao,
-          valor: c.valor_mensal,
-          data_vencimento: cursor.toISOString().slice(0, 10),
-          servico_id: c.servico_id,
-          grupo_id: ultimo.grupo_id,
-          recorrencia_tipo: "mensal",
-        });
-      }
-      if (linhas.length > 0) {
-        await supabase.from("lancamentos").insert(linhas);
-      }
+      await supabase
+        .from("contratos")
+        .update({ ultima_verificacao_parcelas: hoje.toISOString() })
+        .eq("id", c.id);
     }
   }
 
@@ -679,7 +692,7 @@ function ContratoRecorrenteForm({
           }
 
           const grupoId = crypto.randomUUID();
-          const MESES_GERADOS = 36;
+          const MESES_GERADOS = 12;
           for (let i = 0; i < MESES_GERADOS; i++) {
             const venc = new Date(dataPrimeiraMensalidade + "T00:00:00");
             venc.setMonth(venc.getMonth() + i);
