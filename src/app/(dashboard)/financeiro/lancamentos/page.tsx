@@ -159,6 +159,25 @@ export default function LancamentosPage() {
   const [periodoPersonalizado, setPeriodoPersonalizado] = useState(calcularPeriodo("este_mes"));
   const periodo = presetPeriodo === "personalizado" ? periodoPersonalizado : calcularPeriodo(presetPeriodo);
 
+  const [buscaAvancadaAberta, setBuscaAvancadaAberta] = useState(false);
+  const [bancosOpcoes, setBancosOpcoes] = useState<Opcao[]>([]);
+  const [planosContaOpcoes, setPlanosContaOpcoes] = useState<Opcao[]>([]);
+  const [filtroCliente, setFiltroCliente] = useState("");
+  const [filtroDescricao, setFiltroDescricao] = useState("");
+  const [filtroPlanoContaId, setFiltroPlanoContaId] = useState("");
+  const [filtroBancoId, setFiltroBancoId] = useState("");
+  const [filtroValor, setFiltroValor] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState<"" | "receita" | "despesa">("");
+
+  function limparFiltrosAvancados() {
+    setFiltroCliente("");
+    setFiltroDescricao("");
+    setFiltroPlanoContaId("");
+    setFiltroBancoId("");
+    setFiltroValor("");
+    setFiltroTipo("");
+  }
+
   const carregar = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
@@ -178,12 +197,33 @@ export default function LancamentosPage() {
 
   useEffect(() => {
     carregar();
+    async function carregarOpcoes() {
+      const supabase = createClient();
+      const [{ data: b }, { data: p }] = await Promise.all([
+        supabase.from("bancos").select("id, nome").order("nome"),
+        supabase.from("planos_conta").select("id, nome").order("nome"),
+      ]);
+      setBancosOpcoes(b ?? []);
+      setPlanosContaOpcoes(p ?? []);
+    }
+    carregarOpcoes();
   }, [carregar]);
 
   const noPeriodo = (data: string) => data >= periodo.inicio && data <= periodo.fim;
 
   const lancamentosDoPeriodo = lancamentos.filter((l) => noPeriodo(l.data_vencimento));
-  const filtrados = lancamentosDoPeriodo.filter((l) => filtro === "todos" || l.situacao === filtro);
+  const filtrados = lancamentosDoPeriodo
+    .filter((l) => filtro === "todos" || l.situacao === filtro)
+    .filter((l) => !filtroTipo || l.tipo === filtroTipo)
+    .filter(
+      (l) =>
+        !filtroCliente ||
+        (l.clientes?.papeis?.pessoas?.nome ?? "").toLowerCase().includes(filtroCliente.toLowerCase())
+    )
+    .filter((l) => !filtroDescricao || (l.descricao ?? "").toLowerCase().includes(filtroDescricao.toLowerCase()))
+    .filter((l) => !filtroPlanoContaId || l.plano_conta_id === filtroPlanoContaId)
+    .filter((l) => !filtroBancoId || l.banco_id === filtroBancoId)
+    .filter((l) => !filtroValor || l.valor.toFixed(2).includes(filtroValor.replace(",", ".")));
 
   function somar(lista: Lancamento[], tipo: "receita" | "despesa") {
     return lista.filter((l) => l.tipo === tipo).reduce((soma, l) => soma + l.valor, 0);
@@ -216,6 +256,99 @@ export default function LancamentosPage() {
           </button>
         )}
       </div>
+
+      <div className="mb-6">
+        <button
+          onClick={() => setBuscaAvancadaAberta((v) => !v)}
+          className="text-sm font-bold text-forest hover:text-ink flex items-center gap-1.5"
+        >
+          🔍 Busca avançada {buscaAvancadaAberta ? "▲" : "▼"}
+        </button>
+      </div>
+
+      {buscaAvancadaAberta && (
+        <div className="rounded-3xl bg-ink p-6 mb-6">
+          <h3 className="text-forest text-sm font-bold mb-4">Busca avançada</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <CampoEscuro label="Cliente / Fornecedor">
+              <input
+                value={filtroCliente}
+                onChange={(e) => setFiltroCliente(e.target.value)}
+                className="input-escuro"
+                placeholder="Nome..."
+              />
+            </CampoEscuro>
+            <CampoEscuro label="Descrição">
+              <input
+                value={filtroDescricao}
+                onChange={(e) => setFiltroDescricao(e.target.value)}
+                className="input-escuro"
+                placeholder="Descrição..."
+              />
+            </CampoEscuro>
+            <CampoEscuro label="Plano de conta">
+              <select
+                value={filtroPlanoContaId}
+                onChange={(e) => setFiltroPlanoContaId(e.target.value)}
+                className="input-escuro"
+              >
+                <option value="">Todos</option>
+                {planosContaOpcoes.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nome}
+                  </option>
+                ))}
+              </select>
+            </CampoEscuro>
+            <CampoEscuro label="Conta bancária">
+              <select
+                value={filtroBancoId}
+                onChange={(e) => setFiltroBancoId(e.target.value)}
+                className="input-escuro"
+              >
+                <option value="">Todos</option>
+                {bancosOpcoes.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.nome}
+                  </option>
+                ))}
+              </select>
+            </CampoEscuro>
+            <CampoEscuro label="Valor">
+              <input
+                value={filtroValor}
+                onChange={(e) => setFiltroValor(e.target.value)}
+                className="input-escuro"
+                placeholder="Ex: 650,00"
+              />
+            </CampoEscuro>
+            <CampoEscuro label="Tipo de lançamento">
+              <select
+                value={filtroTipo}
+                onChange={(e) => setFiltroTipo(e.target.value as "" | "receita" | "despesa")}
+                className="input-escuro"
+              >
+                <option value="">Todos</option>
+                <option value="receita">Receitas</option>
+                <option value="despesa">Despesas</option>
+              </select>
+            </CampoEscuro>
+            <CampoEscuro label="Situação do lançamento">
+              <select value={filtro} onChange={(e) => setFiltro(e.target.value as Filtro)} className="input-escuro">
+                <option value="todos">Todas</option>
+                <option value="pendente">Pendente</option>
+                <option value="pago">Pago</option>
+              </select>
+            </CampoEscuro>
+          </div>
+          <button
+            onClick={limparFiltrosAvancados}
+            className="mt-4 text-sm font-semibold text-white/50 hover:text-white"
+          >
+            Limpar filtros
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-2">
@@ -929,6 +1062,15 @@ function LancamentoForm({
         </button>
       </div>
     </form>
+  );
+}
+
+function CampoEscuro({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="block text-xs font-bold text-white/70 mb-1.5">{label}</span>
+      {children}
+    </label>
   );
 }
 

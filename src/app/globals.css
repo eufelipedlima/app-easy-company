@@ -44,3 +44,28 @@ body {
 .input:focus {
   border-color: var(--ec-forest);
 }
+
+.input-escuro {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.55rem 0.9rem;
+  font-size: 0.875rem;
+  color: var(--ec-white);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.input-escuro::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.input-escuro:focus {
+  border-color: var(--ec-mint);
+}
+
+.input-escuro option {
+  background: var(--ec-ink);
+  color: var(--ec-white);
+}
