@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Users, FileText, ChevronDown, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat } from "lucide-react";
+import { Users, FileText, ChevronDown, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, ListTree, Wrench } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -21,12 +21,13 @@ interface Grupo {
 
 const MENU: Grupo[] = [
   {
-    label: "Pessoas",
-    icon: <Users size={18} />,
+    label: "Configurações",
+    icon: <Settings size={18} />,
     itens: [
-      { href: "/pessoas/clientes", label: "Clientes", icon: <UserCheck size={15} /> },
-      { href: "/pessoas/funcionarios", label: "Funcionários", icon: <Briefcase size={15} /> },
-      { href: "/pessoas/prestadores", label: "Prestadores", icon: <HardHat size={15} /> },
+      { href: "/configuracoes/bancos", label: "Bancos", icon: <Landmark size={15} /> },
+      { href: "/configuracoes/cargos", label: "Cargos", icon: <Briefcase size={15} /> },
+      { href: "/configuracoes/planos-conta", label: "Planos de conta", icon: <ListTree size={15} /> },
+      { href: "/configuracoes/servicos", label: "Serviços", icon: <Wrench size={15} /> },
     ],
   },
   {
@@ -43,8 +44,16 @@ const MENU: Grupo[] = [
     icon: <DollarSign size={18} />,
     itens: [
       { href: "/financeiro/analise", label: "Análise", icon: <BarChart3 size={15} /> },
-      { href: "/financeiro/configuracoes", label: "Configurações", icon: <Settings size={15} /> },
       { href: "/financeiro/lancamentos", label: "Lançamentos", icon: <Receipt size={15} /> },
+    ],
+  },
+  {
+    label: "Pessoas",
+    icon: <Users size={18} />,
+    itens: [
+      { href: "/pessoas/clientes", label: "Clientes", icon: <UserCheck size={15} /> },
+      { href: "/pessoas/funcionarios", label: "Funcionários", icon: <Briefcase size={15} /> },
+      { href: "/pessoas/prestadores", label: "Prestadores", icon: <HardHat size={15} /> },
     ],
   },
 ];

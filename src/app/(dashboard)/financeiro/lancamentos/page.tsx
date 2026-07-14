@@ -12,10 +12,14 @@ interface Lancamento {
   situacao: "pendente" | "pago";
   data_vencimento: string;
   data_quitacao: string | null;
+  data_competencia: string | null;
   codigo_transacao: string | null;
   banco_id: string | null;
   plano_conta_id: string | null;
   servico_id: string | null;
+  numero_parcela: number | null;
+  total_parcelas: number | null;
+  recorrencia_tipo: "mensal" | "semanal" | "anual" | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
   pessoas: { nome: string } | null;
   bancos: { nome: string } | null;
@@ -192,8 +196,8 @@ export default function LancamentosPage() {
     const { data } = await supabase
       .from("lancamentos")
       .select(
-        `id, descricao, valor, tipo, situacao, data_vencimento, data_quitacao, codigo_transacao,
-         banco_id, plano_conta_id, servico_id,
+        `id, descricao, valor, tipo, situacao, data_vencimento, data_quitacao, data_competencia, codigo_transacao,
+         banco_id, plano_conta_id, servico_id, numero_parcela, total_parcelas, recorrencia_tipo,
          clientes ( papeis ( pessoas ( nome ) ) ),
          pessoas ( nome ),
          bancos ( nome ),
@@ -525,7 +529,17 @@ export default function LancamentosPage() {
                   <td className="px-4 py-3 font-semibold text-ink">
                     {nomePessoaLancamento(l) ?? "—"}
                   </td>
-                  <td className="px-4 py-3 text-ink/70">{l.descricao ?? "—"}</td>
+                  <td className="px-4 py-3 text-ink/70">
+                    {l.descricao ?? "—"}
+                    {l.total_parcelas && (
+                      <span className="ml-1.5 text-xs text-ink/40 font-mono">
+                        {l.numero_parcela}/{l.total_parcelas}
+                      </span>
+                    )}
+                    {l.recorrencia_tipo && (
+                      <span className="ml-1.5 text-xs text-ink/40">🔁</span>
+                    )}
+                  </td>
                   <td
                     className={`px-4 py-3 font-semibold ${
                       l.tipo === "receita" ? "text-forest" : l.tipo === "despesa" ? "text-red-600" : "text-ink/70"
@@ -626,6 +640,7 @@ export default function LancamentosPage() {
 
             <SecaoDetalhe titulo="Datas">
               <DetalheLinha label="Vencimento" valor={formatarData(detalhe.data_vencimento)} />
+              <DetalheLinha label="Competência" valor={formatarData(detalhe.data_competencia)} />
               <DetalheLinha label="Quitação" valor={formatarData(detalhe.data_quitacao)} />
             </SecaoDetalhe>
 
@@ -634,6 +649,26 @@ export default function LancamentosPage() {
               <DetalheLinha label="Plano de conta" valor={detalhe.planos_conta?.nome ?? "—"} />
               <DetalheLinha label="Descrição" valor={detalhe.descricao ?? "—"} />
             </SecaoDetalhe>
+
+            {(detalhe.total_parcelas || detalhe.recorrencia_tipo) && (
+              <SecaoDetalhe titulo="Repetição">
+                {detalhe.total_parcelas && (
+                  <DetalheLinha label="Parcela" valor={`${detalhe.numero_parcela}/${detalhe.total_parcelas}`} />
+                )}
+                {detalhe.recorrencia_tipo && (
+                  <DetalheLinha
+                    label="Recorrência"
+                    valor={
+                      detalhe.recorrencia_tipo === "mensal"
+                        ? "Mensal"
+                        : detalhe.recorrencia_tipo === "semanal"
+                        ? "Semanal"
+                        : "Anual"
+                    }
+                  />
+                )}
+              </SecaoDetalhe>
+            )}
           </div>
         </div>
       )}
@@ -726,6 +761,12 @@ function LancamentoForm({
   const [situacao, setSituacao] = useState<"pendente" | "pago">(lancamentoEditando?.situacao ?? "pendente");
   const [dataVencimento, setDataVencimento] = useState(lancamentoEditando?.data_vencimento ?? "");
   const [dataQuitacao, setDataQuitacao] = useState(lancamentoEditando?.data_quitacao ?? "");
+  const [dataCompetencia, setDataCompetencia] = useState(lancamentoEditando?.data_competencia ?? "");
+
+  const [repeticao, setRepeticao] = useState<"nenhuma" | "parcelado" | "recorrente">("nenhuma");
+  const [totalParcelas, setTotalParcelas] = useState("2");
+  const [frequenciaRecorrencia, setFrequenciaRecorrencia] = useState<"mensal" | "semanal" | "anual">("mensal");
+  const [quantidadeRecorrencias, setQuantidadeRecorrencias] = useState("12");
 
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -851,13 +892,9 @@ function LancamentoForm({
         clienteId = await garantirClienteId(pessoaSelecionada.id);
       }
 
-      const payload = {
+      const payloadBase = {
         descricao: descricao || null,
-        valor: Number(valor),
         tipo,
-        situacao,
-        data_vencimento: dataVencimento,
-        data_quitacao: situacao === "pago" ? dataQuitacao || null : null,
         banco_id: bancoFinalId,
         plano_conta_id: tipo === "transferencia" ? null : planoContaFinalId,
         servico_id: tipo === "receita" ? servicoFinalId : null,
@@ -866,9 +903,76 @@ function LancamentoForm({
       };
 
       if (editando && lancamentoEditando) {
+        const payload = {
+          ...payloadBase,
+          valor: Number(valor),
+          situacao,
+          data_vencimento: dataVencimento,
+          data_quitacao: situacao === "pago" ? dataQuitacao || null : null,
+          data_competencia: dataCompetencia || null,
+        };
         const { error } = await supabase.from("lancamentos").update(payload).eq("id", lancamentoEditando.id);
         if (error) throw error;
+      } else if (repeticao === "parcelado") {
+        const n = Number(totalParcelas);
+        const grupoId = crypto.randomUUID();
+        const linhas = Array.from({ length: n }, (_, i) => {
+          const venc = new Date(dataVencimento + "T00:00:00");
+          venc.setMonth(venc.getMonth() + i);
+          const comp = dataCompetencia ? new Date(dataCompetencia + "T00:00:00") : null;
+          if (comp) comp.setMonth(comp.getMonth() + i);
+          return {
+            ...payloadBase,
+            valor: Number(valor),
+            situacao: i === 0 ? situacao : "pendente",
+            data_vencimento: venc.toISOString().slice(0, 10),
+            data_quitacao: i === 0 && situacao === "pago" ? dataQuitacao || null : null,
+            data_competencia: comp ? comp.toISOString().slice(0, 10) : null,
+            grupo_id: grupoId,
+            numero_parcela: i + 1,
+            total_parcelas: n,
+          };
+        });
+        const { error } = await supabase.from("lancamentos").insert(linhas);
+        if (error) throw error;
+      } else if (repeticao === "recorrente") {
+        const n = Number(quantidadeRecorrencias);
+        const grupoId = crypto.randomUUID();
+        const linhas = Array.from({ length: n }, (_, i) => {
+          const venc = new Date(dataVencimento + "T00:00:00");
+          const comp = dataCompetencia ? new Date(dataCompetencia + "T00:00:00") : null;
+          if (frequenciaRecorrencia === "mensal") {
+            venc.setMonth(venc.getMonth() + i);
+            if (comp) comp.setMonth(comp.getMonth() + i);
+          } else if (frequenciaRecorrencia === "semanal") {
+            venc.setDate(venc.getDate() + i * 7);
+            if (comp) comp.setDate(comp.getDate() + i * 7);
+          } else {
+            venc.setFullYear(venc.getFullYear() + i);
+            if (comp) comp.setFullYear(comp.getFullYear() + i);
+          }
+          return {
+            ...payloadBase,
+            valor: Number(valor),
+            situacao: i === 0 ? situacao : "pendente",
+            data_vencimento: venc.toISOString().slice(0, 10),
+            data_quitacao: i === 0 && situacao === "pago" ? dataQuitacao || null : null,
+            data_competencia: comp ? comp.toISOString().slice(0, 10) : null,
+            grupo_id: grupoId,
+            recorrencia_tipo: frequenciaRecorrencia,
+          };
+        });
+        const { error } = await supabase.from("lancamentos").insert(linhas);
+        if (error) throw error;
       } else {
+        const payload = {
+          ...payloadBase,
+          valor: Number(valor),
+          situacao,
+          data_vencimento: dataVencimento,
+          data_quitacao: situacao === "pago" ? dataQuitacao || null : null,
+          data_competencia: dataCompetencia || null,
+        };
         const { error } = await supabase.from("lancamentos").insert(payload);
         if (error) throw error;
       }
@@ -994,6 +1098,9 @@ function LancamentoForm({
         <Campo label="Data de vencimento" required>
           <input type="date" required value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} className="input" />
         </Campo>
+        <Campo label="Data de competência">
+          <input type="date" value={dataCompetencia} onChange={(e) => setDataCompetencia(e.target.value)} className="input" />
+        </Campo>
         <div>
           <span className="block text-sm font-medium text-ink/70 mb-1">Situação</span>
           <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
@@ -1023,6 +1130,86 @@ function LancamentoForm({
           </Campo>
         )}
       </div>
+
+      {!editando && (
+        <div className="rounded-2xl bg-surface p-3">
+          <span className="block text-sm font-medium text-ink/70 mb-2">Repetição</span>
+          <div className="flex items-center gap-1 rounded-full bg-white p-1 w-fit mb-3">
+            <button
+              type="button"
+              onClick={() => setRepeticao("nenhuma")}
+              className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                repeticao === "nenhuma" ? "bg-ink text-white" : "text-ink/60"
+              }`}
+            >
+              Nenhuma
+            </button>
+            <button
+              type="button"
+              onClick={() => setRepeticao("parcelado")}
+              className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                repeticao === "parcelado" ? "bg-ink text-white" : "text-ink/60"
+              }`}
+            >
+              Parcelado
+            </button>
+            <button
+              type="button"
+              onClick={() => setRepeticao("recorrente")}
+              className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                repeticao === "recorrente" ? "bg-ink text-white" : "text-ink/60"
+              }`}
+            >
+              Recorrente
+            </button>
+          </div>
+
+          {repeticao === "parcelado" && (
+            <div className="grid grid-cols-2 gap-3">
+              <Campo label="Número de parcelas" required>
+                <input
+                  type="number"
+                  min="2"
+                  required
+                  value={totalParcelas}
+                  onChange={(e) => setTotalParcelas(e.target.value)}
+                  className="input"
+                />
+              </Campo>
+              <p className="text-xs text-ink/40 self-end pb-2">
+                Gera {totalParcelas || "—"} lançamentos mensais de {formatarMoeda(Number(valor) || 0)} cada,
+                a partir da data de vencimento.
+              </p>
+            </div>
+          )}
+
+          {repeticao === "recorrente" && (
+            <div className="grid grid-cols-2 gap-3">
+              <Campo label="Frequência" required>
+                <select
+                  value={frequenciaRecorrencia}
+                  onChange={(e) => setFrequenciaRecorrencia(e.target.value as "mensal" | "semanal" | "anual")}
+                  className="input"
+                >
+                  <option value="mensal">Mensal</option>
+                  <option value="semanal">Semanal</option>
+                  <option value="anual">Anual</option>
+                </select>
+              </Campo>
+              <Campo label="Quantidade de repetições" required>
+                <input
+                  type="number"
+                  min="2"
+                  required
+                  value={quantidadeRecorrencias}
+                  onChange={(e) => setQuantidadeRecorrencias(e.target.value)}
+                  className="input"
+                />
+              </Campo>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="relative">
         <Busca
