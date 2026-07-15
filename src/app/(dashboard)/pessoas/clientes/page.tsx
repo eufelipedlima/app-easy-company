@@ -21,8 +21,10 @@ interface Pessoa {
   cidade: string | null;
   cep: string | null;
   segmento_id: string | null;
+  origem_id: string | null;
   created_at: string;
   segmentos: { nome: string } | null;
+  origens: { nome: string } | null;
   papeis: { papel: string }[];
 }
 
@@ -47,7 +49,7 @@ export default function PessoasPage() {
     const { data } = await supabase
       .from("pessoas")
       .select(
-        "id, tipo_pessoa, nome, razao_social, documento, data_nascimento, email, whatsapp, pix, rua, numero, complemento, bairro, cidade, cep, segmento_id, created_at, segmentos ( nome ), papeis ( papel )"
+        "id, tipo_pessoa, nome, razao_social, documento, data_nascimento, email, whatsapp, pix, rua, numero, complemento, bairro, cidade, cep, segmento_id, origem_id, created_at, segmentos ( nome ), origens ( nome ), papeis ( papel )"
       )
       .order("created_at", { ascending: false });
     setPessoas((data as unknown as Pessoa[]) ?? []);
@@ -245,6 +247,7 @@ export default function PessoasPage() {
               {detalhe.tipo_pessoa === "PJ" && (
                 <DetalheLinha label="Segmento" valor={detalhe.segmentos?.nome ?? "—"} />
               )}
+              <DetalheLinha label="Origem" valor={detalhe.origens?.nome ?? "—"} />
             </SecaoDetalhe>
 
             <SecaoDetalhe titulo="Contato">
