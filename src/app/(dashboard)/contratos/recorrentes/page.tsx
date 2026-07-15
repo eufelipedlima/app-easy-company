@@ -5,6 +5,15 @@ import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { PessoaForm } from "@/components/pessoa-form";
 
+interface HistoricoValor {
+  id: string;
+  valor_anterior: number;
+  valor_novo: number;
+  data_reajuste: string;
+  motivo: string | null;
+  observacao: string | null;
+}
+
 interface Contrato {
   id: string;
   numero_contrato: string | null;
@@ -94,10 +103,18 @@ export default function ContratosRecorrentesPage() {
   const [filtro, setFiltro] = useState<Filtro>("ativo");
   const [detalhe, setDetalhe] = useState<Contrato | null>(null);
   const [totalPagoReal, setTotalPagoReal] = useState<number | null>(null);
+  const [historicoValor, setHistoricoValor] = useState<HistoricoValor[]>([]);
+  const [painelReajusteContratoAberto, setPainelReajusteContratoAberto] = useState(false);
+  const [novoValorMensal, setNovoValorMensal] = useState("");
+  const [dataReajusteContrato, setDataReajusteContrato] = useState(() => new Date().toISOString().slice(0, 10));
+  const [motivoReajuste, setMotivoReajuste] = useState("");
+  const [observacaoReajusteContrato, setObservacaoReajusteContrato] = useState("");
+  const [salvandoReajusteContrato, setSalvandoReajusteContrato] = useState(false);
 
   useEffect(() => {
     if (!detalhe) {
       setTotalPagoReal(null);
+      setHistoricoValor([]);
       return;
     }
     async function carregarTotalPago() {
@@ -110,8 +127,51 @@ export default function ContratosRecorrentesPage() {
       const somaPago = (data ?? []).reduce((s, l) => s + l.valor, 0);
       setTotalPagoReal((detalhe!.valor_pago_historico ?? 0) + somaPago);
     }
+    async function carregarHistoricoValor() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("contrato_historico_valor")
+        .select("id, valor_anterior, valor_novo, data_reajuste, motivo, observacao")
+        .eq("contrato_id", detalhe!.id)
+        .order("data_reajuste", { ascending: false });
+      setHistoricoValor(data ?? []);
+    }
     carregarTotalPago();
+    carregarHistoricoValor();
   }, [detalhe]);
+
+  async function registrarReajusteContrato() {
+    if (!detalhe || !novoValorMensal || !dataReajusteContrato) return;
+    setSalvandoReajusteContrato(true);
+    const supabase = createClient();
+
+    await supabase.from("contrato_historico_valor").insert({
+      contrato_id: detalhe.id,
+      valor_anterior: detalhe.valor_mensal,
+      valor_novo: Number(novoValorMensal),
+      data_reajuste: dataReajusteContrato,
+      motivo: motivoReajuste || null,
+      observacao: observacaoReajusteContrato || null,
+    });
+
+    await supabase.from("contratos").update({ valor_mensal: Number(novoValorMensal) }).eq("id", detalhe.id);
+
+    await supabase
+      .from("lancamentos")
+      .update({ valor: Number(novoValorMensal) })
+      .eq("contrato_id", detalhe.id)
+      .eq("recorrencia_tipo", "mensal")
+      .eq("situacao", "pendente")
+      .gte("data_vencimento", dataReajusteContrato);
+
+    setNovoValorMensal("");
+    setMotivoReajuste("");
+    setObservacaoReajusteContrato("");
+    setPainelReajusteContratoAberto(false);
+    setSalvandoReajusteContrato(false);
+    setDetalhe({ ...detalhe, valor_mensal: Number(novoValorMensal) });
+    carregar();
+  }
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -386,27 +446,109 @@ export default function ContratosRecorrentesPage() {
                   </div>
 
                   <div className="rounded-2xl bg-card p-4 mb-4 shadow-sm">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs text-ink/50 mb-0.5">Valor mensal</p>
-                        <p className="text-xl font-extrabold text-forest">{formatarMoeda(detalhe.valor_mensal)}</p>
+                    <div className="flex items-start justify-between">
+                      <div className="grid grid-cols-2 gap-4 flex-1">
+                        <div>
+                          <p className="text-xs text-ink/50 mb-0.5">Valor mensal</p>
+                          <p className="text-xl font-extrabold text-forest">{formatarMoeda(detalhe.valor_mensal)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-ink/50 mb-0.5">LTV atual (estimado)</p>
+                          <p className="text-xl font-extrabold text-ink">{formatarMoeda(ltv)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-ink/50 mb-0.5">Total pago (real)</p>
+                          <p className="text-lg font-bold text-forest">
+                            {totalPagoReal != null ? formatarMoeda(totalPagoReal) : "…"}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs text-ink/50 mb-0.5">LTV atual (estimado)</p>
-                        <p className="text-xl font-extrabold text-ink">{formatarMoeda(ltv)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-ink/50 mb-0.5">Total pago (real)</p>
-                        <p className="text-lg font-bold text-forest">
-                          {totalPagoReal != null ? formatarMoeda(totalPagoReal) : "…"}
-                        </p>
-                      </div>
+                      {!painelReajusteContratoAberto && (
+                        <button
+                          onClick={() => {
+                            setNovoValorMensal(String(detalhe.valor_mensal));
+                            setPainelReajusteContratoAberto(true);
+                          }}
+                          className="shrink-0 rounded-full bg-ink text-white px-3 py-1.5 text-xs font-bold hover:bg-forest transition-colors"
+                        >
+                          Reajustar valor
+                        </button>
+                      )}
                     </div>
                     <p className="text-xs text-ink/40 mt-3 pt-3 border-t border-black/5">
                       Recorrente · {meses} {meses === 1 ? "mês" : "meses"} de casa
                       {detalhe.eh_migracao && " · cliente migrado"}
                     </p>
                   </div>
+
+                  {painelReajusteContratoAberto && (
+                    <div className="rounded-2xl bg-card p-4 mb-4 shadow-sm space-y-3">
+                      <p className="text-sm font-bold text-ink">Reajustar valor mensal</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="block">
+                          <span className="block text-xs font-medium text-ink/70 mb-1">Novo valor (R$)</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={novoValorMensal}
+                            onChange={(e) => setNovoValorMensal(e.target.value)}
+                            className="input text-sm"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="block text-xs font-medium text-ink/70 mb-1">Data do reajuste</span>
+                          <input
+                            type="date"
+                            value={dataReajusteContrato}
+                            onChange={(e) => setDataReajusteContrato(e.target.value)}
+                            className="input text-sm"
+                          />
+                        </label>
+                        <label className="block col-span-2">
+                          <span className="block text-xs font-medium text-ink/70 mb-1">Motivo (opcional)</span>
+                          <select
+                            value={motivoReajuste}
+                            onChange={(e) => setMotivoReajuste(e.target.value)}
+                            className="input text-sm"
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="Reajuste anual">Reajuste anual</option>
+                            <option value="Renegociação">Renegociação</option>
+                            <option value="Mudança de escopo">Mudança de escopo</option>
+                            <option value="Outro">Outro</option>
+                          </select>
+                        </label>
+                        <label className="block col-span-2">
+                          <span className="block text-xs font-medium text-ink/70 mb-1">Observação (opcional)</span>
+                          <input
+                            value={observacaoReajusteContrato}
+                            onChange={(e) => setObservacaoReajusteContrato(e.target.value)}
+                            className="input text-sm"
+                          />
+                        </label>
+                      </div>
+                      <p className="text-xs text-ink/40">
+                        As parcelas pendentes a partir dessa data passam a usar o novo valor. As que já
+                        venceram ou já foram pagas não mudam.
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={registrarReajusteContrato}
+                          disabled={salvandoReajusteContrato}
+                          className="rounded-full bg-forest text-white px-5 py-2 text-xs font-bold hover:bg-ink transition-colors disabled:opacity-50"
+                        >
+                          {salvandoReajusteContrato ? "Salvando..." : "Confirmar"}
+                        </button>
+                        <button
+                          onClick={() => setPainelReajusteContratoAberto(false)}
+                          className="text-xs font-semibold text-ink/50 hover:text-ink"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   <SecaoDetalhe titulo="Cliente">
                     <DetalheLinha label={pessoa?.razao_social ? "Razão social" : "Nome"} valor={pessoa?.nome ?? "—"} />
@@ -465,6 +607,25 @@ export default function ContratosRecorrentesPage() {
                       >
                         📄 {detalhe.arquivo_nome ?? "Ver arquivo do contrato"}
                       </button>
+                    </SecaoDetalhe>
+                  )}
+                  {historicoValor.length > 0 && (
+                    <SecaoDetalhe titulo="Histórico de reajustes">
+                      {historicoValor.map((h) => (
+                        <div key={h.id} className="text-sm border-b border-black/5 last:border-0 pb-2 last:pb-0">
+                          <div className="flex items-center justify-between">
+                            <span className="text-ink/70">
+                              {formatarMoeda(h.valor_anterior)} → <span className="font-semibold text-ink">{formatarMoeda(h.valor_novo)}</span>
+                            </span>
+                            <span className="text-xs text-ink/40">{formatarData(h.data_reajuste)}</span>
+                          </div>
+                          {(h.motivo || h.observacao) && (
+                            <p className="text-xs text-ink/40 mt-0.5">
+                              {[h.motivo, h.observacao].filter(Boolean).join(" — ")}
+                            </p>
+                          )}
+                        </div>
+                      ))}
                     </SecaoDetalhe>
                   )}
                 </>
