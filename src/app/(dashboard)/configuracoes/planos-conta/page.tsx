@@ -29,10 +29,25 @@ const GRUPO_LABEL: Record<string, string> = {
   ir_csll: "IR/CSLL",
 };
 
+const GRUPOS_RECEITA = ["receita_bruta", "receitas_financeiras", "outras_receitas"];
+const GRUPOS_DESPESA = [
+  "deducoes",
+  "custos_vendas",
+  "despesas_vendas",
+  "despesas_administrativas",
+  "despesas_financeiras",
+  "outras_despesas",
+  "ir_csll",
+];
+
+type Filtro = "todos" | "receita" | "despesa";
+
 export default function PlanosContaPage() {
   const [planos, setPlanos] = useState<PlanoConta[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [painelAberto, setPainelAberto] = useState(false);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -50,10 +65,10 @@ export default function PlanosContaPage() {
     carregar();
   }, [carregar]);
 
-  const receitas = planos.filter((p) => p.tipo === "receita");
-  const despesas = planos.filter((p) => p.tipo === "despesa");
+  const planosFiltrados = planos.filter((p) => filtro === "todos" || p.tipo === filtro);
 
   async function remover(id: string) {
+    if (!window.confirm("Excluir este plano de conta?")) return;
     const supabase = createClient();
     await supabase.from("planos_conta").delete().eq("id", id);
     carregar();
@@ -65,8 +80,9 @@ export default function PlanosContaPage() {
     carregar();
   }
 
-  if (loading) {
-    return <p className="text-sm text-ink/50">Carregando...</p>;
+  function categoriasParaTipo(tipo: "receita" | "despesa") {
+    const grupos = tipo === "receita" ? GRUPOS_RECEITA : GRUPOS_DESPESA;
+    return categorias.filter((c) => grupos.includes(c.grupo));
   }
 
   return (
@@ -75,119 +91,174 @@ export default function PlanosContaPage() {
         💡 Cada plano de conta pode ser ligado a uma categoria do DRE — assim os lançamentos entram
         automaticamente no relatório. Gerencie as categorias em Financeiro → DRE.
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Grupo
-          titulo="Receita"
-          emoji="💚"
-          tipo="receita"
-          planos={receitas}
-          categorias={categorias.filter((c) => ["receita_bruta", "receitas_financeiras", "outras_receitas"].includes(c.grupo))}
-          onChange={carregar}
-          onRemover={remover}
-          onCategoriaChange={atualizarCategoria}
-        />
-        <Grupo
-          titulo="Despesa"
-          emoji="❤️"
-          tipo="despesa"
-          planos={despesas}
-          categorias={categorias.filter((c) =>
-            ["deducoes", "custos_vendas", "despesas_vendas", "despesas_administrativas", "despesas_financeiras", "outras_despesas", "ir_csll"].includes(c.grupo)
-          )}
-          onChange={carregar}
-          onRemover={remover}
-          onCategoriaChange={atualizarCategoria}
-        />
+
+      <div className="flex items-center justify-between mb-4">
+        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner">
+          {(["todos", "receita", "despesa"] as Filtro[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFiltro(f)}
+              className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
+                filtro === f ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
+              }`}
+            >
+              {f === "todos" ? "Todos" : f === "receita" ? "Receita" : "Despesa"}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setPainelAberto(true)}
+          className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+        >
+          + Adicionar plano de conta
+        </button>
       </div>
+
+      <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-surface text-left text-ink/40 text-xs uppercase tracking-wide">
+              <th className="px-4 py-3 font-semibold">Nome</th>
+              <th className="px-4 py-3 font-semibold">Tipo</th>
+              <th className="px-4 py-3 font-semibold">Categoria DRE</th>
+              <th className="px-4 py-3 font-semibold w-16"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={4} className="px-4 py-4 text-sm text-ink/50">Carregando...</td>
+              </tr>
+            ) : planosFiltrados.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-4 py-4 text-sm text-ink/50">Nenhum plano de conta encontrado.</td>
+              </tr>
+            ) : (
+              planosFiltrados.map((p) => (
+                <tr key={p.id} className="border-t border-black/5 hover:bg-surface/60">
+                  <td className="px-4 py-3 font-medium text-ink">{p.nome}</td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                        p.tipo === "receita" ? "bg-mint text-forest" : "bg-red-50 text-red-600"
+                      }`}
+                    >
+                      {p.tipo === "receita" ? "Receita" : "Despesa"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={p.dre_categoria_id ?? ""}
+                      onChange={(e) => atualizarCategoria(p.id, e.target.value)}
+                      className="input py-1.5 text-xs w-full max-w-56"
+                    >
+                      <option value="">Sem categoria DRE</option>
+                      {categoriasParaTipo(p.tipo).map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {GRUPO_LABEL[c.grupo]} · {c.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => remover(p.id)} className="text-xs font-semibold text-ink/40 hover:text-red-600">
+                      Remover
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {painelAberto && (
+        <PainelNovoPlano
+          onSaved={() => {
+            setPainelAberto(false);
+            carregar();
+          }}
+          onCancel={() => setPainelAberto(false)}
+        />
+      )}
     </div>
   );
 }
 
-function Grupo({
-  titulo,
-  emoji,
-  tipo,
-  planos,
-  categorias,
-  onChange,
-  onRemover,
-  onCategoriaChange,
-}: {
-  titulo: string;
-  emoji: string;
-  tipo: "receita" | "despesa";
-  planos: PlanoConta[];
-  categorias: Categoria[];
-  onChange: () => void;
-  onRemover: (id: string) => void;
-  onCategoriaChange: (id: string, categoriaId: string) => void;
-}) {
-  const [novoNome, setNovoNome] = useState("");
-  const [salvando, setSalvando] = useState(false);
+function PainelNovoPlano({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
+  const [nome, setNome] = useState("");
+  const [tipo, setTipo] = useState<"receita" | "despesa">("receita");
+  const [saving, setSaving] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
-  async function adicionar(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!novoNome.trim()) return;
-    setSalvando(true);
+    if (!nome.trim()) {
+      setErro("Informe o nome do plano de conta.");
+      return;
+    }
+    setSaving(true);
+    setErro(null);
     const supabase = createClient();
-    await supabase.from("planos_conta").insert({ nome: novoNome.trim(), tipo });
-    setNovoNome("");
-    setSalvando(false);
-    onChange();
+    const { error } = await supabase.from("planos_conta").insert({ nome: nome.trim(), tipo });
+    if (error) {
+      setErro(error.message);
+      setSaving(false);
+      return;
+    }
+    onSaved();
   }
 
   return (
-    <section>
-      <h2 className="text-sm font-bold text-ink flex items-center gap-2 mb-3">
-        <span>{emoji}</span> Plano de conta — {titulo}
-      </h2>
+    <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-ink mb-5">Novo plano de conta</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <label className="block">
+            <span className="block text-sm font-medium text-ink/70 mb-1">Nome</span>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} className="input" required autoFocus />
+          </label>
 
-      <form onSubmit={adicionar} className="flex gap-2 mb-4">
-        <input
-          value={novoNome}
-          onChange={(e) => setNovoNome(e.target.value)}
-          className="input"
-          placeholder={`Nova conta de ${titulo.toLowerCase()}...`}
-        />
-        <button
-          type="submit"
-          disabled={salvando}
-          className={`shrink-0 rounded-full px-5 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-50 ${
-            tipo === "receita" ? "bg-forest hover:bg-ink" : "bg-red-600 hover:bg-ink"
-          }`}
-        >
-          + {titulo}
-        </button>
-      </form>
-
-      <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
-        {planos.length === 0 ? (
-          <p className="p-4 text-sm text-ink/50">Nenhuma conta de {titulo.toLowerCase()} ainda.</p>
-        ) : (
-          planos.map((p) => (
-            <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-3 border-b border-black/5 last:border-0">
-              <span className="text-sm font-medium text-ink truncate">{p.nome}</span>
-              <div className="flex items-center gap-2 shrink-0">
-                <select
-                  value={p.dre_categoria_id ?? ""}
-                  onChange={(e) => onCategoriaChange(p.id, e.target.value)}
-                  className="input py-1.5 text-xs w-44"
-                >
-                  <option value="">Sem categoria DRE</option>
-                  {categorias.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {GRUPO_LABEL[c.grupo]} · {c.nome}
-                    </option>
-                  ))}
-                </select>
-                <button onClick={() => onRemover(p.id)} className="text-xs font-semibold text-ink/40 hover:text-red-600">
-                  Remover
-                </button>
-              </div>
+          <div>
+            <span className="block text-sm font-medium text-ink/70 mb-1">Tipo</span>
+            <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
+              <button
+                type="button"
+                onClick={() => setTipo("receita")}
+                className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                  tipo === "receita" ? "bg-forest text-white" : "text-ink/60"
+                }`}
+              >
+                Receita
+              </button>
+              <button
+                type="button"
+                onClick={() => setTipo("despesa")}
+                className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                  tipo === "despesa" ? "bg-red-600 text-white" : "text-ink/60"
+                }`}
+              >
+                Despesa
+              </button>
             </div>
-          ))
-        )}
+          </div>
+
+          {erro && <p className="text-sm text-red-600">{erro}</p>}
+
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+            >
+              {saving ? "Salvando..." : "Salvar"}
+            </button>
+            <button type="button" onClick={onCancel} className="text-sm font-semibold text-ink/60 hover:text-ink">
+              Cancelar
+            </button>
+          </div>
+        </form>
       </div>
-    </section>
+    </div>
   );
 }
