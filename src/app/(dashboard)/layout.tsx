@@ -71,18 +71,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { tipo: string; valor: number; banco_id: string | null; banco_destino_id: string | null }[]
   >([]);
 
+  async function carregarContas() {
+    const supabase = createClient();
+    const [{ data: b }, { data: l }] = await Promise.all([
+      supabase.from("bancos").select("id, nome, saldo_inicial").order("nome"),
+      supabase.from("lancamentos").select("tipo, valor, banco_id, banco_destino_id").eq("situacao", "pago"),
+    ]);
+    setBancos(b ?? []);
+    setLancamentosPagos(l ?? []);
+  }
+
   useEffect(() => {
-    async function carregarContas() {
-      const supabase = createClient();
-      const [{ data: b }, { data: l }] = await Promise.all([
-        supabase.from("bancos").select("id, nome, saldo_inicial").order("nome"),
-        supabase.from("lancamentos").select("tipo, valor, banco_id, banco_destino_id").eq("situacao", "pago"),
-      ]);
-      setBancos(b ?? []);
-      setLancamentosPagos(l ?? []);
-    }
     carregarContas();
-  }, []);
+    // Recarrega toda vez que muda de página, assim o saldo nunca fica desatualizado
+    // sem precisar dar F5.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   function saldoDoBanco(bancoId: string, saldoInicial: number) {
     let saldo = saldoInicial;
@@ -175,7 +179,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <div className="px-3 pb-3 border-t border-white/10 pt-3">
           <button
-            onClick={() => setContasAbertas((v) => !v)}
+            onClick={() => {
+              setContasAbertas((v) => !v);
+              carregarContas();
+            }}
             className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/60 hover:text-white transition-colors"
           >
             <Wallet size={16} />
