@@ -22,8 +22,8 @@ interface Lancamento {
   total_parcelas: number | null;
   grupo_id: string | null;
   recorrencia_tipo: "mensal" | "semanal" | "anual" | null;
-  clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
-  pessoas: { nome: string } | null;
+  clientes: { papeis: { pessoas: { nome: string; pix: string | null } | null } | null } | null;
+  pessoas: { nome: string; pix: string | null } | null;
   bancos: { nome: string } | null;
   bancos_destino: { nome: string } | null;
   planos_conta: { nome: string } | null;
@@ -173,6 +173,10 @@ function calcularPeriodo(preset: PeriodoPreset): { inicio: string; fim: string }
 
 function nomePessoaLancamento(l: { clientes: Lancamento["clientes"]; pessoas: Lancamento["pessoas"] }) {
   return l.clientes?.papeis?.pessoas?.nome ?? l.pessoas?.nome ?? null;
+}
+
+function pixLancamento(l: { clientes: Lancamento["clientes"]; pessoas: Lancamento["pessoas"] }) {
+  return l.clientes?.papeis?.pessoas?.pix ?? l.pessoas?.pix ?? null;
 }
 
 function renderCelulaLancamento(key: string, l: Lancamento, valorPago: number, valorRestante: number) {
@@ -450,8 +454,8 @@ export default function LancamentosPage() {
       .select(
         `id, descricao, valor, tipo, situacao, data_vencimento, data_quitacao, data_competencia, codigo_transacao,
          banco_id, banco_destino_id, plano_conta_id, servico_id, numero_parcela, total_parcelas, recorrencia_tipo, grupo_id,
-         clientes ( papeis ( pessoas ( nome ) ) ),
-         pessoas ( nome ),
+         clientes ( papeis ( pessoas ( nome, pix ) ) ),
+         pessoas ( nome, pix ),
          bancos:banco_id ( nome ),
          bancos_destino:banco_destino_id ( nome ),
          planos_conta ( nome ),
@@ -1067,6 +1071,21 @@ export default function LancamentosPage() {
                 </button>
               </div>
             </div>
+
+            {detalhe.tipo === "despesa" && pixLancamento(detalhe) && (
+              <div className="rounded-2xl bg-card p-4 mb-4 shadow-sm flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs text-ink/50 mb-0.5">Chave PIX</p>
+                  <p className="text-sm font-semibold text-ink truncate">{pixLancamento(detalhe)}</p>
+                </div>
+                <button
+                  onClick={() => navigator.clipboard.writeText(pixLancamento(detalhe) ?? "")}
+                  className="shrink-0 rounded-full bg-forest text-white px-3 py-1.5 text-xs font-bold hover:bg-ink transition-colors"
+                >
+                  Copiar
+                </button>
+              </div>
+            )}
 
             <div className="rounded-2xl bg-card p-4 mb-4 shadow-sm">
               <p className="text-xs text-ink/50 mb-0.5">Valor</p>
@@ -1699,7 +1718,7 @@ function LancamentoForm({
       <div className="grid grid-cols-2 gap-3">
         {tipo !== "transferencia" && (
           <Campo label="Descrição">
-            <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="input" placeholder="Ex: Mensalidade julho" />
+            <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="input" placeholder="Ex: Assessoria de Marketing" />
           </Campo>
         )}
         <Campo label="Valor (R$)" required>
