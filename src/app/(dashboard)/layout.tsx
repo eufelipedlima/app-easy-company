@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Users, FileText, ChevronDown, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, ListTree, Wrench } from "lucide-react";
+import { Users, FileText, ChevronDown, ChevronUp, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, ListTree, Wrench, Wallet } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -64,6 +64,45 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [aberto, setAberto] = useState<string | null>(
     MENU.find((g) => g.itens?.some((i) => pathname?.startsWith(i.href)))?.label ?? "Pessoas"
   );
+
+  const [contasAbertas, setContasAbertas] = useState(false);
+  const [bancos, setBancos] = useState<{ id: string; nome: string; saldo_inicial: number }[]>([]);
+  const [lancamentosPagos, setLancamentosPagos] = useState<
+    { tipo: string; valor: number; banco_id: string | null; banco_destino_id: string | null }[]
+  >([]);
+
+  useEffect(() => {
+    async function carregarContas() {
+      const supabase = createClient();
+      const [{ data: b }, { data: l }] = await Promise.all([
+        supabase.from("bancos").select("id, nome, saldo_inicial").order("nome"),
+        supabase.from("lancamentos").select("tipo, valor, banco_id, banco_destino_id").eq("situacao", "pago"),
+      ]);
+      setBancos(b ?? []);
+      setLancamentosPagos(l ?? []);
+    }
+    carregarContas();
+  }, []);
+
+  function saldoDoBanco(bancoId: string, saldoInicial: number) {
+    let saldo = saldoInicial;
+    for (const l of lancamentosPagos) {
+      if (l.tipo === "receita" && l.banco_id === bancoId) saldo += l.valor;
+      else if (l.tipo === "despesa" && l.banco_id === bancoId) saldo -= l.valor;
+      else if (l.tipo === "transferencia") {
+        if (l.banco_id === bancoId) saldo -= l.valor;
+        if (l.banco_destino_id === bancoId) saldo += l.valor;
+      }
+    }
+    return saldo;
+  }
+
+  const CORES_CONTA = ["bg-violet-400", "bg-teal-400", "bg-amber-400", "bg-rose-400", "bg-sky-400"];
+  const saldoTotal = bancos.reduce((s, b) => s + saldoDoBanco(b.id, b.saldo_inicial), 0);
+
+  function formatarMoeda(valor: number) {
+    return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  }
 
   return (
     <div className="flex min-h-screen">
@@ -133,6 +172,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             );
           })}
         </nav>
+
+        <div className="px-3 pb-3 border-t border-white/10 pt-3">
+          <button
+            onClick={() => setContasAbertas((v) => !v)}
+            className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/60 hover:text-white transition-colors"
+          >
+            <Wallet size={16} />
+            <span className="flex-1 text-left">Contas</span>
+            {contasAbertas ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          </button>
+
+          {contasAbertas && (
+            <div className="mt-1 mb-2 rounded-xl bg-white/5 px-3 py-3 space-y-2">
+              {bancos.length === 0 ? (
+                <p className="text-xs text-white/40">Nenhuma conta cadastrada.</p>
+              ) : (
+                bancos.map((b, i) => (
+                  <div key={b.id} className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-2 text-white/70">
+                      <span className={`h-2 w-2 rounded-full ${CORES_CONTA[i % CORES_CONTA.length]}`} />
+                      {b.nome}
+                    </span>
+                    <span className="font-semibold text-white">
+                      {formatarMoeda(saldoDoBanco(b.id, b.saldo_inicial))}
+                    </span>
+                  </div>
+                ))
+              )}
+              <div className="flex items-center justify-between text-xs pt-2 border-t border-white/10">
+                <span className="text-white/50 uppercase tracking-wide">Saldo total</span>
+                <span className="font-bold text-white">{formatarMoeda(saldoTotal)}</span>
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="px-3 pb-6">
           <button

@@ -83,12 +83,24 @@ export default function BancosPage() {
     carregar();
   }
 
-  async function salvarSaldoInicial(id: string) {
-    const supabase = createClient();
-    await supabase
-      .from("bancos")
-      .update({ saldo_inicial: saldoEditado ? Number(saldoEditado) : 0 })
-      .eq("id", id);
+  async function salvarAjusteSaldo(banco: Banco) {
+    const novoSaldo = saldoEditado ? Number(saldoEditado) : 0;
+    const atual = saldoAtual(banco);
+    const delta = novoSaldo - atual;
+
+    if (delta !== 0) {
+      const supabase = createClient();
+      const hoje = new Date().toISOString().slice(0, 10);
+      await supabase.from("lancamentos").insert({
+        tipo: delta > 0 ? "receita" : "despesa",
+        situacao: "pago",
+        descricao: "Ajuste de saldo",
+        valor: Math.abs(delta),
+        data_vencimento: hoje,
+        data_quitacao: hoje,
+        banco_id: banco.id,
+      });
+    }
     setEditandoId(null);
     carregar();
   }
@@ -135,16 +147,19 @@ export default function BancosPage() {
               <div className="flex items-center gap-4">
                 {editandoId === banco.id ? (
                   <>
-                    <input
-                      type="number"
-                      step="0.01"
-                      autoFocus
-                      value={saldoEditado}
-                      onChange={(e) => setSaldoEditado(e.target.value)}
-                      className="input w-32 py-1 text-sm"
-                    />
+                    <label className="text-xs text-ink/50">
+                      Novo saldo
+                      <input
+                        type="number"
+                        step="0.01"
+                        autoFocus
+                        value={saldoEditado}
+                        onChange={(e) => setSaldoEditado(e.target.value)}
+                        className="input w-32 py-1 text-sm ml-2"
+                      />
+                    </label>
                     <button
-                      onClick={() => salvarSaldoInicial(banco.id)}
+                      onClick={() => salvarAjusteSaldo(banco)}
                       className="text-xs font-semibold text-forest"
                     >
                       Salvar
@@ -171,10 +186,10 @@ export default function BancosPage() {
                     <button
                       onClick={() => {
                         setEditandoId(banco.id);
-                        setSaldoEditado(String(banco.saldo_inicial));
+                        setSaldoEditado(String(saldoAtual(banco)));
                       }}
                       className="text-xs font-semibold text-ink/40 hover:text-ink"
-                      title="Ajustar saldo inicial"
+                      title="Ajustar saldo (gera um lançamento de ajuste)"
                     >
                       Ajustar
                     </button>
@@ -195,6 +210,8 @@ export default function BancosPage() {
       <p className="text-xs text-ink/40 mt-3">
         Saldo atual = saldo inicial + receitas pagas − despesas pagas, considerando também
         transferências entre contas. Só entram lançamentos marcados como &ldquo;Pago&rdquo;.
+        Ajustar o saldo cria um lançamento de &ldquo;Ajuste de saldo&rdquo; automaticamente, pra
+        manter o histórico rastreável em Lançamentos.
       </p>
     </section>
   );
