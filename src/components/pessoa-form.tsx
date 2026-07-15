@@ -86,13 +86,9 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
 
   const [segmentos, setSegmentos] = useState<Segmento[]>([]);
   const [segmentoId, setSegmentoId] = useState(pessoaEditando?.segmento_id ?? "");
-  const [novoSegmento, setNovoSegmento] = useState(false);
-  const [nomeNovoSegmento, setNomeNovoSegmento] = useState("");
 
   const [origens, setOrigens] = useState<Segmento[]>([]);
   const [origemId, setOrigemId] = useState(pessoaEditando?.origem_id ?? "");
-  const [novaOrigem, setNovaOrigem] = useState(false);
-  const [nomeNovaOrigem, setNomeNovaOrigem] = useState("");
 
   useEffect(() => {
     async function carregarSegmentos() {
@@ -137,37 +133,8 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
 
     const supabase = createClient();
 
-    let segmentoFinalId: string | null = segmentoId || null;
-
-    if (tipo === "PJ" && novoSegmento && nomeNovoSegmento.trim()) {
-      const { data: seg, error: segError } = await supabase
-        .from("segmentos")
-        .insert({ nome: nomeNovoSegmento.trim() })
-        .select("id")
-        .single();
-      if (segError) {
-        setErro(segError.message);
-        setSaving(false);
-        return;
-      }
-      segmentoFinalId = seg.id;
-    }
-
-    let origemFinalId: string | null = origemId || null;
-
-    if (novaOrigem && nomeNovaOrigem.trim()) {
-      const { data: org, error: orgError } = await supabase
-        .from("origens")
-        .insert({ nome: nomeNovaOrigem.trim() })
-        .select("id")
-        .single();
-      if (orgError) {
-        setErro(orgError.message);
-        setSaving(false);
-        return;
-      }
-      origemFinalId = org.id;
-    }
+    const segmentoFinalId: string | null = segmentoId || null;
+    const origemFinalId: string | null = origemId || null;
 
     const dadosPessoa = {
       tipo_pessoa: tipo,
@@ -317,97 +284,40 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
 
         {tipo === "PJ" && (
           <Campo label="Segmento">
-            {!novoSegmento ? (
-              <div className="flex gap-2">
-                <select
-                  value={segmentoId}
-                  onChange={(e) => setSegmentoId(e.target.value)}
-                  className="input"
-                >
-                  <option value="">Selecione...</option>
-                  {segmentos.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nome}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setNovoSegmento(true)}
-                  className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
-                >
-                  + Novo
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <input
-                  autoFocus
-                  value={nomeNovoSegmento}
-                  onChange={(e) => setNomeNovoSegmento(e.target.value)}
-                  className="input"
-                  placeholder="Nome do novo segmento"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNovoSegmento(false);
-                    setNomeNovoSegmento("");
-                  }}
-                  className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
-                >
-                  Cancelar
-                </button>
-              </div>
-            )}
+            <select
+              value={segmentoId}
+              onChange={(e) => setSegmentoId(e.target.value)}
+              className="input"
+            >
+              <option value="">Selecione...</option>
+              {segmentos.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nome}
+                </option>
+              ))}
+            </select>
+            <span className="block text-xs text-ink/40 mt-1">
+              Novos segmentos são cadastrados em Configurações.
+            </span>
           </Campo>
         )}
 
         <Campo label="Origem">
-          {!novaOrigem ? (
-            <div className="flex gap-2">
-              <select
-                value={origemId}
-                onChange={(e) => setOrigemId(e.target.value)}
-                className="input"
-              >
-                <option value="">Selecione...</option>
-                {origens.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.nome}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setNovaOrigem(true)}
-                className="shrink-0 text-xs font-semibold text-forest whitespace-nowrap"
-              >
-                + Nova
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                autoFocus
-                value={nomeNovaOrigem}
-                onChange={(e) => setNomeNovaOrigem(e.target.value)}
-                className="input"
-                placeholder="Nome da nova origem"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  setNovaOrigem(false);
-                  setNomeNovaOrigem("");
-                }}
-                className="shrink-0 text-xs font-semibold text-ink/50 whitespace-nowrap"
-              >
-                Cancelar
-              </button>
-            </div>
-          )}
-          <span className="block text-xs text-ink/40 mt-1">Como essa pessoa chegou até a agência.</span>
+          <select
+            value={origemId}
+            onChange={(e) => setOrigemId(e.target.value)}
+            className="input"
+          >
+            <option value="">Selecione...</option>
+            {origens.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.nome}
+              </option>
+            ))}
+          </select>
+          <span className="block text-xs text-ink/40 mt-1">
+            Como essa pessoa chegou até a agência. Novas origens são cadastradas em Configurações.
+          </span>
         </Campo>
 
         <Campo label="E-mail">

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Users, FileText, ChevronDown, ChevronUp, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, ListTree, Wrench, Wallet, Compass } from "lucide-react";
+import { Users, FileText, ChevronDown, ChevronUp, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, ListTree, Wrench, Wallet, Compass, Building2 } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -54,6 +54,7 @@ const MENU: Grupo[] = [
       { href: "/configuracoes/cargos", label: "Cargos", icon: <Briefcase size={15} /> },
       { href: "/configuracoes/origens", label: "Origens", icon: <Compass size={15} /> },
       { href: "/configuracoes/planos-conta", label: "Planos de conta", icon: <ListTree size={15} /> },
+      { href: "/configuracoes/segmentos", label: "Segmentos", icon: <Building2 size={15} /> },
       { href: "/configuracoes/servicos", label: "Serviços", icon: <Wrench size={15} /> },
     ],
   },
