@@ -311,7 +311,7 @@ export default function LancamentosPage() {
          banco_id, banco_destino_id, plano_conta_id, servico_id, numero_parcela, total_parcelas, recorrencia_tipo, grupo_id,
          clientes ( papeis ( pessoas ( nome ) ) ),
          pessoas ( nome ),
-         bancos ( nome ),
+         bancos:banco_id ( nome ),
          bancos_destino:banco_destino_id ( nome ),
          planos_conta ( nome ),
          servicos ( nome )`
