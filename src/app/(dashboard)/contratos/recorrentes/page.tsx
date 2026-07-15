@@ -553,7 +553,7 @@ function ContratoRecorrenteForm({
     contratoEditando?.data_pagamento_entrada ?? ""
   );
   const [dataPrimeiraMensalidade, setDataPrimeiraMensalidade] = useState(
-    contratoEditando?.data_primeira_mensalidade ?? ""
+    contratoEditando?.data_primeira_mensalidade ?? new Date().toISOString().slice(0, 10)
   );
   const [tempoInicial, setTempoInicial] = useState(contratoEditando?.tempo_inicial_meses ?? 3);
   const [status, setStatus] = useState<"ativo" | "encerrado">(contratoEditando?.status ?? "ativo");
@@ -575,6 +575,7 @@ function ContratoRecorrenteForm({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [saving, setSaving] = useState(false);
+  const enviandoRef = useRef(false);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
@@ -680,6 +681,7 @@ function ContratoRecorrenteForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (enviandoRef.current) return;
     if (!editando && !pessoaSelecionada) {
       setErro("Selecione um cliente.");
       return;
@@ -688,6 +690,7 @@ function ContratoRecorrenteForm({
       setErro("Informe a data da próxima cobrança.");
       return;
     }
+    enviandoRef.current = true;
     setSaving(true);
     setErro(null);
 
@@ -854,10 +857,12 @@ function ContratoRecorrenteForm({
       }
 
       setSaving(false);
+      enviandoRef.current = false;
       onSaved();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao salvar contrato.");
       setSaving(false);
+      enviandoRef.current = false;
     }
   }
 
@@ -958,7 +963,7 @@ function ContratoRecorrenteForm({
                   className="input"
                 />
                 <span className="block text-xs text-ink/40 mt-1">
-                  As mensalidades serão lançadas a partir daqui, não da data de início real.
+                  As parcelas serão lançadas a partir daqui, não da data de início real.
                 </span>
               </Campo>
               <Campo label="Valor já pago antes de entrar no sistema (R$)">
@@ -1145,7 +1150,7 @@ function ContratoRecorrenteForm({
           </select>
         </Campo>
 
-        <Campo label="Data da primeira mensalidade" required>
+        <Campo label="Data da primeira parcela" required>
           <input
             type="date"
             required
@@ -1215,7 +1220,7 @@ function ContratoRecorrenteForm({
 
       {!editando && (
         <p className="text-xs text-ink/40">
-          🔁 O contrato é recorrente por padrão — as mensalidades continuam sendo lançadas
+          🔁 O contrato é recorrente por padrão — as parcelas continuam sendo lançadas
           automaticamente no financeiro até você encerrar o contrato. O compromisso mínimo
           acima é só o período combinado com o cliente, pra controle de churn e permanência.
         </p>

@@ -455,7 +455,7 @@ function ContratoPontualForm({
   const [valorTotal, setValorTotal] = useState(
     contratoEditando?.valor_total != null ? String(contratoEditando.valor_total) : ""
   );
-  const [dataInicio, setDataInicio] = useState(contratoEditando?.data_fechamento ?? "");
+  const [dataInicio, setDataInicio] = useState(contratoEditando?.data_fechamento ?? new Date().toISOString().slice(0, 10));
 
   const [tipoPagamento, setTipoPagamento] = useState<"avista" | "parcelado">(
     contratoEditando?.tipo_pagamento ?? "avista"
@@ -487,6 +487,7 @@ function ContratoPontualForm({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [saving, setSaving] = useState(false);
+  const enviandoRef = useRef(false);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
@@ -592,10 +593,12 @@ function ContratoPontualForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (enviandoRef.current) return;
     if (!editando && !pessoaSelecionada) {
       setErro("Selecione um cliente.");
       return;
     }
+    enviandoRef.current = true;
     setSaving(true);
     setErro(null);
 
@@ -770,10 +773,12 @@ function ContratoPontualForm({
       }
 
       setSaving(false);
+      enviandoRef.current = false;
       onSaved();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao salvar contrato.");
       setSaving(false);
+      enviandoRef.current = false;
     }
   }
 
