@@ -946,7 +946,10 @@ function ContratoRecorrenteForm({
             <input
               type="checkbox"
               checked={ehMigracao}
-              onChange={(e) => setEhMigracao(e.target.checked)}
+              onChange={(e) => {
+                setEhMigracao(e.target.checked);
+                if (e.target.checked) setDataPrimeiraMensalidade("");
+              }}
               className="h-4 w-4 rounded accent-forest"
             />
             Contrato já existente (cliente antigo, migração pro sistema)
@@ -1150,7 +1153,7 @@ function ContratoRecorrenteForm({
           </select>
         </Campo>
 
-        <Campo label="Data da primeira parcela" required>
+        <Campo label={ehMigracao ? "Data de início do contrato" : "Data da primeira parcela"} required>
           <input
             type="date"
             required
@@ -1158,6 +1161,13 @@ function ContratoRecorrenteForm({
             onChange={(e) => setDataPrimeiraMensalidade(e.target.value)}
             className="input"
           />
+          {ehMigracao && (
+            <span className="block text-xs text-ink/40 mt-1">
+              Data real de quando o cliente começou com vocês — usada só pra calcular tempo de casa
+              e LTV. Não gera nenhuma parcela (isso é feito pela &ldquo;Data da próxima
+              cobrança&rdquo; acima).
+            </span>
+          )}
         </Campo>
 
         <Campo label="Valor mensal (R$)" required>
