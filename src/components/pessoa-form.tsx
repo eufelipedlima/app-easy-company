@@ -132,6 +132,12 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (tipo === "PJ" && temResponsavel && !respNome.trim()) {
+      setErro("Informe ao menos o nome do responsável, ou desmarque a opção de adicionar responsável.");
+      return;
+    }
+
     setSaving(true);
     setErro(null);
 
@@ -193,11 +199,11 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
       pessoaNome = pessoa.nome;
     }
 
-    if (tipo === "PJ" && temResponsavel && respNome && respCpf) {
+    if (tipo === "PJ" && temResponsavel && respNome.trim()) {
       const dadosResponsavel = {
         pessoa_id: pessoaId,
-        nome_completo: respNome,
-        cpf: respCpf,
+        nome_completo: respNome.trim(),
+        cpf: respCpf || null,
         email: respEmail || null,
         whatsapp: respWhatsapp || null,
       };
@@ -313,9 +319,6 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
                 </option>
               ))}
             </select>
-            <span className="block text-xs text-ink/40 mt-1">
-              Novos segmentos são cadastrados em Configurações.
-            </span>
           </Campo>
         )}
 
@@ -332,9 +335,6 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
               </option>
             ))}
           </select>
-          <span className="block text-xs text-ink/40 mt-1">
-            Como essa pessoa chegou até a agência. Novas origens são cadastradas em Configurações.
-          </span>
         </Campo>
 
         <Campo label="Observação da origem (opcional)">
@@ -422,14 +422,14 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
 
           {temResponsavel && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              <Campo label="Nome completo">
+              <Campo label="Nome completo" required>
                 <input
                   value={respNome}
                   onChange={(e) => setRespNome(e.target.value)}
                   className="input"
                 />
               </Campo>
-              <Campo label="CPF">
+              <Campo label="CPF (opcional)">
                 <input
                   value={respCpf}
                   onChange={(e) => setRespCpf(CPF_MASK(e.target.value))}
