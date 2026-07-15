@@ -3,22 +3,45 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-interface Item {
+interface Banco {
   id: string;
   nome: string;
+  saldo_inicial: number;
+}
+
+interface LancamentoPago {
+  tipo: "receita" | "despesa" | "transferencia";
+  valor: number;
+  banco_id: string | null;
+  banco_destino_id: string | null;
+}
+
+function formatarMoeda(valor: number) {
+  return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 export default function BancosPage() {
-  const [itens, setItens] = useState<Item[]>([]);
+  const [bancos, setBancos] = useState<Banco[]>([]);
+  const [lancamentosPagos, setLancamentosPagos] = useState<LancamentoPago[]>([]);
   const [loading, setLoading] = useState(true);
   const [novoNome, setNovoNome] = useState("");
+  const [novoSaldoInicial, setNovoSaldoInicial] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [saldoEditado, setSaldoEditado] = useState("");
 
   const carregar = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
-    const { data } = await supabase.from("bancos").select("id, nome").order("nome");
-    setItens(data ?? []);
+    const [{ data: b }, { data: l }] = await Promise.all([
+      supabase.from("bancos").select("id, nome, saldo_inicial").order("nome"),
+      supabase
+        .from("lancamentos")
+        .select("tipo, valor, banco_id, banco_destino_id")
+        .eq("situacao", "pago"),
+    ]);
+    setBancos((b as Banco[]) ?? []);
+    setLancamentosPagos((l as LancamentoPago[]) ?? []);
     setLoading(false);
   }, []);
 
@@ -26,13 +49,30 @@ export default function BancosPage() {
     carregar();
   }, [carregar]);
 
+  function saldoAtual(banco: Banco) {
+    let saldo = banco.saldo_inicial;
+    for (const l of lancamentosPagos) {
+      if (l.tipo === "receita" && l.banco_id === banco.id) saldo += l.valor;
+      else if (l.tipo === "despesa" && l.banco_id === banco.id) saldo -= l.valor;
+      else if (l.tipo === "transferencia") {
+        if (l.banco_id === banco.id) saldo -= l.valor;
+        if (l.banco_destino_id === banco.id) saldo += l.valor;
+      }
+    }
+    return saldo;
+  }
+
   async function adicionar(e: React.FormEvent) {
     e.preventDefault();
     if (!novoNome.trim()) return;
     setSalvando(true);
     const supabase = createClient();
-    await supabase.from("bancos").insert({ nome: novoNome.trim() });
+    await supabase.from("bancos").insert({
+      nome: novoNome.trim(),
+      saldo_inicial: novoSaldoInicial ? Number(novoSaldoInicial) : 0,
+    });
     setNovoNome("");
+    setNovoSaldoInicial("");
     setSalvando(false);
     carregar();
   }
@@ -40,6 +80,16 @@ export default function BancosPage() {
   async function remover(id: string) {
     const supabase = createClient();
     await supabase.from("bancos").delete().eq("id", id);
+    carregar();
+  }
+
+  async function salvarSaldoInicial(id: string) {
+    const supabase = createClient();
+    await supabase
+      .from("bancos")
+      .update({ saldo_inicial: saldoEditado ? Number(saldoEditado) : 0 })
+      .eq("id", id);
+    setEditandoId(null);
     carregar();
   }
 
@@ -51,6 +101,14 @@ export default function BancosPage() {
           onChange={(e) => setNovoNome(e.target.value)}
           className="input"
           placeholder="Novo banco..."
+        />
+        <input
+          type="number"
+          step="0.01"
+          value={novoSaldoInicial}
+          onChange={(e) => setNovoSaldoInicial(e.target.value)}
+          className="input w-40"
+          placeholder="Saldo inicial"
         />
         <button
           type="submit"
@@ -64,25 +122,80 @@ export default function BancosPage() {
       <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
         {loading ? (
           <p className="p-4 text-sm text-ink/50">Carregando...</p>
-        ) : itens.length === 0 ? (
+        ) : bancos.length === 0 ? (
           <p className="p-4 text-sm text-ink/50">Nenhum banco cadastrado ainda.</p>
         ) : (
-          itens.map((item) => (
+          bancos.map((banco) => (
             <div
-              key={item.id}
+              key={banco.id}
               className="flex items-center justify-between px-4 py-3 border-b border-black/5 last:border-0"
             >
-              <span className="text-sm font-medium text-ink">{item.nome}</span>
-              <button
-                onClick={() => remover(item.id)}
-                className="text-xs font-semibold text-ink/40 hover:text-red-600"
-              >
-                Remover
-              </button>
+              <span className="text-sm font-medium text-ink">{banco.nome}</span>
+
+              <div className="flex items-center gap-4">
+                {editandoId === banco.id ? (
+                  <>
+                    <input
+                      type="number"
+                      step="0.01"
+                      autoFocus
+                      value={saldoEditado}
+                      onChange={(e) => setSaldoEditado(e.target.value)}
+                      className="input w-32 py-1 text-sm"
+                    />
+                    <button
+                      onClick={() => salvarSaldoInicial(banco.id)}
+                      className="text-xs font-semibold text-forest"
+                    >
+                      Salvar
+                    </button>
+                    <button
+                      onClick={() => setEditandoId(null)}
+                      className="text-xs font-semibold text-ink/40"
+                    >
+                      Cancelar
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-right">
+                      <p className="text-xs text-ink/40">Saldo atual</p>
+                      <p
+                        className={`text-sm font-bold ${
+                          saldoAtual(banco) < 0 ? "text-red-600" : "text-forest"
+                        }`}
+                      >
+                        {formatarMoeda(saldoAtual(banco))}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setEditandoId(banco.id);
+                        setSaldoEditado(String(banco.saldo_inicial));
+                      }}
+                      className="text-xs font-semibold text-ink/40 hover:text-ink"
+                      title="Ajustar saldo inicial"
+                    >
+                      Ajustar
+                    </button>
+                    <button
+                      onClick={() => remover(banco.id)}
+                      className="text-xs font-semibold text-ink/40 hover:text-red-600"
+                    >
+                      Remover
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ))
         )}
       </div>
+
+      <p className="text-xs text-ink/40 mt-3">
+        Saldo atual = saldo inicial + receitas pagas − despesas pagas, considerando também
+        transferências entre contas. Só entram lançamentos marcados como &ldquo;Pago&rdquo;.
+      </p>
     </section>
   );
 }

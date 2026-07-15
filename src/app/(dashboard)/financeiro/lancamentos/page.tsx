@@ -15,6 +15,7 @@ interface Lancamento {
   data_competencia: string | null;
   codigo_transacao: string | null;
   banco_id: string | null;
+  banco_destino_id: string | null;
   plano_conta_id: string | null;
   servico_id: string | null;
   numero_parcela: number | null;
@@ -24,6 +25,7 @@ interface Lancamento {
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
   pessoas: { nome: string } | null;
   bancos: { nome: string } | null;
+  bancos_destino: { nome: string } | null;
   planos_conta: { nome: string } | null;
   servicos: { nome: string } | null;
 }
@@ -202,10 +204,11 @@ export default function LancamentosPage() {
       .from("lancamentos")
       .select(
         `id, descricao, valor, tipo, situacao, data_vencimento, data_quitacao, data_competencia, codigo_transacao,
-         banco_id, plano_conta_id, servico_id, numero_parcela, total_parcelas, recorrencia_tipo, grupo_id,
+         banco_id, banco_destino_id, plano_conta_id, servico_id, numero_parcela, total_parcelas, recorrencia_tipo, grupo_id,
          clientes ( papeis ( pessoas ( nome ) ) ),
          pessoas ( nome ),
          bancos ( nome ),
+         bancos_destino:banco_destino_id ( nome ),
          planos_conta ( nome ),
          servicos ( nome )`
       )
@@ -871,6 +874,10 @@ function LancamentoForm({
   const [buscaBanco, setBuscaBanco] = useState("");
   const [mostrarSugBanco, setMostrarSugBanco] = useState(false);
 
+  const [bancoDestinoSelecionado, setBancoDestinoSelecionado] = useState<Opcao | null>(null);
+  const [buscaBancoDestino, setBuscaBancoDestino] = useState("");
+  const [mostrarSugBancoDestino, setMostrarSugBancoDestino] = useState(false);
+
   const [planosConta, setPlanosConta] = useState<PlanoContaOpcao[]>([]);
   const [planoContaSelecionado, setPlanoContaSelecionado] = useState<PlanoContaOpcao | null>(null);
   const [buscaPlanoConta, setBuscaPlanoConta] = useState("");
@@ -938,6 +945,7 @@ function LancamentoForm({
 
   const sugCliente = pessoas.filter((p) => p.nome.toLowerCase().includes(buscaCliente.toLowerCase()));
   const sugBanco = bancos.filter((b) => b.nome.toLowerCase().includes(buscaBanco.toLowerCase()));
+  const sugBancoDestino = bancos.filter((b) => b.nome.toLowerCase().includes(buscaBancoDestino.toLowerCase()));
   const sugPlanoConta = planosConta
     .filter((p) => p.tipo === tipo)
     .filter((p) => p.nome.toLowerCase().includes(buscaPlanoConta.toLowerCase()));
@@ -1005,6 +1013,17 @@ function LancamentoForm({
         planoContaFinalId = data.id;
       }
 
+      let bancoDestinoFinalId = bancoDestinoSelecionado?.id ?? null;
+      if (tipo === "transferencia" && !bancoDestinoFinalId && buscaBancoDestino.trim()) {
+        const { data, error } = await supabase
+          .from("bancos")
+          .insert({ nome: buscaBancoDestino.trim() })
+          .select("id")
+          .single();
+        if (error) throw error;
+        bancoDestinoFinalId = data.id;
+      }
+
       let servicoFinalId = servicoSelecionado?.id ?? null;
       if (!servicoFinalId && buscaServico.trim() && tipo === "receita") {
         const { data, error } = await supabase.from("servicos").insert({ nome: buscaServico.trim() }).select("id").single();
@@ -1018,12 +1037,13 @@ function LancamentoForm({
       }
 
       const payloadBase = {
-        descricao: descricao || null,
+        descricao: tipo === "transferencia" ? "Transferência de contas" : descricao || null,
         tipo,
         banco_id: bancoFinalId,
+        banco_destino_id: tipo === "transferencia" ? bancoDestinoFinalId : null,
         plano_conta_id: tipo === "transferencia" ? null : planoContaFinalId,
         servico_id: tipo === "receita" ? servicoFinalId : null,
-        pessoa_id: pessoaSelecionada?.id ?? null,
+        pessoa_id: tipo === "transferencia" ? null : pessoaSelecionada?.id ?? null,
         ...(clienteId ? { cliente_id: clienteId } : {}),
       };
 
@@ -1181,46 +1201,50 @@ function LancamentoForm({
         </button>
       </div>
 
-      <div className="relative">
-        <Busca
-          label="Cliente / Fornecedor (opcional)"
-          valor={buscaCliente}
-          onChange={(v) => {
-            setBuscaCliente(v);
-            setPessoaSelecionada(null);
-            setMostrarSugCliente(true);
-          }}
-          onFocus={() => setMostrarSugCliente(true)}
-          placeholder="Digite o nome..."
-        />
-        {mostrarSugCliente && buscaCliente && !pessoaSelecionada && (
-          <ListaSugestoes>
-            {sugCliente.length > 0 ? (
-              sugCliente.map((p) => (
-                <ItemSugestao
-                  key={p.id}
-                  onClick={() => {
-                    setPessoaSelecionada(p);
-                    setBuscaCliente(p.nome);
-                    setMostrarSugCliente(false);
-                  }}
-                >
-                  {p.nome}
+      {tipo !== "transferencia" && (
+        <div className="relative">
+          <Busca
+            label="Cliente / Fornecedor (opcional)"
+            valor={buscaCliente}
+            onChange={(v) => {
+              setBuscaCliente(v);
+              setPessoaSelecionada(null);
+              setMostrarSugCliente(true);
+            }}
+            onFocus={() => setMostrarSugCliente(true)}
+            placeholder="Digite o nome..."
+          />
+          {mostrarSugCliente && buscaCliente && !pessoaSelecionada && (
+            <ListaSugestoes>
+              {sugCliente.length > 0 ? (
+                sugCliente.map((p) => (
+                  <ItemSugestao
+                    key={p.id}
+                    onClick={() => {
+                      setPessoaSelecionada(p);
+                      setBuscaCliente(p.nome);
+                      setMostrarSugCliente(false);
+                    }}
+                  >
+                    {p.nome}
+                  </ItemSugestao>
+                ))
+              ) : (
+                <ItemSugestao destaque onClick={() => setCadastrandoCliente(true)}>
+                  + Cadastrar &ldquo;{buscaCliente}&rdquo; como nova pessoa
                 </ItemSugestao>
-              ))
-            ) : (
-              <ItemSugestao destaque onClick={() => setCadastrandoCliente(true)}>
-                + Cadastrar &ldquo;{buscaCliente}&rdquo; como nova pessoa
-              </ItemSugestao>
-            )}
-          </ListaSugestoes>
-        )}
-      </div>
+              )}
+            </ListaSugestoes>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
-        <Campo label="Descrição">
-          <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="input" placeholder="Ex: Mensalidade julho" />
-        </Campo>
+        {tipo !== "transferencia" && (
+          <Campo label="Descrição">
+            <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="input" placeholder="Ex: Mensalidade julho" />
+          </Campo>
+        )}
         <Campo label="Valor (R$)" required>
           <input
             type="number"
@@ -1351,7 +1375,7 @@ function LancamentoForm({
 
       <div className="relative">
         <Busca
-          label="Banco"
+          label={tipo === "transferencia" ? "Banco de origem" : "Banco"}
           valor={buscaBanco}
           onChange={(v) => {
             setBuscaBanco(v);
@@ -1384,6 +1408,44 @@ function LancamentoForm({
           </ListaSugestoes>
         )}
       </div>
+
+      {tipo === "transferencia" && (
+        <div className="relative">
+          <Busca
+            label="Banco de destino"
+            valor={buscaBancoDestino}
+            onChange={(v) => {
+              setBuscaBancoDestino(v);
+              setBancoDestinoSelecionado(null);
+              setMostrarSugBancoDestino(true);
+            }}
+            onFocus={() => setMostrarSugBancoDestino(true)}
+            placeholder="Digite o banco de destino..."
+          />
+          {mostrarSugBancoDestino && buscaBancoDestino && !bancoDestinoSelecionado && (
+            <ListaSugestoes>
+              {sugBancoDestino.length > 0 ? (
+                sugBancoDestino.map((b) => (
+                  <ItemSugestao
+                    key={b.id}
+                    onClick={() => {
+                      setBancoDestinoSelecionado(b);
+                      setBuscaBancoDestino(b.nome);
+                      setMostrarSugBancoDestino(false);
+                    }}
+                  >
+                    {b.nome}
+                  </ItemSugestao>
+                ))
+              ) : (
+                <ItemSugestao destaque onClick={() => setMostrarSugBancoDestino(false)}>
+                  + Cadastrar &ldquo;{buscaBancoDestino}&rdquo; como novo banco
+                </ItemSugestao>
+              )}
+            </ListaSugestoes>
+          )}
+        </div>
+      )}
 
       {tipo !== "transferencia" && (
         <div className="relative">

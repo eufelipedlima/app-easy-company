@@ -130,11 +130,15 @@ export default function FuncionariosPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-end mb-6">
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <p className="text-xs text-ink/50 bg-surface rounded-full px-4 py-2 inline-flex items-center gap-1.5 w-fit">
+          🐟 Esses valores são a base de cálculo pra ter noção do custo de cada funcionário — eles
+          não são lançados automaticamente no financeiro. Se for pagar, lance à parte em Lançamentos.
+        </p>
         {!painelAberto && (
           <button
             onClick={() => setPainelAberto(true)}
-            className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+            className="shrink-0 rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
           >
             + Novo funcionário
           </button>
@@ -266,6 +270,18 @@ function DetalheFuncionario({
     encargos.fgts +
     beneficios.reduce((s, b) => s + valorMensalBeneficio(b, hoje.getFullYear(), hoje.getMonth()), 0);
 
+  async function removerHistorico(id: string) {
+    if (!window.confirm("Excluir este registro do histórico salarial? Isso não altera o salário atual do funcionário.")) return;
+    const supabase = createClient();
+    await supabase.from("funcionario_historico_salario").delete().eq("id", id);
+    const { data } = await supabase
+      .from("funcionario_historico_salario")
+      .select("id, tipo, salario_anterior, salario_novo, data_alteracao, observacao")
+      .eq("funcionario_id", funcionario.id)
+      .order("data_alteracao", { ascending: false });
+    setHistorico(data ?? []);
+  }
+
   async function registrarReajuste(e: React.FormEvent) {
     e.preventDefault();
     if (!novoSalario || !dataReajuste) {
@@ -353,6 +369,10 @@ function DetalheFuncionario({
             ✕
           </button>
         </div>
+
+        <p className="text-xs text-ink/50 bg-card rounded-2xl px-3 py-2 mb-4">
+          🐟 Base de cálculo de custo — não é lançado automaticamente no financeiro.
+        </p>
 
         <div className="rounded-2xl bg-card p-4 mb-4 shadow-sm">
           <div className="flex items-start justify-between">
@@ -561,9 +581,18 @@ function DetalheFuncionario({
                     >
                       {h.tipo === "aumento" ? "Aumento" : "Reajuste"}
                     </span>
-                    <span className="text-xs text-ink/40">
-                      {new Date(h.data_alteracao + "T00:00:00").toLocaleDateString("pt-BR")}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-ink/40">
+                        {new Date(h.data_alteracao + "T00:00:00").toLocaleDateString("pt-BR")}
+                      </span>
+                      <button
+                        onClick={() => removerHistorico(h.id)}
+                        className="text-xs text-ink/30 hover:text-red-600"
+                        title="Excluir este registro do histórico"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
                   <p className="text-ink/70 mt-1">
                     {formatarMoeda(h.salario_anterior)} → <span className="font-semibold text-ink">{formatarMoeda(h.salario_novo)}</span>
