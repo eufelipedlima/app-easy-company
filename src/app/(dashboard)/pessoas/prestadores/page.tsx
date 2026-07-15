@@ -8,6 +8,7 @@ interface Prestador {
   id: string;
   tipo_servico: string | null;
   observacoes: string | null;
+  pix: string | null;
   papeis: { pessoas: { nome: string; whatsapp: string | null; email: string | null } | null } | null;
 }
 
@@ -27,7 +28,7 @@ export default function PrestadoresPage() {
     const supabase = createClient();
     const { data } = await supabase
       .from("prestadores")
-      .select("id, tipo_servico, observacoes, papeis ( pessoas ( nome, whatsapp, email ) )")
+      .select("id, tipo_servico, observacoes, pix, papeis ( pessoas ( nome, whatsapp, email ) )")
       .eq("ativo", true)
       .order("created_at", { ascending: false });
     setPrestadores((data as unknown as Prestador[]) ?? []);
@@ -82,6 +83,7 @@ export default function PrestadoresPage() {
                 <th className="px-4 py-3 font-medium">Nome</th>
                 <th className="px-4 py-3 font-medium">Tipo de serviço</th>
                 <th className="px-4 py-3 font-medium">Contato</th>
+                <th className="px-4 py-3 font-medium">PIX</th>
                 <th className="px-4 py-3 font-medium"></th>
               </tr>
             </thead>
@@ -94,6 +96,7 @@ export default function PrestadoresPage() {
                     {p.papeis?.pessoas?.whatsapp && <span className="block">{p.papeis.pessoas.whatsapp}</span>}
                     {p.papeis?.pessoas?.email && <span className="block text-xs text-ink/50">{p.papeis.pessoas.email}</span>}
                   </td>
+                  <td className="px-4 py-3 text-ink/70">{p.pix ?? "—"}</td>
                   <td className="px-4 py-3">
                     <button
                       onClick={() => remover(p.id)}
@@ -120,6 +123,7 @@ function PrestadorForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
   const [cadastrandoPessoa, setCadastrandoPessoa] = useState(false);
   const [tipoServico, setTipoServico] = useState("");
   const [observacoes, setObservacoes] = useState("");
+  const [pix, setPix] = useState("");
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -168,6 +172,7 @@ function PrestadorForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
         papel_id: papelId,
         tipo_servico: tipoServico || null,
         observacoes: observacoes || null,
+        pix: pix || null,
       });
       if (error) throw error;
       onSaved();
@@ -259,6 +264,15 @@ function PrestadorForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
             onChange={(e) => setTipoServico(e.target.value)}
             className="input"
             placeholder="Ex: Design, Copywriting..."
+          />
+        </label>
+        <label className="block">
+          <span className="block text-sm font-medium text-ink/70 mb-1">Chave PIX</span>
+          <input
+            value={pix}
+            onChange={(e) => setPix(e.target.value)}
+            className="input"
+            placeholder="CPF, e-mail, telefone ou aleatória"
           />
         </label>
       </div>

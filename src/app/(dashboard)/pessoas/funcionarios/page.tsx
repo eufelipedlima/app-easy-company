@@ -46,6 +46,7 @@ interface Funcionario {
   tipo_contrato: "CLT" | "PJ" | null;
   salario: number;
   data_admissao: string | null;
+  pix: string | null;
   papeis: { pessoas: { nome: string } | null } | null;
   cargos: { nome: string } | null;
 }
@@ -83,7 +84,7 @@ export default function FuncionariosPage() {
     const { data: func } = await supabase
       .from("funcionarios")
       .select(
-        "id, papel_id, cargo, cargo_id, tipo_contrato, salario, data_admissao, papeis ( pessoas ( nome ) ), cargos ( nome )"
+        "id, papel_id, cargo, cargo_id, tipo_contrato, salario, data_admissao, pix, papeis ( pessoas ( nome ) ), cargos ( nome )"
       )
       .eq("ativo", true)
       .order("created_at", { ascending: false });
@@ -397,6 +398,13 @@ function DetalheFuncionario({
           </p>
         </div>
 
+        {funcionario.pix && (
+          <div className="rounded-2xl bg-card p-3 mb-4 shadow-sm flex items-center justify-between">
+            <span className="text-xs text-ink/50">Chave PIX</span>
+            <span className="text-sm font-semibold text-ink">{funcionario.pix}</span>
+          </div>
+        )}
+
         {painelReajusteAberto && (
           <form onSubmit={registrarReajuste} className="rounded-2xl bg-card p-4 mb-4 shadow-sm space-y-3">
             <p className="text-sm font-bold text-ink">Registrar reajuste / aumento</p>
@@ -640,6 +648,7 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
   const [tipoContrato, setTipoContrato] = useState<"CLT" | "PJ">("CLT");
   const [salario, setSalario] = useState("");
   const [dataAdmissao, setDataAdmissao] = useState("");
+  const [pix, setPix] = useState("");
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -709,6 +718,7 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
         tipo_contrato: tipoContrato,
         salario: Number(salario),
         data_admissao: dataAdmissao || null,
+        pix: pix || null,
       });
       if (error) throw error;
       onSaved();
@@ -856,6 +866,11 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
         <label className="block">
           <span className="block text-sm font-medium text-ink/70 mb-1">Início do contrato</span>
           <input type="date" value={dataAdmissao} onChange={(e) => setDataAdmissao(e.target.value)} className="input" />
+        </label>
+
+        <label className="block">
+          <span className="block text-sm font-medium text-ink/70 mb-1">Chave PIX</span>
+          <input value={pix} onChange={(e) => setPix(e.target.value)} className="input" placeholder="CPF, e-mail, telefone ou aleatória" />
         </label>
       </div>
 
