@@ -43,6 +43,29 @@ export default function PessoasPage() {
   const [painelAberto, setPainelAberto] = useState(false);
   const [editando, setEditando] = useState<Pessoa | null>(null);
   const [detalhe, setDetalhe] = useState<Pessoa | null>(null);
+  const [responsavelDetalhe, setResponsavelDetalhe] = useState<{
+    nome_completo: string;
+    cpf: string;
+    email: string | null;
+    whatsapp: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!detalhe || detalhe.tipo_pessoa !== "PJ") {
+      setResponsavelDetalhe(null);
+      return;
+    }
+    async function carregarResponsavel() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("responsaveis")
+        .select("nome_completo, cpf, email, whatsapp")
+        .eq("pessoa_id", detalhe!.id)
+        .maybeSingle();
+      setResponsavelDetalhe(data ?? null);
+    }
+    carregarResponsavel();
+  }, [detalhe]);
   const [filtroPapel, setFiltroPapel] = useState<FiltroPapel>("todos");
 
   const carregar = useCallback(async () => {
@@ -257,6 +280,15 @@ export default function PessoasPage() {
                 <DetalheLinha label="Observação da origem" valor={detalhe.observacao_origem} />
               )}
             </SecaoDetalhe>
+
+            {detalhe.tipo_pessoa === "PJ" && responsavelDetalhe && (
+              <SecaoDetalhe titulo="Responsável pela empresa">
+                <DetalheLinha label="Nome completo" valor={responsavelDetalhe.nome_completo} />
+                <DetalheLinha label="CPF" valor={responsavelDetalhe.cpf} />
+                <DetalheLinha label="E-mail" valor={responsavelDetalhe.email ?? "—"} />
+                <DetalheLinha label="WhatsApp" valor={responsavelDetalhe.whatsapp ?? "—"} />
+              </SecaoDetalhe>
+            )}
 
             <SecaoDetalhe titulo="Contato">
               <DetalheLinha label="WhatsApp" valor={detalhe.whatsapp ?? "—"} />
