@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { normalizar } from "@/lib/normalizar";
 import { PessoaForm } from "@/components/pessoa-form";
 
 interface Prestador {
@@ -142,7 +143,7 @@ function PrestadorForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
     carregarPessoas();
   }, []);
 
-  const sugestoes = pessoas.filter((p) => p.nome.toLowerCase().includes(busca.toLowerCase()));
+  const sugestoes = pessoas.filter((p) => normalizar(p.nome).includes(normalizar(busca)));
 
   async function garantirPrestadorPapelId(pessoaId: string): Promise<string> {
     const supabase = createClient();

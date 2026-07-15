@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { normalizar } from "@/lib/normalizar";
 import { PessoaForm } from "@/components/pessoa-form";
 
 interface Lancamento {
@@ -555,9 +556,9 @@ export default function LancamentosPage() {
     .filter(
       (l) =>
         !filtroCliente ||
-        (nomePessoaLancamento(l) ?? "").toLowerCase().includes(filtroCliente.toLowerCase())
+        normalizar(nomePessoaLancamento(l) ?? "").includes(normalizar(filtroCliente))
     )
-    .filter((l) => !filtroDescricao || (l.descricao ?? "").toLowerCase().includes(filtroDescricao.toLowerCase()))
+    .filter((l) => !filtroDescricao || normalizar(l.descricao ?? "").includes(normalizar(filtroDescricao)))
     .filter((l) => !filtroPlanoContaId || l.plano_conta_id === filtroPlanoContaId)
     .filter((l) => !filtroBancoId || l.banco_id === filtroBancoId)
     .filter((l) => !filtroValor || l.valor.toFixed(2).includes(filtroValor.replace(",", ".")));
@@ -1419,13 +1420,13 @@ function LancamentoForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const sugCliente = pessoas.filter((p) => p.nome.toLowerCase().includes(buscaCliente.toLowerCase()));
-  const sugBanco = bancos.filter((b) => b.nome.toLowerCase().includes(buscaBanco.toLowerCase()));
-  const sugBancoDestino = bancos.filter((b) => b.nome.toLowerCase().includes(buscaBancoDestino.toLowerCase()));
+  const sugCliente = pessoas.filter((p) => normalizar(p.nome).includes(normalizar(buscaCliente)));
+  const sugBanco = bancos.filter((b) => normalizar(b.nome).includes(normalizar(buscaBanco)));
+  const sugBancoDestino = bancos.filter((b) => normalizar(b.nome).includes(normalizar(buscaBancoDestino)));
   const sugPlanoConta = planosConta
     .filter((p) => p.tipo === tipo)
-    .filter((p) => p.nome.toLowerCase().includes(buscaPlanoConta.toLowerCase()));
-  const sugServico = servicos.filter((s) => s.nome.toLowerCase().includes(buscaServico.toLowerCase()));
+    .filter((p) => normalizar(p.nome).includes(normalizar(buscaPlanoConta)));
+  const sugServico = servicos.filter((s) => normalizar(s.nome).includes(normalizar(buscaServico)));
 
   async function garantirClienteId(pessoaId: string): Promise<string> {
     const supabase = createClient();

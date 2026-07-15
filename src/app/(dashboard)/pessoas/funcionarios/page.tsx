@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { normalizar } from "@/lib/normalizar";
 import { PessoaForm } from "@/components/pessoa-form";
 
 interface Beneficio {
@@ -673,8 +674,8 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
     carregarCargos();
   }, []);
 
-  const sugestoes = pessoas.filter((p) => p.nome.toLowerCase().includes(busca.toLowerCase()));
-  const sugestoesCargo = cargos.filter((c) => c.nome.toLowerCase().includes(buscaCargo.toLowerCase()));
+  const sugestoes = pessoas.filter((p) => normalizar(p.nome).includes(normalizar(busca)));
+  const sugestoesCargo = cargos.filter((c) => normalizar(c.nome).includes(normalizar(buscaCargo)));
 
   async function garantirFuncionarioPapelId(pessoaId: string): Promise<string> {
     const supabase = createClient();

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { normalizar } from "@/lib/normalizar";
 import { PessoaForm } from "@/components/pessoa-form";
 
 interface Contrato {
@@ -611,7 +612,7 @@ function ContratoRecorrenteForm({
     setPlanosConta((data as PlanoConta[]) ?? []);
   }
 
-  const sugestoes = pessoas.filter((p) => p.nome.toLowerCase().includes(buscaCliente.toLowerCase()));
+  const sugestoes = pessoas.filter((p) => normalizar(p.nome).includes(normalizar(buscaCliente)));
 
   async function garantirClienteId(pessoaId: string): Promise<string> {
     const supabase = createClient();
@@ -995,9 +996,9 @@ function ContratoRecorrenteForm({
           />
           {mostrarSugestoesServico && buscaServico && !servicoSelecionado && (
             <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
-              {servicos.filter((s) => s.nome.toLowerCase().includes(buscaServico.toLowerCase())).length > 0 ? (
+              {servicos.filter((s) => normalizar(s.nome).includes(normalizar(buscaServico))).length > 0 ? (
                 servicos
-                  .filter((s) => s.nome.toLowerCase().includes(buscaServico.toLowerCase()))
+                  .filter((s) => normalizar(s.nome).includes(normalizar(buscaServico)))
                   .map((s) => (
                     <button
                       key={s.id}
@@ -1040,9 +1041,9 @@ function ContratoRecorrenteForm({
           />
           {mostrarSugestoesBanco && buscaBanco && !bancoSelecionado && (
             <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
-              {bancos.filter((b) => b.nome.toLowerCase().includes(buscaBanco.toLowerCase())).length > 0 ? (
+              {bancos.filter((b) => normalizar(b.nome).includes(normalizar(buscaBanco))).length > 0 ? (
                 bancos
-                  .filter((b) => b.nome.toLowerCase().includes(buscaBanco.toLowerCase()))
+                  .filter((b) => normalizar(b.nome).includes(normalizar(buscaBanco)))
                   .map((b) => (
                     <button
                       key={b.id}
@@ -1085,9 +1086,9 @@ function ContratoRecorrenteForm({
           />
           {mostrarSugestoesPlanoConta && buscaPlanoConta && !planoContaSelecionado && (
             <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
-              {planosConta.filter((p) => p.tipo === "receita" && p.nome.toLowerCase().includes(buscaPlanoConta.toLowerCase())).length > 0 ? (
+              {planosConta.filter((p) => p.tipo === "receita" && normalizar(p.nome).includes(normalizar(buscaPlanoConta))).length > 0 ? (
                 planosConta
-                  .filter((p) => p.tipo === "receita" && p.nome.toLowerCase().includes(buscaPlanoConta.toLowerCase()))
+                  .filter((p) => p.tipo === "receita" && normalizar(p.nome).includes(normalizar(buscaPlanoConta)))
                   .map((p) => (
                     <button
                       key={p.id}
