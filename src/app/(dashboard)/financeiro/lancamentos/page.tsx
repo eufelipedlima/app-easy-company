@@ -210,7 +210,7 @@ export default function LancamentosPage() {
           .select("id, data_pagamento, banco_id, valor, taxa, desconto, bancos ( nome )")
           .eq("lancamento_id", detalhe!.id)
           .order("data_pagamento", { ascending: false }),
-        supabase.from("bancos").select("id, nome").order("nome"),
+        supabase.from("bancos").select("id, nome").eq("ativo", true).order("nome"),
       ]);
       setPagamentos((p as unknown as Pagamento[]) ?? []);
       setBancosOpcoesPagamento(b ?? []);
@@ -330,7 +330,7 @@ export default function LancamentosPage() {
     async function carregarOpcoes() {
       const supabase = createClient();
       const [{ data: b }, { data: p }] = await Promise.all([
-        supabase.from("bancos").select("id, nome").order("nome"),
+        supabase.from("bancos").select("id, nome").eq("ativo", true).order("nome"),
         supabase.from("planos_conta").select("id, nome").order("nome"),
       ]);
       setBancosOpcoes(b ?? []);
@@ -1150,7 +1150,7 @@ function LancamentoForm({
       const supabase = createClient();
       const [{ data: p }, { data: b }, { data: pc }, { data: s }] = await Promise.all([
         supabase.from("pessoas").select("id, nome, tipo_pessoa").order("nome"),
-        supabase.from("bancos").select("id, nome").order("nome"),
+        supabase.from("bancos").select("id, nome").eq("ativo", true).order("nome"),
         supabase.from("planos_conta").select("id, nome, tipo").order("nome"),
         supabase.from("servicos").select("id, nome").order("nome"),
       ]);

@@ -76,7 +76,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   async function carregarContas() {
     const supabase = createClient();
     const [{ data: b }, { data: l }] = await Promise.all([
-      supabase.from("bancos").select("id, nome, saldo_inicial").order("nome"),
+      supabase.from("bancos").select("id, nome, saldo_inicial").eq("ativo", true).order("nome"),
       supabase.from("lancamentos").select("tipo, valor, banco_id, banco_destino_id").eq("situacao", "pago"),
     ]);
     setBancos(b ?? []);

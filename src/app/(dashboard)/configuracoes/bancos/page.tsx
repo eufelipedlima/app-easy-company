@@ -7,6 +7,7 @@ interface Banco {
   id: string;
   nome: string;
   saldo_inicial: number;
+  ativo: boolean;
 }
 
 interface LancamentoPago {
@@ -14,10 +15,15 @@ interface LancamentoPago {
   valor: number;
   banco_id: string | null;
   banco_destino_id: string | null;
+  data_quitacao: string | null;
 }
 
 function formatarMoeda(valor: number) {
   return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function hojeISO() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 export default function BancosPage() {
@@ -29,15 +35,17 @@ export default function BancosPage() {
   const [salvando, setSalvando] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [saldoEditado, setSaldoEditado] = useState("");
+  const [verSaldoAte, setVerSaldoAte] = useState(hojeISO());
+  const [mostrarArquivados, setMostrarArquivados] = useState(false);
 
   const carregar = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
     const [{ data: b }, { data: l }] = await Promise.all([
-      supabase.from("bancos").select("id, nome, saldo_inicial").order("nome"),
+      supabase.from("bancos").select("id, nome, saldo_inicial, ativo").order("nome"),
       supabase
         .from("lancamentos")
-        .select("tipo, valor, banco_id, banco_destino_id")
+        .select("tipo, valor, banco_id, banco_destino_id, data_quitacao")
         .eq("situacao", "pago"),
     ]);
     setBancos((b as Banco[]) ?? []);
@@ -49,9 +57,10 @@ export default function BancosPage() {
     carregar();
   }, [carregar]);
 
-  function saldoAtual(banco: Banco) {
+  function saldoAte(banco: Banco, dataLimite: string) {
     let saldo = banco.saldo_inicial;
     for (const l of lancamentosPagos) {
+      if (!l.data_quitacao || l.data_quitacao > dataLimite) continue;
       if (l.tipo === "receita" && l.banco_id === banco.id) saldo += l.valor;
       else if (l.tipo === "despesa" && l.banco_id === banco.id) saldo -= l.valor;
       else if (l.tipo === "transferencia") {
@@ -78,19 +87,26 @@ export default function BancosPage() {
   }
 
   async function remover(id: string) {
+    if (!window.confirm("Excluir esse banco de vez? Se ele já tiver lançamentos, prefira arquivar em vez de excluir.")) return;
     const supabase = createClient();
     await supabase.from("bancos").delete().eq("id", id);
     carregar();
   }
 
+  async function arquivar(id: string, ativo: boolean) {
+    const supabase = createClient();
+    await supabase.from("bancos").update({ ativo }).eq("id", id);
+    carregar();
+  }
+
   async function salvarAjusteSaldo(banco: Banco) {
     const novoSaldo = saldoEditado ? Number(saldoEditado) : 0;
-    const atual = saldoAtual(banco);
+    const atual = saldoAte(banco, hojeISO());
     const delta = novoSaldo - atual;
 
     if (delta !== 0) {
       const supabase = createClient();
-      const hoje = new Date().toISOString().slice(0, 10);
+      const hoje = hojeISO();
       await supabase.from("lancamentos").insert({
         tipo: delta > 0 ? "receita" : "despesa",
         situacao: "pago",
@@ -104,6 +120,9 @@ export default function BancosPage() {
     setEditandoId(null);
     carregar();
   }
+
+  const bancosAtivos = bancos.filter((b) => b.ativo);
+  const bancosArquivados = bancos.filter((b) => !b.ativo);
 
   return (
     <section>
@@ -131,13 +150,23 @@ export default function BancosPage() {
         </button>
       </form>
 
+      <label className="flex items-center gap-2 text-sm text-ink/70 mb-4 w-fit">
+        Ver saldo até
+        <input
+          type="date"
+          value={verSaldoAte}
+          onChange={(e) => setVerSaldoAte(e.target.value)}
+          className="input py-1.5"
+        />
+      </label>
+
       <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
         {loading ? (
           <p className="p-4 text-sm text-ink/50">Carregando...</p>
-        ) : bancos.length === 0 ? (
+        ) : bancosAtivos.length === 0 ? (
           <p className="p-4 text-sm text-ink/50">Nenhum banco cadastrado ainda.</p>
         ) : (
-          bancos.map((banco) => (
+          bancosAtivos.map((banco) => (
             <div
               key={banco.id}
               className="flex items-center justify-between px-4 py-3 border-b border-black/5 last:border-0"
@@ -174,24 +203,33 @@ export default function BancosPage() {
                 ) : (
                   <>
                     <div className="text-right">
-                      <p className="text-xs text-ink/40">Saldo atual</p>
+                      <p className="text-xs text-ink/40">
+                        {verSaldoAte === hojeISO() ? "Saldo atual" : `Saldo até ${verSaldoAte.split("-").reverse().join("/")}`}
+                      </p>
                       <p
                         className={`text-sm font-bold ${
-                          saldoAtual(banco) < 0 ? "text-red-600" : "text-forest"
+                          saldoAte(banco, verSaldoAte) < 0 ? "text-red-600" : "text-forest"
                         }`}
                       >
-                        {formatarMoeda(saldoAtual(banco))}
+                        {formatarMoeda(saldoAte(banco, verSaldoAte))}
                       </p>
                     </div>
                     <button
                       onClick={() => {
                         setEditandoId(banco.id);
-                        setSaldoEditado(String(saldoAtual(banco)));
+                        setSaldoEditado(String(saldoAte(banco, hojeISO())));
                       }}
                       className="text-xs font-semibold text-ink/40 hover:text-ink"
                       title="Ajustar saldo (gera um lançamento de ajuste)"
                     >
                       Ajustar
+                    </button>
+                    <button
+                      onClick={() => arquivar(banco.id, false)}
+                      className="text-xs font-semibold text-ink/40 hover:text-ink"
+                      title="Arquivar — some do menu e da hora de lançar, mas mantém o histórico"
+                    >
+                      Arquivar
                     </button>
                     <button
                       onClick={() => remover(banco.id)}
@@ -207,11 +245,46 @@ export default function BancosPage() {
         )}
       </div>
 
+      {bancosArquivados.length > 0 && (
+        <div className="mt-4">
+          <button
+            onClick={() => setMostrarArquivados((v) => !v)}
+            className="text-xs font-semibold text-ink/50 hover:text-ink"
+          >
+            {mostrarArquivados ? "− Ocultar" : "+ Ver"} bancos arquivados ({bancosArquivados.length})
+          </button>
+
+          {mostrarArquivados && (
+            <div className="rounded-3xl bg-card border border-black/5 overflow-hidden mt-2">
+              {bancosArquivados.map((banco) => (
+                <div
+                  key={banco.id}
+                  className="flex items-center justify-between px-4 py-3 border-b border-black/5 last:border-0 opacity-60"
+                >
+                  <span className="text-sm font-medium text-ink">{banco.nome}</span>
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm font-bold text-ink/50">
+                      {formatarMoeda(saldoAte(banco, verSaldoAte))}
+                    </span>
+                    <button
+                      onClick={() => arquivar(banco.id, true)}
+                      className="text-xs font-semibold text-forest hover:text-ink"
+                    >
+                      Reativar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <p className="text-xs text-ink/40 mt-3">
-        Saldo atual = saldo inicial + receitas pagas − despesas pagas, considerando também
-        transferências entre contas. Só entram lançamentos marcados como &ldquo;Pago&rdquo;.
-        Ajustar o saldo cria um lançamento de &ldquo;Ajuste de saldo&rdquo; automaticamente, pra
-        manter o histórico rastreável em Lançamentos.
+        Saldo = saldo inicial + receitas pagas − despesas pagas até a data escolhida, considerando
+        também transferências entre contas. Só entram lançamentos marcados como &ldquo;Pago&rdquo;.
+        Ajustar o saldo cria um lançamento de &ldquo;Ajuste de saldo&rdquo; automaticamente. Arquivar
+        um banco tira ele da lista de seleção e do menu, mas mantém o histórico de lançamentos intacto.
       </p>
     </section>
   );

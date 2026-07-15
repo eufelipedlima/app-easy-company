@@ -513,7 +513,7 @@ function ContratoPontualForm({
 
   async function carregarBancos() {
     const supabase = createClient();
-    const { data } = await supabase.from("bancos").select("id, nome").order("nome");
+    const { data } = await supabase.from("bancos").select("id, nome").eq("ativo", true).order("nome");
     setBancos(data ?? []);
   }
 
