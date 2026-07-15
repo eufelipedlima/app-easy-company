@@ -9,6 +9,7 @@ interface Pessoa {
   tipo_pessoa: "PF" | "PJ";
   nome: string;
   razao_social: string | null;
+  nome_fantasia: string | null;
   documento: string;
   data_nascimento: string | null;
   email: string | null;
@@ -22,6 +23,7 @@ interface Pessoa {
   cep: string | null;
   segmento_id: string | null;
   origem_id: string | null;
+  observacao_origem: string | null;
   created_at: string;
   segmentos: { nome: string } | null;
   origens: { nome: string } | null;
@@ -49,7 +51,7 @@ export default function PessoasPage() {
     const { data } = await supabase
       .from("pessoas")
       .select(
-        "id, tipo_pessoa, nome, razao_social, documento, data_nascimento, email, whatsapp, pix, rua, numero, complemento, bairro, cidade, cep, segmento_id, origem_id, created_at, segmentos ( nome ), origens ( nome ), papeis ( papel )"
+        "id, tipo_pessoa, nome, razao_social, nome_fantasia, documento, data_nascimento, email, whatsapp, pix, rua, numero, complemento, bairro, cidade, cep, segmento_id, origem_id, observacao_origem, created_at, segmentos ( nome ), origens ( nome ), papeis ( papel )"
       )
       .order("created_at", { ascending: false });
     setPessoas((data as unknown as Pessoa[]) ?? []);
@@ -244,10 +246,16 @@ export default function PessoasPage() {
               {detalhe.tipo_pessoa === "PF" && (
                 <DetalheLinha label="Data de nascimento" valor={formatarData(detalhe.data_nascimento)} />
               )}
+              {detalhe.tipo_pessoa === "PF" && detalhe.nome_fantasia && (
+                <DetalheLinha label="Nome fantasia" valor={detalhe.nome_fantasia} />
+              )}
               {detalhe.tipo_pessoa === "PJ" && (
                 <DetalheLinha label="Segmento" valor={detalhe.segmentos?.nome ?? "—"} />
               )}
               <DetalheLinha label="Origem" valor={detalhe.origens?.nome ?? "—"} />
+              {detalhe.observacao_origem && (
+                <DetalheLinha label="Observação da origem" valor={detalhe.observacao_origem} />
+              )}
             </SecaoDetalhe>
 
             <SecaoDetalhe titulo="Contato">

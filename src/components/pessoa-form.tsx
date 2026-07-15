@@ -32,6 +32,7 @@ interface PessoaEditando {
   tipo_pessoa: TipoPessoa;
   nome: string;
   razao_social: string | null;
+  nome_fantasia: string | null;
   documento: string;
   data_nascimento: string | null;
   email: string | null;
@@ -45,6 +46,7 @@ interface PessoaEditando {
   cep: string | null;
   segmento_id: string | null;
   origem_id: string | null;
+  observacao_origem: string | null;
 }
 
 interface Props {
@@ -65,6 +67,7 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
 
   const [nome, setNome] = useState(pessoaEditando?.nome ?? nomeInicial ?? "");
   const [razaoSocial, setRazaoSocial] = useState(pessoaEditando?.razao_social ?? "");
+  const [nomeFantasia, setNomeFantasia] = useState(pessoaEditando?.nome_fantasia ?? "");
   const [documento, setDocumento] = useState(pessoaEditando?.documento ?? "");
   const [dataNascimento, setDataNascimento] = useState(pessoaEditando?.data_nascimento ?? "");
   const [email, setEmail] = useState(pessoaEditando?.email ?? "");
@@ -89,6 +92,7 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
 
   const [origens, setOrigens] = useState<Segmento[]>([]);
   const [origemId, setOrigemId] = useState(pessoaEditando?.origem_id ?? "");
+  const [observacaoOrigem, setObservacaoOrigem] = useState(pessoaEditando?.observacao_origem ?? "");
 
   useEffect(() => {
     async function carregarSegmentos() {
@@ -140,6 +144,7 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
       tipo_pessoa: tipo,
       nome,
       razao_social: tipo === "PJ" ? razaoSocial : null,
+      nome_fantasia: tipo === "PF" ? nomeFantasia || null : null,
       documento,
       data_nascimento: tipo === "PF" ? dataNascimento || null : null,
       email: email || null,
@@ -153,6 +158,7 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
       cep: cep || null,
       segmento_id: tipo === "PJ" ? segmentoFinalId : null,
       origem_id: origemFinalId,
+      observacao_origem: observacaoOrigem || null,
     };
 
     let pessoaId: string;
@@ -282,6 +288,17 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
           </Campo>
         )}
 
+        {tipo === "PF" && (
+          <Campo label="Nome fantasia (opcional)">
+            <input
+              value={nomeFantasia}
+              onChange={(e) => setNomeFantasia(e.target.value)}
+              className="input"
+              placeholder="Se o contrato for pro negócio dessa pessoa"
+            />
+          </Campo>
+        )}
+
         {tipo === "PJ" && (
           <Campo label="Segmento">
             <select
@@ -318,6 +335,15 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
           <span className="block text-xs text-ink/40 mt-1">
             Como essa pessoa chegou até a agência. Novas origens são cadastradas em Configurações.
           </span>
+        </Campo>
+
+        <Campo label="Observação da origem (opcional)">
+          <input
+            value={observacaoOrigem}
+            onChange={(e) => setObservacaoOrigem(e.target.value)}
+            className="input"
+            placeholder="Ex: qual anúncio, qual evento..."
+          />
         </Campo>
 
         <Campo label="E-mail">
