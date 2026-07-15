@@ -13,6 +13,7 @@ interface Pessoa {
   data_nascimento: string | null;
   email: string | null;
   whatsapp: string | null;
+  pix: string | null;
   rua: string | null;
   numero: string | null;
   complemento: string | null;
@@ -46,7 +47,7 @@ export default function PessoasPage() {
     const { data } = await supabase
       .from("pessoas")
       .select(
-        "id, tipo_pessoa, nome, razao_social, documento, data_nascimento, email, whatsapp, rua, numero, complemento, bairro, cidade, cep, segmento_id, created_at, segmentos ( nome ), papeis ( papel )"
+        "id, tipo_pessoa, nome, razao_social, documento, data_nascimento, email, whatsapp, pix, rua, numero, complemento, bairro, cidade, cep, segmento_id, created_at, segmentos ( nome ), papeis ( papel )"
       )
       .order("created_at", { ascending: false });
     setPessoas((data as unknown as Pessoa[]) ?? []);
@@ -237,6 +238,7 @@ export default function PessoasPage() {
 
             <SecaoDetalhe titulo="Contato">
               <DetalheLinha label="WhatsApp" valor={detalhe.whatsapp ?? "—"} />
+              <DetalheLinha label="Chave PIX" valor={detalhe.pix ?? "—"} />
               <DetalheLinha label="E-mail" valor={detalhe.email ?? "—"} />
             </SecaoDetalhe>
 

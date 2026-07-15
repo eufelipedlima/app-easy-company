@@ -41,6 +41,16 @@ interface Opcao {
   nome: string;
 }
 
+interface Pagamento {
+  id: string;
+  data_pagamento: string;
+  banco_id: string | null;
+  valor: number;
+  taxa: number | null;
+  desconto: number | null;
+  bancos: { nome: string } | null;
+}
+
 interface PlanoContaOpcao extends Opcao {
   tipo: "receita" | "despesa";
 }
@@ -171,10 +181,95 @@ export default function LancamentosPage() {
     null
   );
   const [detalhe, setDetalhe] = useState<Lancamento | null>(null);
+  const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
+  const [bancosOpcoesPagamento, setBancosOpcoesPagamento] = useState<Opcao[]>([]);
+  const [painelPagamentoAberto, setPainelPagamentoAberto] = useState(false);
+  const [dataPagamentoNovo, setDataPagamentoNovo] = useState("");
+  const [bancoPagamentoNovo, setBancoPagamentoNovo] = useState("");
+  const [valorPagamentoNovo, setValorPagamentoNovo] = useState("");
+  const [taxaPagamentoNovo, setTaxaPagamentoNovo] = useState("");
+  const [descontoPagamentoNovo, setDescontoPagamentoNovo] = useState("");
+  const [salvandoPagamento, setSalvandoPagamento] = useState(false);
+
+  useEffect(() => {
+    if (!detalhe) {
+      setPagamentos([]);
+      return;
+    }
+    async function carregarPagamentos() {
+      const supabase = createClient();
+      const [{ data: p }, { data: b }] = await Promise.all([
+        supabase
+          .from("lancamento_pagamentos")
+          .select("id, data_pagamento, banco_id, valor, taxa, desconto, bancos ( nome )")
+          .eq("lancamento_id", detalhe!.id)
+          .order("data_pagamento", { ascending: false }),
+        supabase.from("bancos").select("id, nome").order("nome"),
+      ]);
+      setPagamentos((p as unknown as Pagamento[]) ?? []);
+      setBancosOpcoesPagamento(b ?? []);
+    }
+    carregarPagamentos();
+  }, [detalhe]);
+
+  const valorPagoTotal = pagamentos.reduce((s, p) => s + p.valor, 0);
+
+  async function registrarPagamento(e: React.FormEvent) {
+    e.preventDefault();
+    if (!detalhe || !dataPagamentoNovo || !valorPagamentoNovo) return;
+    setSalvandoPagamento(true);
+    const supabase = createClient();
+
+    await supabase.from("lancamento_pagamentos").insert({
+      lancamento_id: detalhe.id,
+      data_pagamento: dataPagamentoNovo,
+      banco_id: bancoPagamentoNovo || null,
+      valor: Number(valorPagamentoNovo),
+      taxa: taxaPagamentoNovo ? Number(taxaPagamentoNovo) : null,
+      desconto: descontoPagamentoNovo ? Number(descontoPagamentoNovo) : null,
+    });
+
+    const novoTotalPago = valorPagoTotal + Number(valorPagamentoNovo);
+    if (novoTotalPago >= detalhe.valor) {
+      await supabase
+        .from("lancamentos")
+        .update({ situacao: "pago", data_quitacao: dataPagamentoNovo })
+        .eq("id", detalhe.id);
+    }
+
+    setDataPagamentoNovo("");
+    setBancoPagamentoNovo("");
+    setValorPagamentoNovo("");
+    setTaxaPagamentoNovo("");
+    setDescontoPagamentoNovo("");
+    setPainelPagamentoAberto(false);
+    setSalvandoPagamento(false);
+
+    const { data: p } = await supabase
+      .from("lancamento_pagamentos")
+      .select("id, data_pagamento, banco_id, valor, taxa, desconto, bancos ( nome )")
+      .eq("lancamento_id", detalhe.id)
+      .order("data_pagamento", { ascending: false });
+    setPagamentos((p as unknown as Pagamento[]) ?? []);
+    carregar();
+  }
+
+  async function removerPagamento(id: string) {
+    if (!detalhe) return;
+    if (!window.confirm("Excluir este registro de pagamento?")) return;
+    const supabase = createClient();
+    await supabase.from("lancamento_pagamentos").delete().eq("id", id);
+    const { data: p } = await supabase
+      .from("lancamento_pagamentos")
+      .select("id, data_pagamento, banco_id, valor, taxa, desconto, bancos ( nome )")
+      .eq("lancamento_id", detalhe.id)
+      .order("data_pagamento", { ascending: false });
+    setPagamentos((p as unknown as Pagamento[]) ?? []);
+  }
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [resumoAberto, setResumoAberto] = useState(false);
 
-  const [presetPeriodo, setPresetPeriodo] = useState<PeriodoPreset>("este_mes");
+  const [presetPeriodo, setPresetPeriodo] = useState<PeriodoPreset>("hoje");
   const [periodoPersonalizado, setPeriodoPersonalizado] = useState(calcularPeriodo("este_mes"));
   const periodo = presetPeriodo === "personalizado" ? periodoPersonalizado : calcularPeriodo(presetPeriodo);
 
@@ -765,6 +860,133 @@ export default function LancamentosPage() {
               <DetalheLinha label="Plano de conta" valor={detalhe.planos_conta?.nome ?? "—"} />
               <DetalheLinha label="Descrição" valor={detalhe.descricao ?? "—"} />
             </SecaoDetalhe>
+
+            {detalhe.tipo !== "transferencia" && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Pagamentos</p>
+                  {!painelPagamentoAberto && (
+                    <button
+                      onClick={() => {
+                        setDataPagamentoNovo(new Date().toISOString().slice(0, 10));
+                        setValorPagamentoNovo(String(Math.max(detalhe.valor - valorPagoTotal, 0)));
+                        setPainelPagamentoAberto(true);
+                      }}
+                      className="text-xs font-bold text-forest hover:text-ink"
+                    >
+                      + Registrar pagamento
+                    </button>
+                  )}
+                </div>
+
+                <div className="rounded-2xl bg-card p-4 shadow-sm space-y-3">
+                  <div className="grid grid-cols-2 gap-3 pb-2 border-b border-black/5">
+                    <div>
+                      <p className="text-xs text-ink/40">Valor pago</p>
+                      <p className="text-sm font-bold text-forest">{formatarMoeda(valorPagoTotal)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-ink/40">Valor restante</p>
+                      <p className={`text-sm font-bold ${detalhe.valor - valorPagoTotal > 0 ? "text-red-600" : "text-ink/40"}`}>
+                        {formatarMoeda(Math.max(detalhe.valor - valorPagoTotal, 0))}
+                      </p>
+                    </div>
+                  </div>
+
+                  {pagamentos.length === 0 ? (
+                    <p className="text-sm text-ink/40">Nenhum pagamento registrado ainda.</p>
+                  ) : (
+                    pagamentos.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between text-sm border-b border-black/5 last:border-0 pb-2 last:pb-0">
+                        <div>
+                          <p className="text-ink">{formatarData(p.data_pagamento)} · {p.bancos?.nome ?? "—"}</p>
+                          {(p.taxa || p.desconto) && (
+                            <p className="text-xs text-ink/40">
+                              {p.taxa ? `Taxa: ${formatarMoeda(p.taxa)}` : ""}
+                              {p.taxa && p.desconto ? " · " : ""}
+                              {p.desconto ? `Desconto: ${formatarMoeda(p.desconto)}` : ""}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-ink">{formatarMoeda(p.valor)}</span>
+                          <button onClick={() => removerPagamento(p.id)} className="text-xs text-ink/30 hover:text-red-600">
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+
+                  {painelPagamentoAberto && (
+                    <form onSubmit={registrarPagamento} className="space-y-2 pt-2 border-t border-black/5">
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="date"
+                          required
+                          value={dataPagamentoNovo}
+                          onChange={(e) => setDataPagamentoNovo(e.target.value)}
+                          className="input text-sm"
+                        />
+                        <select
+                          value={bancoPagamentoNovo}
+                          onChange={(e) => setBancoPagamentoNovo(e.target.value)}
+                          className="input text-sm"
+                        >
+                          <option value="">Banco...</option>
+                          {bancosOpcoesPagamento.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.nome}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          placeholder="Valor pago"
+                          value={valorPagamentoNovo}
+                          onChange={(e) => setValorPagamentoNovo(e.target.value)}
+                          className="input text-sm"
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="Taxa (opcional)"
+                          value={taxaPagamentoNovo}
+                          onChange={(e) => setTaxaPagamentoNovo(e.target.value)}
+                          className="input text-sm"
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="Desconto (opcional)"
+                          value={descontoPagamentoNovo}
+                          onChange={(e) => setDescontoPagamentoNovo(e.target.value)}
+                          className="input text-sm col-span-2"
+                        />
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="submit"
+                          disabled={salvandoPagamento}
+                          className="rounded-full bg-forest text-white px-4 py-1.5 text-xs font-bold hover:bg-ink transition-colors disabled:opacity-50"
+                        >
+                          {salvandoPagamento ? "Salvando..." : "Salvar pagamento"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPainelPagamentoAberto(false)}
+                          className="text-xs font-semibold text-ink/50 hover:text-ink"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              </div>
+            )}
 
             {(detalhe.total_parcelas || detalhe.recorrencia_tipo) && (
               <SecaoDetalhe titulo="Repetição">

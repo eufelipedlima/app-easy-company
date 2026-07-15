@@ -36,6 +36,7 @@ interface PessoaEditando {
   data_nascimento: string | null;
   email: string | null;
   whatsapp: string | null;
+  pix: string | null;
   rua: string | null;
   numero: string | null;
   complemento: string | null;
@@ -67,6 +68,7 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
   const [dataNascimento, setDataNascimento] = useState(pessoaEditando?.data_nascimento ?? "");
   const [email, setEmail] = useState(pessoaEditando?.email ?? "");
   const [whatsapp, setWhatsapp] = useState(pessoaEditando?.whatsapp ?? "");
+  const [pix, setPix] = useState(pessoaEditando?.pix ?? "");
   const [rua, setRua] = useState(pessoaEditando?.rua ?? "");
   const [numero, setNumero] = useState(pessoaEditando?.numero ?? "");
   const [complemento, setComplemento] = useState(pessoaEditando?.complemento ?? "");
@@ -146,6 +148,7 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
       data_nascimento: tipo === "PF" ? dataNascimento || null : null,
       email: email || null,
       whatsapp: whatsapp || null,
+      pix: pix || null,
       rua: rua || null,
       numero: numero || null,
       complemento: complemento || null,
@@ -346,6 +349,15 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
             onChange={(e) => setWhatsapp(e.target.value)}
             className="input"
             placeholder="(00) 00000-0000"
+          />
+        </Campo>
+
+        <Campo label="Chave PIX">
+          <input
+            value={pix}
+            onChange={(e) => setPix(e.target.value)}
+            className="input"
+            placeholder="CPF, e-mail, telefone ou aleatória"
           />
         </Campo>
       </div>
