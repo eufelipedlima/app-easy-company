@@ -146,15 +146,23 @@ export default function FuncionariosPage() {
       </div>
 
       {painelAberto && (
-        <div className="mb-8 rounded-3xl bg-card border border-black/5 p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-ink mb-6">Cadastrar funcionário</h2>
-          <FuncionarioForm
-            onSaved={() => {
-              setPainelAberto(false);
-              carregar();
-            }}
-            onCancel={() => setPainelAberto(false)}
-          />
+        <div
+          className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6"
+          onClick={() => setPainelAberto(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold text-ink mb-5">Cadastrar funcionário</h2>
+            <FuncionarioForm
+              onSaved={() => {
+                setPainelAberto(false);
+                carregar();
+              }}
+              onCancel={() => setPainelAberto(false)}
+            />
+          </div>
         </div>
       )}
 

@@ -99,22 +99,33 @@ export default function PessoasPage() {
       </div>
 
       {(painelAberto || editando) && (
-        <div className="mb-8 rounded-3xl bg-card border border-black/5 p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-ink mb-6">
-            {editando ? "Editar pessoa" : "Cadastrar pessoa"}
-          </h2>
-          <PessoaForm
-            pessoaEditando={editando}
-            onSaved={() => {
-              setPainelAberto(false);
-              setEditando(null);
-              carregar();
-            }}
-            onCancel={() => {
-              setPainelAberto(false);
-              setEditando(null);
-            }}
-          />
+        <div
+          className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6"
+          onClick={() => {
+            setPainelAberto(false);
+            setEditando(null);
+          }}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold text-ink mb-5">
+              {editando ? "Editar pessoa" : "Cadastrar pessoa"}
+            </h2>
+            <PessoaForm
+              pessoaEditando={editando}
+              onSaved={() => {
+                setPainelAberto(false);
+                setEditando(null);
+                carregar();
+              }}
+              onCancel={() => {
+                setPainelAberto(false);
+                setEditando(null);
+              }}
+            />
+          </div>
         </div>
       )}
 
