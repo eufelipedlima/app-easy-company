@@ -175,10 +175,151 @@ function nomePessoaLancamento(l: { clientes: Lancamento["clientes"]; pessoas: La
   return l.clientes?.papeis?.pessoas?.nome ?? l.pessoas?.nome ?? null;
 }
 
+function renderCelulaLancamento(key: string, l: Lancamento, valorPago: number, valorRestante: number) {
+  switch (key) {
+    case "cliente":
+      return <span className="font-semibold text-ink">{nomePessoaLancamento(l) ?? "—"}</span>;
+    case "descricao":
+      return (
+        <span className="text-ink/70">
+          {l.descricao ?? "—"}
+          {l.total_parcelas && (
+            <span className="ml-1.5 text-xs text-ink/40 font-mono">
+              {l.numero_parcela}/{l.total_parcelas}
+            </span>
+          )}
+          {l.recorrencia_tipo && <span className="ml-1.5 text-xs text-ink/40">🔁</span>}
+        </span>
+      );
+    case "valor":
+      return (
+        <span
+          className={`font-semibold ${
+            l.tipo === "receita" ? "text-forest" : l.tipo === "despesa" ? "text-red-600" : "text-ink/70"
+          }`}
+        >
+          {l.tipo === "despesa" ? "- " : ""}
+          {formatarMoeda(l.valor)}
+        </span>
+      );
+    case "valor_pago":
+      return <span className="text-ink/70">{formatarMoeda(valorPago)}</span>;
+    case "valor_restante":
+      return (
+        <span className={valorRestante > 0 ? "font-semibold text-red-600" : "text-ink/40"}>
+          {formatarMoeda(valorRestante)}
+        </span>
+      );
+    case "tipo":
+      return (
+        <span
+          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+            l.tipo === "receita"
+              ? "bg-mint text-forest"
+              : l.tipo === "despesa"
+              ? "bg-red-50 text-red-600"
+              : "bg-black/5 text-ink/60"
+          }`}
+        >
+          {l.tipo === "receita" ? "Receita" : l.tipo === "despesa" ? "Despesa" : "Transferência"}
+        </span>
+      );
+    case "vencimento":
+      return <span className="text-ink/70">{formatarData(l.data_vencimento)}</span>;
+    case "quitacao":
+      return <span className="text-ink/70">{formatarData(l.data_quitacao)}</span>;
+    case "banco":
+      return <span className="text-ink/70">{l.bancos?.nome ?? "—"}</span>;
+    case "plano_conta":
+      return <span className="text-ink/70">{l.planos_conta?.nome ?? "—"}</span>;
+    case "situacao":
+      return (
+        <span
+          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+            l.situacao === "pago" ? "bg-mint text-forest" : "bg-black/5 text-ink/50"
+          }`}
+        >
+          {l.situacao === "pago" ? "Pago" : "Pendente"}
+        </span>
+      );
+    case "codigo":
+      return <span className="text-ink/50 font-mono text-xs">{l.codigo_transacao ?? "—"}</span>;
+    default:
+      return null;
+  }
+}
+
 type Filtro = "todos" | "pendente" | "pago";
+
+interface ColunaDef {
+  key: string;
+  label: string;
+}
+
+const COLUNAS_DISPONIVEIS: ColunaDef[] = [
+  { key: "cliente", label: "Cliente" },
+  { key: "descricao", label: "Descrição" },
+  { key: "valor", label: "Valor" },
+  { key: "valor_pago", label: "Valor pago" },
+  { key: "valor_restante", label: "Valor restante" },
+  { key: "tipo", label: "Tipo" },
+  { key: "vencimento", label: "Vencimento" },
+  { key: "quitacao", label: "Quitação" },
+  { key: "banco", label: "Banco" },
+  { key: "plano_conta", label: "Plano de conta" },
+  { key: "situacao", label: "Situação" },
+  { key: "codigo", label: "Código" },
+];
+
+const COLUNAS_PADRAO = COLUNAS_DISPONIVEIS.map((c) => ({ key: c.key, visivel: true }));
+
+const LINHAS_POR_PAGINA_OPCOES = [10, 25, 50, 100];
 
 export default function LancamentosPage() {
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
+  const [pagamentosPorLancamento, setPagamentosPorLancamento] = useState<Record<string, number>>({});
+
+  const [colunas, setColunas] = useState<{ key: string; visivel: boolean }[]>(COLUNAS_PADRAO);
+  const [painelColunasAberto, setPainelColunasAberto] = useState(false);
+  const [linhasPorPagina, setLinhasPorPagina] = useState(10);
+  const [paginaAtual, setPaginaAtual] = useState(1);
+
+  useEffect(() => {
+    const salvo = window.localStorage.getItem("lancamentos_colunas");
+    if (salvo) {
+      try {
+        setColunas(JSON.parse(salvo));
+      } catch {
+        // ignora e mantém padrão
+      }
+    }
+    const salvoLinhas = window.localStorage.getItem("lancamentos_linhas_por_pagina");
+    if (salvoLinhas) setLinhasPorPagina(Number(salvoLinhas));
+  }, []);
+
+  function atualizarColunas(novas: { key: string; visivel: boolean }[]) {
+    setColunas(novas);
+    window.localStorage.setItem("lancamentos_colunas", JSON.stringify(novas));
+  }
+
+  function alternarVisibilidade(key: string) {
+    atualizarColunas(colunas.map((c) => (c.key === key ? { ...c, visivel: !c.visivel } : c)));
+  }
+
+  function moverColuna(key: string, direcao: -1 | 1) {
+    const indice = colunas.findIndex((c) => c.key === key);
+    const novoIndice = indice + direcao;
+    if (novoIndice < 0 || novoIndice >= colunas.length) return;
+    const novas = [...colunas];
+    [novas[indice], novas[novoIndice]] = [novas[novoIndice], novas[indice]];
+    atualizarColunas(novas);
+  }
+
+  function mudarLinhasPorPagina(n: number) {
+    setLinhasPorPagina(n);
+    setPaginaAtual(1);
+    window.localStorage.setItem("lancamentos_linhas_por_pagina", String(n));
+  }
   const [loading, setLoading] = useState(true);
   const [painelAberto, setPainelAberto] = useState(false);
   const [editando, setEditando] = useState<Lancamento | null>(null);
@@ -275,7 +416,7 @@ export default function LancamentosPage() {
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [resumoAberto, setResumoAberto] = useState(false);
 
-  const [presetPeriodo, setPresetPeriodo] = useState<PeriodoPreset>("hoje");
+  const [presetPeriodo, setPresetPeriodo] = useState<PeriodoPreset>("este_mes");
   const [periodoPersonalizado, setPeriodoPersonalizado] = useState(calcularPeriodo("este_mes"));
   const periodo = presetPeriodo === "personalizado" ? periodoPersonalizado : calcularPeriodo(presetPeriodo);
 
@@ -322,6 +463,13 @@ export default function LancamentosPage() {
       setErroCarregamento(error.message);
     }
     setLancamentos((data as unknown as Lancamento[]) ?? []);
+
+    const { data: pagamentos } = await supabase.from("lancamento_pagamentos").select("lancamento_id, valor");
+    const somaPorLancamento: Record<string, number> = {};
+    (pagamentos ?? []).forEach((p) => {
+      somaPorLancamento[p.lancamento_id] = (somaPorLancamento[p.lancamento_id] ?? 0) + p.valor;
+    });
+    setPagamentosPorLancamento(somaPorLancamento);
     setLoading(false);
   }, []);
 
@@ -409,6 +557,23 @@ export default function LancamentosPage() {
     .filter((l) => !filtroPlanoContaId || l.plano_conta_id === filtroPlanoContaId)
     .filter((l) => !filtroBancoId || l.banco_id === filtroBancoId)
     .filter((l) => !filtroValor || l.valor.toFixed(2).includes(filtroValor.replace(",", ".")));
+
+  function valorPagoDe(l: Lancamento) {
+    if (l.situacao === "pago") return l.valor;
+    return pagamentosPorLancamento[l.id] ?? 0;
+  }
+
+  function valorRestanteDe(l: Lancamento) {
+    return Math.max(l.valor - valorPagoDe(l), 0);
+  }
+
+  const totalPaginas = Math.max(Math.ceil(filtrados.length / linhasPorPagina), 1);
+  const paginaSegura = Math.min(paginaAtual, totalPaginas);
+  const paginados = filtrados.slice((paginaSegura - 1) * linhasPorPagina, paginaSegura * linhasPorPagina);
+
+  useEffect(() => {
+    setPaginaAtual(1);
+  }, [filtro, presetPeriodo, periodoPersonalizado.inicio, periodoPersonalizado.fim, filtroTipo, filtroCliente, filtroDescricao, filtroPlanoContaId, filtroBancoId, filtroValor]);
 
   function somar(lista: Lancamento[], tipo: "receita" | "despesa") {
     return lista.filter((l) => l.tipo === tipo).reduce((soma, l) => soma + l.valor, 0);
@@ -723,6 +888,72 @@ export default function LancamentosPage() {
         </div>
       )}
 
+      <div className="flex items-center justify-between mb-3">
+        <div className="relative">
+          <button
+            onClick={() => setPainelColunasAberto((v) => !v)}
+            className="rounded-full border-2 border-ink/15 text-ink px-4 py-2 text-xs font-bold hover:bg-surface transition-colors"
+          >
+            ⚙ Colunas
+          </button>
+          {painelColunasAberto && (
+            <div
+              className="absolute z-10 mt-2 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-2"
+              onMouseLeave={() => setPainelColunasAberto(false)}
+            >
+              {colunas.map((c, i) => {
+                const def = COLUNAS_DISPONIVEIS.find((d) => d.key === c.key);
+                if (!def) return null;
+                return (
+                  <div key={c.key} className="flex items-center justify-between px-2 py-1.5 text-sm hover:bg-surface rounded-lg">
+                    <label className="flex items-center gap-2 cursor-pointer flex-1">
+                      <input
+                        type="checkbox"
+                        checked={c.visivel}
+                        onChange={() => alternarVisibilidade(c.key)}
+                        className="h-3.5 w-3.5 rounded accent-forest"
+                      />
+                      <span className={c.visivel ? "text-ink" : "text-ink/40"}>{def.label}</span>
+                    </label>
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => moverColuna(c.key, -1)}
+                        disabled={i === 0}
+                        className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => moverColuna(c.key, 1)}
+                        disabled={i === colunas.length - 1}
+                        className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <label className="flex items-center gap-2 text-xs text-ink/50">
+          Linhas por página
+          <select
+            value={linhasPorPagina}
+            onChange={(e) => mudarLinhasPorPagina(Number(e.target.value))}
+            className="input py-1.5 text-xs w-20"
+          >
+            {LINHAS_POR_PAGINA_OPCOES.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <div className="rounded-3xl bg-card border border-black/5 overflow-x-auto">
         {loading ? (
           <p className="p-6 text-sm text-ink/50">Carregando...</p>
@@ -732,75 +963,30 @@ export default function LancamentosPage() {
           <table className="w-full text-sm whitespace-nowrap">
             <thead>
               <tr className="text-left text-ink/50 border-b border-black/5">
-                <th className="px-4 py-3 font-medium">Cliente</th>
-                <th className="px-4 py-3 font-medium">Descrição</th>
-                <th className="px-4 py-3 font-medium">Valor</th>
-                <th className="px-4 py-3 font-medium">Tipo</th>
-                <th className="px-4 py-3 font-medium">Vencimento</th>
-                <th className="px-4 py-3 font-medium">Quitação</th>
-                <th className="px-4 py-3 font-medium">Banco</th>
-                <th className="px-4 py-3 font-medium">Plano de conta</th>
-                <th className="px-4 py-3 font-medium">Situação</th>
-                <th className="px-4 py-3 font-medium">Código</th>
+                {colunas
+                  .filter((c) => c.visivel)
+                  .map((c) => (
+                    <th key={c.key} className="px-4 py-3 font-medium">
+                      {COLUNAS_DISPONIVEIS.find((d) => d.key === c.key)?.label}
+                    </th>
+                  ))}
                 <th className="px-4 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
-              {filtrados.map((l) => (
+              {paginados.map((l) => (
                 <tr
                   key={l.id}
                   onClick={() => setDetalhe(l)}
                   className="border-b border-black/5 last:border-0 hover:bg-surface/60 cursor-pointer"
                 >
-                  <td className="px-4 py-3 font-semibold text-ink">
-                    {nomePessoaLancamento(l) ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-ink/70">
-                    {l.descricao ?? "—"}
-                    {l.total_parcelas && (
-                      <span className="ml-1.5 text-xs text-ink/40 font-mono">
-                        {l.numero_parcela}/{l.total_parcelas}
-                      </span>
-                    )}
-                    {l.recorrencia_tipo && (
-                      <span className="ml-1.5 text-xs text-ink/40">🔁</span>
-                    )}
-                  </td>
-                  <td
-                    className={`px-4 py-3 font-semibold ${
-                      l.tipo === "receita" ? "text-forest" : l.tipo === "despesa" ? "text-red-600" : "text-ink/70"
-                    }`}
-                  >
-                    {l.tipo === "despesa" ? "- " : ""}
-                    {formatarMoeda(l.valor)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                        l.tipo === "receita"
-                          ? "bg-mint text-forest"
-                          : l.tipo === "despesa"
-                          ? "bg-red-50 text-red-600"
-                          : "bg-black/5 text-ink/60"
-                      }`}
-                    >
-                      {l.tipo === "receita" ? "Receita" : l.tipo === "despesa" ? "Despesa" : "Transferência"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-ink/70">{formatarData(l.data_vencimento)}</td>
-                  <td className="px-4 py-3 text-ink/70">{formatarData(l.data_quitacao)}</td>
-                  <td className="px-4 py-3 text-ink/70">{l.bancos?.nome ?? "—"}</td>
-                  <td className="px-4 py-3 text-ink/70">{l.planos_conta?.nome ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                        l.situacao === "pago" ? "bg-mint text-forest" : "bg-black/5 text-ink/50"
-                      }`}
-                    >
-                      {l.situacao === "pago" ? "Pago" : "Pendente"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-ink/50 font-mono text-xs">{l.codigo_transacao ?? "—"}</td>
+                  {colunas
+                    .filter((c) => c.visivel)
+                    .map((c) => (
+                      <td key={c.key} className="px-4 py-3">
+                        {renderCelulaLancamento(c.key, l, valorPagoDe(l), valorRestanteDe(l))}
+                      </td>
+                    ))}
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1.5">
                       <button
@@ -823,6 +1009,34 @@ export default function LancamentosPage() {
           </table>
         )}
       </div>
+
+      {filtrados.length > 0 && (
+        <div className="flex items-center justify-between mt-4 text-sm text-ink/50">
+          <p>
+            Mostrando {(paginaSegura - 1) * linhasPorPagina + 1}–
+            {Math.min(paginaSegura * linhasPorPagina, filtrados.length)} de {filtrados.length}
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPaginaAtual((p) => Math.max(p - 1, 1))}
+              disabled={paginaSegura === 1}
+              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+            >
+              ← Anterior
+            </button>
+            <span className="px-2 text-xs">
+              Página {paginaSegura} de {totalPaginas}
+            </span>
+            <button
+              onClick={() => setPaginaAtual((p) => Math.min(p + 1, totalPaginas))}
+              disabled={paginaSegura === totalPaginas}
+              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+            >
+              Próxima →
+            </button>
+          </div>
+        </div>
+      )}
 
       {detalhe && (
         <div
@@ -1133,9 +1347,10 @@ function LancamentoForm({
   const [descricao, setDescricao] = useState(lancamentoEditando?.descricao ?? "");
   const [valor, setValor] = useState(lancamentoEditando ? String(lancamentoEditando.valor) : "");
   const [situacao, setSituacao] = useState<"pendente" | "pago">(lancamentoEditando?.situacao ?? "pendente");
-  const [dataVencimento, setDataVencimento] = useState(lancamentoEditando?.data_vencimento ?? "");
+  const hojeISOForm = new Date().toISOString().slice(0, 10);
+  const [dataVencimento, setDataVencimento] = useState(lancamentoEditando?.data_vencimento ?? hojeISOForm);
   const [dataQuitacao, setDataQuitacao] = useState(lancamentoEditando?.data_quitacao ?? "");
-  const [dataCompetencia, setDataCompetencia] = useState(lancamentoEditando?.data_competencia ?? "");
+  const [dataCompetencia, setDataCompetencia] = useState(lancamentoEditando?.data_competencia ?? hojeISOForm);
 
   const [repeticao, setRepeticao] = useState<"nenhuma" | "parcelado" | "recorrente">("nenhuma");
   const [totalParcelas, setTotalParcelas] = useState("2");
@@ -1499,11 +1714,11 @@ function LancamentoForm({
             placeholder="0,00"
           />
         </Campo>
-        <Campo label="Data de vencimento" required>
-          <input type="date" required value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} className="input" />
-        </Campo>
         <Campo label="Data de competência">
           <input type="date" value={dataCompetencia} onChange={(e) => setDataCompetencia(e.target.value)} className="input" />
+        </Campo>
+        <Campo label="Data de vencimento" required>
+          <input type="date" required value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} className="input" />
         </Campo>
         <div>
           <span className="block text-sm font-medium text-ink/70 mb-1">Situação</span>
@@ -1615,6 +1830,44 @@ function LancamentoForm({
         </div>
       )}
 
+      {tipo === "receita" && (
+        <div className="relative">
+          <Busca
+            label="Serviço"
+            valor={buscaServico}
+            onChange={(v) => {
+              setBuscaServico(v);
+              setServicoSelecionado(null);
+              setMostrarSugServico(true);
+            }}
+            onFocus={() => setMostrarSugServico(true)}
+            placeholder="Digite o serviço..."
+          />
+          {mostrarSugServico && buscaServico && !servicoSelecionado && (
+            <ListaSugestoes>
+              {sugServico.length > 0 ? (
+                sugServico.map((s) => (
+                  <ItemSugestao
+                    key={s.id}
+                    onClick={() => {
+                      setServicoSelecionado(s);
+                      setBuscaServico(s.nome);
+                      setMostrarSugServico(false);
+                    }}
+                  >
+                    {s.nome}
+                  </ItemSugestao>
+                ))
+              ) : (
+                <ItemSugestao destaque onClick={() => setMostrarSugServico(false)}>
+                  + Cadastrar &ldquo;{buscaServico}&rdquo; como novo serviço
+                </ItemSugestao>
+              )}
+            </ListaSugestoes>
+          )}
+        </div>
+      )}
+
       <div className="relative">
         <Busca
           label={tipo === "transferencia" ? "Banco de origem" : "Banco"}
@@ -1720,44 +1973,6 @@ function LancamentoForm({
               ) : (
                 <ItemSugestao destaque onClick={() => setMostrarSugPlanoConta(false)}>
                   + Cadastrar &ldquo;{buscaPlanoConta}&rdquo; como novo plano de {tipo}
-                </ItemSugestao>
-              )}
-            </ListaSugestoes>
-          )}
-        </div>
-      )}
-
-      {tipo === "receita" && (
-        <div className="relative">
-          <Busca
-            label="Serviço"
-            valor={buscaServico}
-            onChange={(v) => {
-              setBuscaServico(v);
-              setServicoSelecionado(null);
-              setMostrarSugServico(true);
-            }}
-            onFocus={() => setMostrarSugServico(true)}
-            placeholder="Digite o serviço..."
-          />
-          {mostrarSugServico && buscaServico && !servicoSelecionado && (
-            <ListaSugestoes>
-              {sugServico.length > 0 ? (
-                sugServico.map((s) => (
-                  <ItemSugestao
-                    key={s.id}
-                    onClick={() => {
-                      setServicoSelecionado(s);
-                      setBuscaServico(s.nome);
-                      setMostrarSugServico(false);
-                    }}
-                  >
-                    {s.nome}
-                  </ItemSugestao>
-                ))
-              ) : (
-                <ItemSugestao destaque onClick={() => setMostrarSugServico(false)}>
-                  + Cadastrar &ldquo;{buscaServico}&rdquo; como novo serviço
                 </ItemSugestao>
               )}
             </ListaSugestoes>
