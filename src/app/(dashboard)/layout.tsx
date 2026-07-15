@@ -34,6 +34,7 @@ const MENU: Grupo[] = [
     icon: <DollarSign size={18} />,
     itens: [
       { href: "/financeiro/analise", label: "Análise", icon: <BarChart3 size={15} /> },
+      { href: "/financeiro/bancos", label: "Bancos", icon: <Landmark size={15} /> },
       { href: "/financeiro/lancamentos", label: "Lançamentos", icon: <Receipt size={15} /> },
     ],
   },
@@ -50,7 +51,6 @@ const MENU: Grupo[] = [
     label: "Configurações",
     icon: <Settings size={18} />,
     itens: [
-      { href: "/configuracoes/bancos", label: "Bancos", icon: <Landmark size={15} /> },
       { href: "/configuracoes/cargos", label: "Cargos", icon: <Briefcase size={15} /> },
       { href: "/configuracoes/origens", label: "Origens", icon: <Compass size={15} /> },
       { href: "/configuracoes/planos-conta", label: "Planos de conta", icon: <ListTree size={15} /> },
