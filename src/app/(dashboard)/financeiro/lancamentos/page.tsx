@@ -70,8 +70,9 @@ function toISODate(d: Date) {
 
 type PeriodoPreset =
   | "hoje"
+  | "ontem"
+  | "amanha"
   | "esta_semana"
-  | "semana_passada"
   | "proxima_semana"
   | "ultimos_7"
   | "ultimos_14"
@@ -81,27 +82,29 @@ type PeriodoPreset =
   | "personalizado";
 
 const PERIODO_LABEL: Record<PeriodoPreset, string> = {
-  hoje: "Hoje",
-  esta_semana: "Esta semana",
-  semana_passada: "Semana passada",
-  proxima_semana: "Próxima semana",
-  ultimos_7: "Últimos 7 dias",
-  ultimos_14: "Últimos 14 dias",
-  este_mes: "Este mês",
   mes_passado: "Mês passado",
+  ultimos_14: "Últimos 14 dias",
+  ultimos_7: "Últimos 7 dias",
+  ontem: "Ontem",
+  hoje: "Hoje",
+  amanha: "Amanhã",
+  esta_semana: "Essa semana",
+  este_mes: "Este mês",
+  proxima_semana: "Próxima semana",
   proximo_mes: "Próximo mês",
   personalizado: "Personalizado",
 };
 
 const PERIODO_ORDEM: PeriodoPreset[] = [
-  "este_mes",
-  "hoje",
-  "esta_semana",
-  "semana_passada",
-  "proxima_semana",
-  "ultimos_7",
-  "ultimos_14",
   "mes_passado",
+  "ultimos_14",
+  "ultimos_7",
+  "ontem",
+  "hoje",
+  "amanha",
+  "esta_semana",
+  "este_mes",
+  "proxima_semana",
   "proximo_mes",
   "personalizado",
 ];
@@ -117,17 +120,20 @@ function calcularPeriodo(preset: PeriodoPreset): { inicio: string; fim: string }
   switch (preset) {
     case "hoje":
       return { inicio: toISODate(hoje), fim: toISODate(hoje) };
+    case "ontem": {
+      const ontem = new Date(hoje);
+      ontem.setDate(hoje.getDate() - 1);
+      return { inicio: toISODate(ontem), fim: toISODate(ontem) };
+    }
+    case "amanha": {
+      const amanha = new Date(hoje);
+      amanha.setDate(hoje.getDate() + 1);
+      return { inicio: toISODate(amanha), fim: toISODate(amanha) };
+    }
     case "esta_semana": {
       const fim = new Date(inicioSemana);
       fim.setDate(inicioSemana.getDate() + 6);
       return { inicio: toISODate(inicioSemana), fim: toISODate(fim) };
-    }
-    case "semana_passada": {
-      const inicio = new Date(inicioSemana);
-      inicio.setDate(inicioSemana.getDate() - 7);
-      const fim = new Date(inicio);
-      fim.setDate(inicio.getDate() + 6);
-      return { inicio: toISODate(inicio), fim: toISODate(fim) };
     }
     case "proxima_semana": {
       const inicio = new Date(inicioSemana);
@@ -292,10 +298,13 @@ export default function LancamentosPage() {
     setFiltroTipo("");
   }
 
+  const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
+
   const carregar = useCallback(async () => {
     setLoading(true);
+    setErroCarregamento(null);
     const supabase = createClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("lancamentos")
       .select(
         `id, descricao, valor, tipo, situacao, data_vencimento, data_quitacao, data_competencia, codigo_transacao,
@@ -308,6 +317,10 @@ export default function LancamentosPage() {
          servicos ( nome )`
       )
       .order("data_vencimento", { ascending: true });
+    if (error) {
+      console.error("Erro ao carregar lançamentos:", error);
+      setErroCarregamento(error.message);
+    }
     setLancamentos((data as unknown as Lancamento[]) ?? []);
     setLoading(false);
   }, []);
@@ -431,6 +444,13 @@ export default function LancamentosPage() {
           </button>
         )}
       </div>
+
+      {erroCarregamento && (
+        <div className="rounded-2xl bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 mb-6">
+          <p className="font-semibold">Erro ao carregar os lançamentos:</p>
+          <p className="font-mono text-xs mt-1">{erroCarregamento}</p>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-2">
