@@ -3,16 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Users, Wallet, AlertTriangle, Clock } from "lucide-react";
-
-interface LancamentoAtraso {
-  id: string;
-  descricao: string | null;
-  valor: number;
-  tipo: "receita" | "despesa" | "transferencia";
-  data_vencimento: string;
-  clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
-  pessoas: { nome: string } | null;
-}
+import { LancamentoForm, nomePessoaLancamento, type Lancamento } from "@/components/lancamento-form";
 
 function formatarMoeda(valor: number) {
   return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -22,10 +13,6 @@ function formatarData(data: string) {
   return new Date(data + "T00:00:00").toLocaleDateString("pt-BR");
 }
 
-function nomePessoa(l: LancamentoAtraso) {
-  return l.clientes?.papeis?.pessoas?.nome ?? l.pessoas?.nome ?? "—";
-}
-
 function diasEmAtraso(dataVencimento: string) {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
@@ -33,10 +20,20 @@ function diasEmAtraso(dataVencimento: string) {
   return Math.max(Math.round((hoje.getTime() - venc.getTime()) / (1000 * 60 * 60 * 24)), 0);
 }
 
+const SELECT_LANCAMENTO = `id, descricao, valor, tipo, situacao, data_vencimento, data_quitacao, data_competencia, codigo_transacao,
+  banco_id, banco_destino_id, plano_conta_id, servico_id, numero_parcela, total_parcelas, recorrencia_tipo, grupo_id,
+  clientes ( papeis ( pessoas ( nome, pix ) ) ),
+  pessoas ( nome, pix ),
+  bancos:banco_id ( nome ),
+  bancos_destino:banco_destino_id ( nome ),
+  planos_conta ( nome ),
+  servicos ( nome )`;
+
 export default function InadimplenciaPage() {
-  const [lancamentos, setLancamentos] = useState<LancamentoAtraso[]>([]);
+  const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [pagamentosPorLancamento, setPagamentosPorLancamento] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [editando, setEditando] = useState<Lancamento | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -45,17 +42,13 @@ export default function InadimplenciaPage() {
 
     const { data: l } = await supabase
       .from("lancamentos")
-      .select(
-        `id, descricao, valor, tipo, data_vencimento,
-         clientes ( papeis ( pessoas ( nome ) ) ),
-         pessoas ( nome )`
-      )
+      .select(SELECT_LANCAMENTO)
       .eq("situacao", "pendente")
       .neq("tipo", "transferencia")
       .lt("data_vencimento", hoje)
       .order("data_vencimento", { ascending: true });
 
-    setLancamentos((l as unknown as LancamentoAtraso[]) ?? []);
+    setLancamentos((l as unknown as Lancamento[]) ?? []);
 
     const { data: pagamentos } = await supabase.from("lancamento_pagamentos").select("lancamento_id, valor");
     const soma: Record<string, number> = {};
@@ -70,21 +63,14 @@ export default function InadimplenciaPage() {
     carregar();
   }, [carregar]);
 
-  function valorRestante(l: LancamentoAtraso) {
+  function valorRestante(l: Lancamento) {
     return Math.max(l.valor - (pagamentosPorLancamento[l.id] ?? 0), 0);
-  }
-
-  async function marcarComoPago(id: string) {
-    const supabase = createClient();
-    const hoje = new Date().toISOString().slice(0, 10);
-    await supabase.from("lancamentos").update({ situacao: "pago", data_quitacao: hoje }).eq("id", id);
-    carregar();
   }
 
   const receitasAtraso = lancamentos.filter((l) => l.tipo === "receita" && valorRestante(l) > 0);
   const despesasAtraso = lancamentos.filter((l) => l.tipo === "despesa" && valorRestante(l) > 0);
 
-  const clientesInadimplentes = new Set(receitasAtraso.map((l) => nomePessoa(l))).size;
+  const clientesInadimplentes = new Set(receitasAtraso.map((l) => nomePessoaLancamento(l))).size;
   const valorInadimplente = receitasAtraso.reduce((s, l) => s + valorRestante(l), 0);
   const contasEmAtraso = despesasAtraso.length;
 
@@ -116,16 +102,39 @@ export default function InadimplenciaPage() {
             <h2 className="text-sm font-bold uppercase tracking-wide text-ink/40 mb-3">
               Receitas em atraso ({receitasAtraso.length})
             </h2>
-            <TabelaAtraso lancamentos={receitasAtraso} valorRestante={valorRestante} onMarcarPago={marcarComoPago} tipo="receita" />
+            <TabelaAtraso lancamentos={receitasAtraso} valorRestante={valorRestante} onEditar={setEditando} tipo="receita" />
           </section>
 
           <section>
             <h2 className="text-sm font-bold uppercase tracking-wide text-ink/40 mb-3">
               Despesas em atraso ({despesasAtraso.length})
             </h2>
-            <TabelaAtraso lancamentos={despesasAtraso} valorRestante={valorRestante} onMarcarPago={marcarComoPago} tipo="despesa" />
+            <TabelaAtraso lancamentos={despesasAtraso} valorRestante={valorRestante} onEditar={setEditando} tipo="despesa" />
           </section>
         </>
+      )}
+
+      {editando && (
+        <div
+          className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6"
+          onClick={() => setEditando(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold text-ink mb-5">Editar lançamento</h2>
+            <LancamentoForm
+              lancamentoEditando={editando}
+              escopoEdicao="unico"
+              onSaved={() => {
+                setEditando(null);
+                carregar();
+              }}
+              onCancel={() => setEditando(null)}
+            />
+          </div>
+        </div>
       )}
     </main>
   );
@@ -134,12 +143,12 @@ export default function InadimplenciaPage() {
 function TabelaAtraso({
   lancamentos,
   valorRestante,
-  onMarcarPago,
+  onEditar,
   tipo,
 }: {
-  lancamentos: LancamentoAtraso[];
-  valorRestante: (l: LancamentoAtraso) => number;
-  onMarcarPago: (id: string) => void;
+  lancamentos: Lancamento[];
+  valorRestante: (l: Lancamento) => number;
+  onEditar: (l: Lancamento) => void;
   tipo: "receita" | "despesa";
 }) {
   if (lancamentos.length === 0) {
@@ -166,7 +175,7 @@ function TabelaAtraso({
         <tbody>
           {lancamentos.map((l) => (
             <tr key={l.id} className="border-b border-black/5 last:border-0 hover:bg-surface/60">
-              <td className="px-4 py-3 font-semibold text-ink">{nomePessoa(l)}</td>
+              <td className="px-4 py-3 font-semibold text-ink">{nomePessoaLancamento(l) ?? "—"}</td>
               <td className="px-4 py-3 text-ink/70">{l.descricao ?? "—"}</td>
               <td className="px-4 py-3 text-ink/70">{formatarData(l.data_vencimento)}</td>
               <td className="px-4 py-3">
@@ -179,7 +188,7 @@ function TabelaAtraso({
               </td>
               <td className="px-4 py-3 text-right">
                 <button
-                  onClick={() => onMarcarPago(l.id)}
+                  onClick={() => onEditar(l)}
                   className="rounded-full px-3 py-1.5 text-xs font-bold bg-forest text-white hover:bg-ink transition-colors"
                 >
                   Marcar como pago

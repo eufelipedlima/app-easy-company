@@ -96,6 +96,38 @@ function calcularMetricas(recorrentes: ContratoRecorrente[], fimDoMes: Date, ini
   };
 }
 
+function calcularMetricasPontuais(pontuais: ContratoPontual[], fimDoMes: Date, inicioDoMes: Date) {
+  const novos = pontuais.filter((c) => {
+    if (!c.data_fechamento) return false;
+    const d = new Date(c.data_fechamento + "T00:00:00");
+    return d >= inicioDoMes && d <= fimDoMes;
+  });
+
+  const totalAteAgora = pontuais.filter((c) => {
+    if (!c.data_fechamento) return false;
+    const d = new Date(c.data_fechamento + "T00:00:00");
+    return d <= fimDoMes;
+  });
+
+  const concluidosNoMes = pontuais.filter((c) => {
+    if (!c.data_encerramento || !c.data_fechamento) return false;
+    const d = new Date(c.data_encerramento + "T00:00:00");
+    return d >= inicioDoMes && d <= fimDoMes;
+  });
+  const temposConclusaoMes = concluidosNoMes.map((c) => diasEntre(c.data_fechamento!, c.data_encerramento!));
+  const tempoMedioConcluirMes =
+    temposConclusaoMes.length > 0 ? temposConclusaoMes.reduce((a, b) => a + b, 0) / temposConclusaoMes.length : 0;
+
+  return {
+    novosContratos: novos.length,
+    valorNovosContratos: novos.reduce((s, c) => s + (c.valor_total ?? 0), 0),
+    totalContratos: totalAteAgora.length,
+    valorTotalContratos: totalAteAgora.reduce((s, c) => s + (c.valor_total ?? 0), 0),
+    tempoMedioConcluir: tempoMedioConcluirMes,
+  };
+}
+
+
 export default function AnaliseContratosPage() {
   const hoje = new Date();
   const [recorrentes, setRecorrentes] = useState<ContratoRecorrente[]>([]);
@@ -158,12 +190,29 @@ export default function AnaliseContratosPage() {
     };
   });
 
-  const totalPontuais = pontuais.length;
-  const valorTotalPontuais = pontuais.reduce((soma, c) => soma + (c.valor_total ?? 0), 0);
-  const concluidosOuArquivados = pontuais.filter((c) => c.status !== "ativo" && c.data_encerramento);
-  const temposConclusao = concluidosOuArquivados.map((c) => diasEntre(c.data_fechamento!, c.data_encerramento!));
-  const tempoMedioConcluir =
-    temposConclusao.length > 0 ? temposConclusao.reduce((a, b) => a + b, 0) / temposConclusao.length : 0;
+  const metricasPontuais =
+    modo === "mensal"
+      ? calcularMetricasPontuais(pontuais, fimDoMesSelecionado, inicioDoMesSelecionado)
+      : calcularMetricasPontuais(pontuais, new Date(ano, 11, 31), new Date(ano, 0, 1));
+
+  const seriePontuais = (
+    modo === "mensal"
+      ? Array.from({ length: 6 }, (_, i) => {
+          const d = new Date(ano, mes - 5 + i, 1);
+          return { ano: d.getFullYear(), mes: d.getMonth() };
+        })
+      : Array.from({ length: 12 }, (_, i) => ({ ano, mes: i }))
+  ).map(({ ano: a, mes: m }) => {
+    const fim = new Date(a, m + 1, 0);
+    const inicio = new Date(a, m, 1);
+    const met = calcularMetricasPontuais(pontuais, fim, inicio);
+    return {
+      label: `${MESES[m].slice(0, 3)}/${String(a).slice(2)}`,
+      novosContratos: met.novosContratos,
+      valorNovosContratos: Math.round(met.valorNovosContratos),
+      totalContratos: met.totalContratos,
+    };
+  });
 
   return (
     <div className="space-y-10">
@@ -230,18 +279,37 @@ export default function AnaliseContratosPage() {
 
       <section>
         <h2 className="text-sm font-bold uppercase tracking-wide text-ink/40 mb-4">Pontuais</h2>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          <Metrica icon={<Package size={16} />} label="Total de contratos" valor={String(totalPontuais)} />
+
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          <Metrica icon={<UserPlus size={16} />} label="Novos contratos" valor={String(metricasPontuais.novosContratos)} />
+          <Metrica
+            icon={<Wallet size={16} />}
+            label="Valor de novos contratos"
+            valor={formatarMoeda(metricasPontuais.valorNovosContratos)}
+          />
+          <Metrica icon={<Package size={16} />} label="Total de contratos" valor={String(metricasPontuais.totalContratos)} />
           <Metrica
             icon={<Wallet size={16} />}
             label="Valor total de contratos"
-            valor={formatarMoeda(valorTotalPontuais)}
+            valor={formatarMoeda(metricasPontuais.valorTotalContratos)}
           />
           <Metrica
             icon={<Timer size={16} />}
             label="Tempo médio para concluir"
-            valor={`${Math.round(tempoMedioConcluir)} dias`}
+            valor={`${Math.round(metricasPontuais.tempoMedioConcluir)} dias`}
           />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <GraficoCrescimento titulo="Novos contratos por mês" dataKey="novosContratos" dados={seriePontuais} cor="#143421" />
+          <GraficoCrescimento
+            titulo="Valor de novos contratos por mês"
+            dataKey="valorNovosContratos"
+            dados={seriePontuais}
+            cor="#02170B"
+            formatoMoeda
+          />
+          <GraficoCrescimento titulo="Total de contratos (acumulado)" dataKey="totalContratos" dados={seriePontuais} cor="#4A7C59" />
         </div>
       </section>
     </div>
