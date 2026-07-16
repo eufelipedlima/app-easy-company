@@ -26,6 +26,8 @@ interface Contrato {
   valor_entrada: number | null;
   quantidade_parcelas: number | null;
   data_primeira_parcela: string | null;
+  eh_migracao: boolean;
+  valor_pago_historico: number | null;
   clientes: {
     papeis: {
       pessoas: {
@@ -88,6 +90,25 @@ export default function ContratosPontuaisPage() {
   const [editando, setEditando] = useState<Contrato | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("ativo");
   const [detalhe, setDetalhe] = useState<Contrato | null>(null);
+  const [totalPagoReal, setTotalPagoReal] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!detalhe) {
+      setTotalPagoReal(null);
+      return;
+    }
+    async function carregarTotalPago() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("lancamentos")
+        .select("valor")
+        .eq("contrato_id", detalhe!.id)
+        .eq("situacao", "pago");
+      const somaPago = (data ?? []).reduce((s, l) => s + l.valor, 0);
+      setTotalPagoReal((detalhe!.valor_pago_historico ?? 0) + somaPago);
+    }
+    carregarTotalPago();
+  }, [detalhe]);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -98,6 +119,7 @@ export default function ContratosPontuaisPage() {
         `id, numero_contrato, status, forma_pagamento, valor_total, data_fechamento,
          data_encerramento, servico_id, banco_id, plano_conta_id, descricao, comentarios_extras, arquivo_path, arquivo_nome,
          tipo_pagamento, data_pagamento, situacao_pagamento, valor_entrada, quantidade_parcelas, data_primeira_parcela,
+         eh_migracao, valor_pago_historico,
          clientes ( papeis ( pessoas ( nome, razao_social, documento, email ) ) ),
          servicos ( nome ),
          bancos ( nome ),
@@ -296,9 +318,21 @@ export default function ContratosPontuaisPage() {
                   </div>
 
                   <div className="rounded-2xl bg-card p-4 mb-4 shadow-sm">
-                    <p className="text-xs text-ink/50 mb-0.5">Valor total</p>
-                    <p className="text-xl font-extrabold text-forest">{formatarMoeda(detalhe.valor_total)}</p>
-                    <p className="text-xs text-ink/40 mt-3 pt-3 border-t border-black/5">Pontual</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs text-ink/50 mb-0.5">Valor total</p>
+                        <p className="text-xl font-extrabold text-forest">{formatarMoeda(detalhe.valor_total)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-ink/50 mb-0.5">Total pago (real)</p>
+                        <p className="text-lg font-bold text-forest">
+                          {totalPagoReal != null ? formatarMoeda(totalPagoReal) : "…"}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-ink/40 mt-3 pt-3 border-t border-black/5">
+                      Pontual{detalhe.eh_migracao && " · cliente migrado"}
+                    </p>
                   </div>
 
                   <SecaoDetalhe titulo="Cliente">
@@ -472,6 +506,11 @@ function ContratoPontualForm({
   );
   const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(
     contratoEditando?.data_primeira_parcela ?? ""
+  );
+
+  const [ehMigracao, setEhMigracao] = useState(contratoEditando?.eh_migracao ?? false);
+  const [valorPagoHistorico, setValorPagoHistorico] = useState(
+    contratoEditando?.valor_pago_historico != null ? String(contratoEditando.valor_pago_historico) : ""
   );
 
   const [status, setStatus] = useState<"ativo" | "concluido" | "arquivado">(
@@ -661,6 +700,8 @@ function ContratoPontualForm({
             valor_entrada: tipoPagamento === "parcelado" && valorEntrada ? Number(valorEntrada) : null,
             quantidade_parcelas: tipoPagamento === "parcelado" ? Number(quantidadeParcelas) : null,
             data_primeira_parcela: tipoPagamento === "parcelado" ? dataPrimeiraParcela || null : null,
+            eh_migracao: ehMigracao,
+            valor_pago_historico: ehMigracao && valorPagoHistorico ? Number(valorPagoHistorico) : null,
           })
           .eq("id", contratoEditando.id);
         if (error) throw error;
@@ -700,6 +741,8 @@ function ContratoPontualForm({
             quantidade_parcelas: tipoPagamento === "parcelado" ? Number(quantidadeParcelas) : null,
             data_primeira_parcela: tipoPagamento === "parcelado" ? dataPrimeiraParcela || null : null,
             ...(numeroContrato.trim() ? { numero_contrato: numeroContrato.trim() } : {}),
+            eh_migracao: ehMigracao,
+            valor_pago_historico: ehMigracao && valorPagoHistorico ? Number(valorPagoHistorico) : null,
           })
           .select("id")
           .single();
@@ -709,8 +752,9 @@ function ContratoPontualForm({
           await enviarArquivo(novoContrato.id, arquivo);
         }
 
-        // Gera o(s) lançamento(s) automaticamente
-        if (novoContrato) {
+        // Gera o(s) lançamento(s) automaticamente — pulado em contratos de migração,
+        // já que o valor foi recebido antes de entrar no sistema
+        if (novoContrato && !ehMigracao) {
           const linhas: Record<string, unknown>[] = [];
           const nomeCliente = pessoaSelecionada!.nome;
           const descricaoPadrao = nomeServicoParaDescricao
@@ -855,6 +899,39 @@ function ContratoPontualForm({
           </div>
         )}
       </div>
+
+      {!editando && (
+        <div className="rounded-2xl bg-surface p-3">
+          <label className="flex items-center gap-2 text-sm font-semibold text-ink cursor-pointer">
+            <input
+              type="checkbox"
+              checked={ehMigracao}
+              onChange={(e) => setEhMigracao(e.target.checked)}
+              className="h-4 w-4 rounded accent-forest"
+            />
+            Contrato já existente (já foi pago antes de entrar no sistema)
+          </label>
+
+          {ehMigracao && (
+            <div className="mt-3">
+              <Campo label="Valor já pago antes de entrar no sistema (R$)">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={valorPagoHistorico}
+                  onChange={(e) => setValorPagoHistorico(e.target.value)}
+                  className="input"
+                  placeholder="Opcional"
+                />
+                <span className="block text-xs text-ink/40 mt-1">
+                  Só pra cálculo de total pago — não gera lançamento nenhum no financeiro.
+                </span>
+              </Campo>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="relative">
@@ -1034,31 +1111,33 @@ function ContratoPontualForm({
           />
         </Campo>
 
-        <div>
-          <span className="block text-sm font-medium text-ink/70 mb-1">Pagamento</span>
-          <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
-            <button
-              type="button"
-              onClick={() => setTipoPagamento("avista")}
-              className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                tipoPagamento === "avista" ? "bg-ink text-white" : "text-ink/60"
-              }`}
-            >
-              À vista
-            </button>
-            <button
-              type="button"
-              onClick={() => setTipoPagamento("parcelado")}
-              className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                tipoPagamento === "parcelado" ? "bg-ink text-white" : "text-ink/60"
-              }`}
-            >
-              Parcelado
-            </button>
+        {!ehMigracao && (
+          <div>
+            <span className="block text-sm font-medium text-ink/70 mb-1">Pagamento</span>
+            <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
+              <button
+                type="button"
+                onClick={() => setTipoPagamento("avista")}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                  tipoPagamento === "avista" ? "bg-ink text-white" : "text-ink/60"
+                }`}
+              >
+                À vista
+              </button>
+              <button
+                type="button"
+                onClick={() => setTipoPagamento("parcelado")}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                  tipoPagamento === "parcelado" ? "bg-ink text-white" : "text-ink/60"
+                }`}
+              >
+                Parcelado
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
-        {tipoPagamento === "avista" ? (
+        {!ehMigracao && (tipoPagamento === "avista" ? (
           <>
             <Campo label="Data de pagamento">
               <input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="input" />
@@ -1120,7 +1199,7 @@ function ContratoPontualForm({
               />
             </Campo>
           </>
-        )}
+        ))}
 
         {editando && (
           <Campo label="Status" required>

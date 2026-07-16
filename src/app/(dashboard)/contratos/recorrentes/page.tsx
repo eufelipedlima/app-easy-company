@@ -24,6 +24,8 @@ interface Contrato {
   data_pagamento_entrada: string | null;
   data_primeira_mensalidade: string | null;
   data_encerramento: string | null;
+  motivo_encerramento: string | null;
+  observacao_encerramento: string | null;
   tempo_inicial_meses: number | null;
   servico_id: string | null;
   banco_id: string | null;
@@ -180,7 +182,7 @@ export default function ContratosRecorrentesPage() {
       .from("contratos")
       .select(
         `id, numero_contrato, status, forma_pagamento, valor_mensal, valor_entrada, data_pagamento_entrada, data_primeira_mensalidade,
-         data_encerramento, tempo_inicial_meses, servico_id, banco_id, plano_conta_id, descricao, comentarios_extras,
+         data_encerramento, motivo_encerramento, observacao_encerramento, tempo_inicial_meses, servico_id, banco_id, plano_conta_id, descricao, comentarios_extras,
          arquivo_path, arquivo_nome, ultima_verificacao_parcelas, eh_migracao, valor_pago_historico, data_proxima_cobranca,
          clientes ( papeis ( pessoas ( nome, razao_social, documento, email ) ) ),
          servicos ( nome ),
@@ -567,9 +569,20 @@ export default function ContratosRecorrentesPage() {
                     <DetalheLinha label="Compromisso mínimo" valor={`${detalhe.tempo_inicial_meses ?? "—"} meses`} />
                     <DetalheLinha label="Renovação automática" valor={dataRenovacao} />
                     {detalhe.status === "encerrado" && (
-                      <DetalheLinha label="Encerramento" valor={formatarData(detalhe.data_encerramento)} />
+                      <>
+                        <DetalheLinha label="Encerramento" valor={formatarData(detalhe.data_encerramento)} />
+                        {detalhe.motivo_encerramento && (
+                          <DetalheLinha label="Motivo" valor={detalhe.motivo_encerramento} />
+                        )}
+                      </>
                     )}
                   </SecaoDetalhe>
+
+                  {detalhe.status === "encerrado" && detalhe.observacao_encerramento && (
+                    <SecaoDetalhe titulo="Detalhes da rescisão">
+                      <p className="text-sm text-ink whitespace-pre-wrap">{detalhe.observacao_encerramento}</p>
+                    </SecaoDetalhe>
+                  )}
 
                   <SecaoDetalhe titulo="Pagamento">
                     <DetalheLinha label="Serviço" valor={detalhe.servicos?.nome ?? "—"} />
@@ -719,6 +732,8 @@ function ContratoRecorrenteForm({
   const [tempoInicial, setTempoInicial] = useState(contratoEditando?.tempo_inicial_meses ?? 3);
   const [status, setStatus] = useState<"ativo" | "encerrado">(contratoEditando?.status ?? "ativo");
   const [dataEncerramento, setDataEncerramento] = useState(contratoEditando?.data_encerramento ?? "");
+  const [motivoEncerramento, setMotivoEncerramento] = useState(contratoEditando?.motivo_encerramento ?? "");
+  const [observacaoEncerramento, setObservacaoEncerramento] = useState(contratoEditando?.observacao_encerramento ?? "");
 
   const [ehMigracao, setEhMigracao] = useState(contratoEditando?.eh_migracao ?? false);
   const [valorPagoHistorico, setValorPagoHistorico] = useState(
@@ -909,6 +924,8 @@ function ContratoRecorrenteForm({
             plano_conta_id: planoContaFinalId,
             status,
             data_encerramento: status === "encerrado" ? dataEncerramento || null : null,
+            motivo_encerramento: status === "encerrado" ? motivoEncerramento || null : null,
+            observacao_encerramento: status === "encerrado" ? observacaoEncerramento || null : null,
             descricao: descricao || null,
             comentarios_extras: comentariosExtras || null,
             eh_migracao: ehMigracao,
@@ -1386,6 +1403,34 @@ function ContratoRecorrenteForm({
               className="input"
             />
           </Campo>
+        )}
+
+        {editando && status === "encerrado" && (
+          <Campo label="Motivo do encerramento">
+            <select value={motivoEncerramento} onChange={(e) => setMotivoEncerramento(e.target.value)} className="input">
+              <option value="">Selecione...</option>
+              <option value="Insatisfação com o serviço">Insatisfação com o serviço</option>
+              <option value="Preço">Preço</option>
+              <option value="Encerrou atividades / fechou empresa">Encerrou atividades / fechou empresa</option>
+              <option value="Passou a fazer internamente">Passou a fazer internamente</option>
+              <option value="Contratou concorrente">Contratou concorrente</option>
+              <option value="Inadimplência">Inadimplência</option>
+              <option value="Outro">Outro</option>
+            </select>
+          </Campo>
+        )}
+
+        {editando && status === "encerrado" && (
+          <label className="block col-span-2">
+            <span className="block text-sm font-medium text-ink/70 mb-1">Detalhes da rescisão</span>
+            <textarea
+              value={observacaoEncerramento}
+              onChange={(e) => setObservacaoEncerramento(e.target.value)}
+              className="input"
+              rows={3}
+              placeholder="O que aconteceu, combinados feitos, se pode voltar no futuro..."
+            />
+          </label>
         )}
       </div>
 
