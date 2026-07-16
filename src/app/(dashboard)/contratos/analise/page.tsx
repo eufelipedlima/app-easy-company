@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
-import { Users, TrendingUp, Clock, Wallet, TrendingDown, Package, Timer } from "lucide-react";
+import { Line, LineChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
+import { Users, TrendingUp, Clock, Wallet, TrendingDown, Package, Timer, UserPlus } from "lucide-react";
 
 interface ContratoRecorrente {
   status: "ativo" | "encerrado";
@@ -19,16 +19,20 @@ interface ContratoPontual {
   data_encerramento: string | null;
 }
 
+const MESES = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
 function formatarMoeda(valor: number) {
   return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function mesesDeCasa(inicio: string | null, fim: string | null) {
+function mesesDeCasa(inicio: string | null, fim: Date) {
   if (!inicio) return 0;
   const d1 = new Date(inicio + "T00:00:00");
-  const d2 = fim ? new Date(fim + "T00:00:00") : new Date();
-  let meses = (d2.getFullYear() - d1.getFullYear()) * 12 + (d2.getMonth() - d1.getMonth());
-  if (d2.getDate() < d1.getDate()) meses -= 1;
+  let meses = (fim.getFullYear() - d1.getFullYear()) * 12 + (fim.getMonth() - d1.getMonth());
+  if (fim.getDate() < d1.getDate()) meses -= 1;
   return Math.max(meses, 0);
 }
 
@@ -38,10 +42,68 @@ function diasEntre(inicio: string, fim: string) {
   return Math.max(Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)), 0);
 }
 
+// Métricas calculadas "como se fosse" o fim de um mês específico — pra dar o
+// snapshot correto mesmo pra meses passados, e não só o estado atual.
+function calcularMetricas(recorrentes: ContratoRecorrente[], fimDoMes: Date, inicioDoMes: Date) {
+  const ativosNoFim = recorrentes.filter((c) => {
+    if (!c.data_primeira_mensalidade) return false;
+    const inicio = new Date(c.data_primeira_mensalidade + "T00:00:00");
+    if (inicio > fimDoMes) return false;
+    if (c.data_encerramento) {
+      const encerramento = new Date(c.data_encerramento + "T00:00:00");
+      if (encerramento <= fimDoMes) return false;
+    }
+    return true;
+  });
+
+  const ativosNoInicio = recorrentes.filter((c) => {
+    if (!c.data_primeira_mensalidade) return false;
+    const inicio = new Date(c.data_primeira_mensalidade + "T00:00:00");
+    if (inicio >= inicioDoMes) return false;
+    if (c.data_encerramento) {
+      const encerramento = new Date(c.data_encerramento + "T00:00:00");
+      if (encerramento <= inicioDoMes) return false;
+    }
+    return true;
+  });
+
+  const novos = recorrentes.filter((c) => {
+    if (!c.data_primeira_mensalidade) return false;
+    const inicio = new Date(c.data_primeira_mensalidade + "T00:00:00");
+    return inicio >= inicioDoMes && inicio <= fimDoMes;
+  });
+
+  const encerradosNoMes = recorrentes.filter((c) => {
+    if (!c.data_encerramento) return false;
+    const encerramento = new Date(c.data_encerramento + "T00:00:00");
+    return encerramento >= inicioDoMes && encerramento <= fimDoMes;
+  });
+
+  const temposDeCasa = ativosNoFim.map((c) => mesesDeCasa(c.data_primeira_mensalidade, fimDoMes));
+  const tempoMedioEmCasa = temposDeCasa.length > 0 ? temposDeCasa.reduce((a, b) => a + b, 0) / temposDeCasa.length : 0;
+
+  const ltvs = ativosNoFim.map((c) => mesesDeCasa(c.data_primeira_mensalidade, fimDoMes) * (c.valor_mensal ?? 0));
+  const ltvMedio = ltvs.length > 0 ? ltvs.reduce((a, b) => a + b, 0) / ltvs.length : 0;
+
+  const churn = ativosNoInicio.length > 0 ? (encerradosNoMes.length / ativosNoInicio.length) * 100 : 0;
+
+  return {
+    clientesAtivos: ativosNoFim.length,
+    novosClientes: novos.length,
+    tempoMedioEmCasa,
+    ltvMedio,
+    churn,
+  };
+}
+
 export default function AnaliseContratosPage() {
+  const hoje = new Date();
   const [recorrentes, setRecorrentes] = useState<ContratoRecorrente[]>([]);
   const [pontuais, setPontuais] = useState<ContratoPontual[]>([]);
   const [loading, setLoading] = useState(true);
+  const [modo, setModo] = useState<"mensal" | "anual">("mensal");
+  const [mes, setMes] = useState(hoje.getMonth());
+  const [ano, setAno] = useState(hoje.getFullYear());
 
   useEffect(() => {
     async function carregar() {
@@ -63,78 +125,112 @@ export default function AnaliseContratosPage() {
     carregar();
   }, []);
 
-  const ativos = recorrentes.filter((c) => c.status === "ativo");
-  const encerrados = recorrentes.filter((c) => c.status === "encerrado");
-
-  const mrr = ativos.reduce((soma, c) => soma + (c.valor_mensal ?? 0), 0);
-
-  const temposDeCasa = recorrentes.map((c) => mesesDeCasa(c.data_primeira_mensalidade, c.data_encerramento));
-  const tempoMedioEmCasa =
-    temposDeCasa.length > 0 ? temposDeCasa.reduce((a, b) => a + b, 0) / temposDeCasa.length : 0;
-
-  const ltvs = recorrentes.map(
-    (c) => mesesDeCasa(c.data_primeira_mensalidade, c.data_encerramento) * (c.valor_mensal ?? 0)
-  );
-  const ltvMedio = ltvs.length > 0 ? ltvs.reduce((a, b) => a + b, 0) / ltvs.length : 0;
-
-  const churn = recorrentes.length > 0 ? (encerrados.length / recorrentes.length) * 100 : 0;
-
-  const dadosStatusRecorrente = [
-    { nome: "Ativos", total: ativos.length },
-    { nome: "Encerrados", total: encerrados.length },
-  ];
-
-  const totalPontuais = pontuais.length;
-  const valorTotalPontuais = pontuais.reduce((soma, c) => soma + (c.valor_total ?? 0), 0);
-  const concluidosOuArquivados = pontuais.filter((c) => c.status !== "ativo" && c.data_encerramento);
-  const temposConclusao = concluidosOuArquivados.map((c) =>
-    diasEntre(c.data_fechamento!, c.data_encerramento!)
-  );
-  const tempoMedioConcluir =
-    temposConclusao.length > 0 ? temposConclusao.reduce((a, b) => a + b, 0) / temposConclusao.length : 0;
-
-  const dadosStatusPontual = [
-    { nome: "Ativos", total: pontuais.filter((c) => c.status === "ativo").length },
-    { nome: "Concluídos", total: pontuais.filter((c) => c.status === "concluido").length },
-    { nome: "Arquivados", total: pontuais.filter((c) => c.status === "arquivado").length },
-  ];
-
   if (loading) {
     return <p className="text-sm text-ink/50">Carregando...</p>;
   }
 
+  const fimDoMesSelecionado = new Date(ano, mes + 1, 0);
+  const inicioDoMesSelecionado = new Date(ano, mes, 1);
+
+  const metricas =
+    modo === "mensal"
+      ? calcularMetricas(recorrentes, fimDoMesSelecionado, inicioDoMesSelecionado)
+      : calcularMetricas(recorrentes, new Date(ano, 11, 31), new Date(ano, 0, 1));
+
+  // Série mensal pro gráfico de crescimento: últimos 6 meses (modo mensal, terminando
+  // no mês escolhido) ou os 12 meses do ano escolhido (modo anual)
+  const serie = (
+    modo === "mensal"
+      ? Array.from({ length: 6 }, (_, i) => {
+          const d = new Date(ano, mes - 5 + i, 1);
+          return { ano: d.getFullYear(), mes: d.getMonth() };
+        })
+      : Array.from({ length: 12 }, (_, i) => ({ ano, mes: i }))
+  ).map(({ ano: a, mes: m }) => {
+    const fim = new Date(a, m + 1, 0);
+    const inicio = new Date(a, m, 1);
+    const met = calcularMetricas(recorrentes, fim, inicio);
+    return {
+      label: `${MESES[m].slice(0, 3)}/${String(a).slice(2)}`,
+      clientesAtivos: met.clientesAtivos,
+      ltvMedio: Math.round(met.ltvMedio),
+      churn: Number(met.churn.toFixed(1)),
+    };
+  });
+
+  const totalPontuais = pontuais.length;
+  const valorTotalPontuais = pontuais.reduce((soma, c) => soma + (c.valor_total ?? 0), 0);
+  const concluidosOuArquivados = pontuais.filter((c) => c.status !== "ativo" && c.data_encerramento);
+  const temposConclusao = concluidosOuArquivados.map((c) => diasEntre(c.data_fechamento!, c.data_encerramento!));
+  const tempoMedioConcluir =
+    temposConclusao.length > 0 ? temposConclusao.reduce((a, b) => a + b, 0) / temposConclusao.length : 0;
+
   return (
     <div className="space-y-10">
       <section>
-        <h2 className="text-sm font-bold uppercase tracking-wide text-ink/40 mb-4">Recorrentes</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-ink/40">Recorrentes</h2>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+              <button
+                onClick={() => setModo("mensal")}
+                className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                  modo === "mensal" ? "bg-ink text-white" : "text-ink/60"
+                }`}
+              >
+                Mensal
+              </button>
+              <button
+                onClick={() => setModo("anual")}
+                className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                  modo === "anual" ? "bg-ink text-white" : "text-ink/60"
+                }`}
+              >
+                Anual
+              </button>
+            </div>
+            {modo === "mensal" && (
+              <select value={mes} onChange={(e) => setMes(Number(e.target.value))} className="input py-1.5 !w-auto">
+                {MESES.map((m, i) => (
+                  <option key={m} value={i}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            )}
+            <select value={ano} onChange={(e) => setAno(Number(e.target.value))} className="input py-1.5 !w-auto">
+              {Array.from({ length: 6 }, (_, i) => hoje.getFullYear() - 3 + i).map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          <Metrica icon={<Users size={16} />} label="Contratos ativos" valor={String(ativos.length)} />
-          <Metrica icon={<Wallet size={16} />} label="MRR mensal" valor={formatarMoeda(mrr)} />
+          <Metrica icon={<Users size={16} />} label="Clientes ativos" valor={String(metricas.clientesAtivos)} />
+          <Metrica icon={<UserPlus size={16} />} label="Novos clientes" valor={String(metricas.novosClientes)} />
           <Metrica
             icon={<Clock size={16} />}
-            label="Tempo médio em casa"
-            valor={`${tempoMedioEmCasa.toFixed(1)} meses`}
+            label="Tempo de casa"
+            valor={`${metricas.tempoMedioEmCasa.toFixed(1)} meses`}
           />
-          <Metrica icon={<TrendingUp size={16} />} label="LTV médio" valor={formatarMoeda(ltvMedio)} />
-          <Metrica icon={<TrendingDown size={16} />} label="Churn" valor={`${churn.toFixed(1)}%`} />
+          <Metrica icon={<TrendingUp size={16} />} label="LTV médio" valor={formatarMoeda(metricas.ltvMedio)} />
+          <Metrica icon={<TrendingDown size={16} />} label="Churn" valor={`${metricas.churn.toFixed(1)}%`} />
         </div>
-        <div className="rounded-3xl bg-card border border-black/5 p-5 h-64 transition-shadow duration-200 hover:shadow-lg">
-          <p className="text-sm font-semibold text-ink mb-3">Contratos por status</p>
-          <ResponsiveContainer width="100%" height="85%">
-            <BarChart data={dadosStatusRecorrente}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#02170B10" vertical={false} />
-              <XAxis dataKey="nome" tick={{ fontSize: 12, fill: "#02170B99" }} axisLine={false} tickLine={false} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#02170B99" }} axisLine={false} tickLine={false} />
-              <Tooltip cursor={{ fill: "#E4FFEF" }} contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 24px rgba(2,23,11,0.15)" }} />
-              <Bar dataKey="total" fill="#143421" radius={[8, 8, 0, 0]} activeBar={{ fill: "#02170B" }} animationDuration={600} />
-            </BarChart>
-          </ResponsiveContainer>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <GraficoCrescimento titulo="Clientes ativos por mês" dataKey="clientesAtivos" dados={serie} cor="#143421" />
+          <GraficoCrescimento titulo="LTV médio por mês" dataKey="ltvMedio" dados={serie} cor="#02170B" formatoMoeda />
+          <GraficoCrescimento titulo="Churn por mês (%)" dataKey="churn" dados={serie} cor="#DC2626" sufixo="%" />
         </div>
       </section>
 
       <section>
         <h2 className="text-sm font-bold uppercase tracking-wide text-ink/40 mb-4">Pontuais</h2>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <Metrica icon={<Package size={16} />} label="Total de contratos" valor={String(totalPontuais)} />
           <Metrica
             icon={<Wallet size={16} />}
@@ -147,19 +243,47 @@ export default function AnaliseContratosPage() {
             valor={`${Math.round(tempoMedioConcluir)} dias`}
           />
         </div>
-        <div className="rounded-3xl bg-card border border-black/5 p-5 h-64 transition-shadow duration-200 hover:shadow-lg">
-          <p className="text-sm font-semibold text-ink mb-3">Contratos por status</p>
-          <ResponsiveContainer width="100%" height="85%">
-            <BarChart data={dadosStatusPontual}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#02170B10" vertical={false} />
-              <XAxis dataKey="nome" tick={{ fontSize: 12, fill: "#02170B99" }} axisLine={false} tickLine={false} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#02170B99" }} axisLine={false} tickLine={false} />
-              <Tooltip cursor={{ fill: "#E4FFEF" }} contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 24px rgba(2,23,11,0.15)" }} />
-              <Bar dataKey="total" fill="#143421" radius={[8, 8, 0, 0]} activeBar={{ fill: "#02170B" }} animationDuration={600} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
       </section>
+    </div>
+  );
+}
+
+function GraficoCrescimento({
+  titulo,
+  dataKey,
+  dados,
+  cor,
+  formatoMoeda,
+  sufixo,
+}: {
+  titulo: string;
+  dataKey: string;
+  dados: Record<string, string | number>[];
+  cor: string;
+  formatoMoeda?: boolean;
+  sufixo?: string;
+}) {
+  return (
+    <div className="rounded-3xl bg-card border border-black/5 p-5 h-56 transition-shadow duration-200 hover:shadow-lg">
+      <p className="text-sm font-semibold text-ink mb-3">{titulo}</p>
+      <ResponsiveContainer width="100%" height="85%">
+        <LineChart data={dados}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#02170B10" vertical={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#02170B99" }} axisLine={false} tickLine={false} />
+          <YAxis
+            tick={{ fontSize: 11, fill: "#02170B99" }}
+            axisLine={false}
+            tickLine={false}
+            width={formatoMoeda ? 56 : 32}
+            tickFormatter={(v) => (formatoMoeda ? formatarMoeda(Number(v)) : `${v}${sufixo ?? ""}`)}
+          />
+          <Tooltip
+            formatter={(v) => (formatoMoeda ? formatarMoeda(Number(v)) : `${v}${sufixo ?? ""}`)}
+            contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 24px rgba(2,23,11,0.15)" }}
+          />
+          <Line type="monotone" dataKey={dataKey} stroke={cor} strokeWidth={2.5} dot={{ r: 3 }} animationDuration={600} />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 }
