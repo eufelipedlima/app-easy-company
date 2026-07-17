@@ -191,7 +191,7 @@ function TabelaAtraso({
                   onClick={() => onEditar(l)}
                   className="rounded-full px-3 py-1.5 text-xs font-bold bg-forest text-white hover:bg-ink transition-colors"
                 >
-                  Marcar como pago
+                  Pagar
                 </button>
               </td>
             </tr>

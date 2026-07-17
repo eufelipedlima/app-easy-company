@@ -111,10 +111,13 @@ export default function ContratosPontuaisPage() {
     carregarTotalPago();
   }, [detalhe]);
 
+  const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
+
   const carregar = useCallback(async () => {
     setLoading(true);
+    setErroCarregamento(null);
     const supabase = createClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("contratos")
       .select(
         `id, numero_contrato, status, forma_pagamento, valor_total, data_fechamento, data_competencia,
@@ -128,6 +131,10 @@ export default function ContratosPontuaisPage() {
       )
       .eq("tipo_contrato", "pontual")
       .order("created_at", { ascending: false });
+    if (error) {
+      console.error("Erro ao carregar contratos pontuais:", error);
+      setErroCarregamento(error.message);
+    }
     setContratos((data as unknown as Contrato[]) ?? []);
     setLoading(false);
   }, []);
@@ -165,6 +172,13 @@ export default function ContratosPontuaisPage() {
           </button>
         )}
       </div>
+
+      {erroCarregamento && (
+        <div className="rounded-2xl bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 mb-6">
+          <p className="font-semibold">Erro ao carregar os contratos:</p>
+          <p className="font-mono text-xs mt-1">{erroCarregamento}</p>
+        </div>
+      )}
 
       {(painelAberto || editando) && (
         <div
