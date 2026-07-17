@@ -268,10 +268,10 @@ export default function AnaliseContratosPage() {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-          <Metrica icon={<Users size={16} />} label="Clientes ativos" valor={String(metricas.contratosAtivos)} />
-          <Metrica icon={<Wallet size={16} />} label="MRR (clientes ativos)" valor={formatarMoeda(metricas.mrrAtivos)} />
-          <Metrica icon={<UserPlus size={16} />} label="Novos clientes" valor={String(metricas.novosContratos)} />
-          <Metrica icon={<Wallet size={16} />} label="MRR (novos clientes)" valor={formatarMoeda(metricas.mrrNovos)} />
+          <Metrica icon={<Users size={16} />} label="Contratos ativos" valor={String(metricas.contratosAtivos)} />
+          <Metrica icon={<Wallet size={16} />} label="MRR (contratos ativos)" valor={formatarMoeda(metricas.mrrAtivos)} />
+          <Metrica icon={<UserPlus size={16} />} label="Novos contratos" valor={String(metricas.novosContratos)} />
+          <Metrica icon={<Wallet size={16} />} label="MRR (novos contratos)" valor={formatarMoeda(metricas.mrrNovos)} />
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
@@ -285,7 +285,7 @@ export default function AnaliseContratosPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <GraficoCrescimento titulo="Clientes ativos por mês" dataKey="contratosAtivos" dados={serie} cor="#143421" />
+          <GraficoCrescimento titulo="Contratos ativos por mês" dataKey="contratosAtivos" dados={serie} cor="#143421" />
           <GraficoCrescimento titulo="LTV médio por mês" dataKey="ltvMedio" dados={serie} cor="#02170B" formatoMoeda />
           <GraficoCrescimento titulo="Churn por mês (%)" dataKey="churn" dados={serie} cor="#DC2626" sufixo="%" />
         </div>
