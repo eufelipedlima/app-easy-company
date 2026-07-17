@@ -84,7 +84,9 @@ function calcularMetricas(recorrentes: ContratoRecorrente[], fimDoMes: Date, ini
 
   return {
     contratosAtivos: ativosNoFim.length,
+    mrrAtivos: ativosNoFim.reduce((s, c) => s + (c.valor_mensal ?? 0), 0),
     novosContratos: novos.length,
+    mrrNovos: novos.reduce((s, c) => s + (c.valor_mensal ?? 0), 0),
     tempoMedioEmCasa,
     ltvMedio,
     churn,
@@ -265,9 +267,14 @@ export default function AnaliseContratosPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          <Metrica icon={<Users size={16} />} label="Contratos ativos" valor={String(metricas.contratosAtivos)} />
-          <Metrica icon={<UserPlus size={16} />} label="Novos contratos" valor={String(metricas.novosContratos)} />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <Metrica icon={<Users size={16} />} label="Clientes ativos" valor={String(metricas.contratosAtivos)} />
+          <Metrica icon={<Wallet size={16} />} label="MRR (clientes ativos)" valor={formatarMoeda(metricas.mrrAtivos)} />
+          <Metrica icon={<UserPlus size={16} />} label="Novos clientes" valor={String(metricas.novosContratos)} />
+          <Metrica icon={<Wallet size={16} />} label="MRR (novos clientes)" valor={formatarMoeda(metricas.mrrNovos)} />
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
           <Metrica
             icon={<Clock size={16} />}
             label="Tempo de casa"
@@ -278,7 +285,7 @@ export default function AnaliseContratosPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <GraficoCrescimento titulo="Contratos ativos por mês" dataKey="contratosAtivos" dados={serie} cor="#143421" />
+          <GraficoCrescimento titulo="Clientes ativos por mês" dataKey="contratosAtivos" dados={serie} cor="#143421" />
           <GraficoCrescimento titulo="LTV médio por mês" dataKey="ltvMedio" dados={serie} cor="#02170B" formatoMoeda />
           <GraficoCrescimento titulo="Churn por mês (%)" dataKey="churn" dados={serie} cor="#DC2626" sufixo="%" />
         </div>
