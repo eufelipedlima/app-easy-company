@@ -35,6 +35,7 @@ const MENU: Grupo[] = [
     itens: [
       { href: "/financeiro/analise", label: "Análise", icon: <BarChart3 size={15} /> },
       { href: "/financeiro/bancos", label: "Bancos", icon: <Landmark size={15} /> },
+      { href: "/financeiro/despesas-fixas", label: "Despesas Fixas", icon: <Repeat size={15} /> },
       { href: "/financeiro/dre", label: "DRE", icon: <FileBarChart size={15} /> },
       { href: "/financeiro/inadimplencia", label: "Inadimplência", icon: <AlertTriangle size={15} /> },
       { href: "/financeiro/lancamentos", label: "Lançamentos", icon: <Receipt size={15} /> },
