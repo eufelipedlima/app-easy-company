@@ -12,6 +12,7 @@ interface Contrato {
   forma_pagamento: string | null;
   valor_total: number | null;
   data_fechamento: string | null;
+  data_competencia: string | null;
   data_encerramento: string | null;
   servico_id: string | null;
   banco_id: string | null;
@@ -116,7 +117,7 @@ export default function ContratosPontuaisPage() {
     const { data } = await supabase
       .from("contratos")
       .select(
-        `id, numero_contrato, status, forma_pagamento, valor_total, data_fechamento,
+        `id, numero_contrato, status, forma_pagamento, valor_total, data_fechamento, data_competencia,
          data_encerramento, servico_id, banco_id, plano_conta_id, descricao, comentarios_extras, arquivo_path, arquivo_nome,
          tipo_pagamento, data_pagamento, situacao_pagamento, valor_entrada, quantidade_parcelas, data_primeira_parcela,
          eh_migracao, valor_pago_historico,
@@ -490,6 +491,9 @@ function ContratoPontualForm({
     contratoEditando?.valor_total != null ? String(contratoEditando.valor_total) : ""
   );
   const [dataInicio, setDataInicio] = useState(contratoEditando?.data_fechamento ?? new Date().toISOString().slice(0, 10));
+  const [dataCompetenciaContrato, setDataCompetenciaContrato] = useState(
+    contratoEditando?.data_competencia ?? new Date().toISOString().slice(0, 10)
+  );
 
   const [tipoPagamento, setTipoPagamento] = useState<"avista" | "parcelado">(
     contratoEditando?.tipo_pagamento ?? "avista"
@@ -689,6 +693,7 @@ function ContratoPontualForm({
             plano_conta_id: planoContaFinalId,
             valor_total: Number(valorTotal),
             data_fechamento: dataInicio,
+            data_competencia: dataCompetenciaContrato || null,
             numero_contrato: numeroContrato.trim() || null,
             status,
             data_encerramento: status !== "ativo" ? dataEncerramento || null : null,
@@ -732,6 +737,7 @@ function ContratoPontualForm({
             plano_conta_id: planoContaFinalId,
             valor_total: Number(valorTotal),
             data_fechamento: dataInicio,
+            data_competencia: dataCompetenciaContrato || null,
             descricao: descricao || null,
             comentarios_extras: comentariosExtras || null,
             tipo_pagamento: tipoPagamento,
@@ -768,6 +774,7 @@ function ContratoPontualForm({
             servico_id: servicoFinalId,
             banco_id: bancoFinalId,
             plano_conta_id: planoContaFinalId,
+            data_competencia: dataCompetenciaContrato || null,
           };
 
           if (tipoPagamento === "avista") {
@@ -1086,6 +1093,19 @@ function ContratoPontualForm({
               </option>
             ))}
           </select>
+        </Campo>
+
+        <Campo label="Data de competência" required>
+          <input
+            type="date"
+            required
+            value={dataCompetenciaContrato}
+            onChange={(e) => setDataCompetenciaContrato(e.target.value)}
+            className="input"
+          />
+          <span className="block text-xs text-ink/40 mt-1">
+            Fixa mesmo se for parcelado — todas as parcelas usam essa mesma data.
+          </span>
         </Campo>
 
         <Campo label="Início do contrato" required>

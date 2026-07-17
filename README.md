@@ -20,4 +20,3 @@ npm run dev
 
 As migrations SQL ficam em `supabase/migrations`. Rode-as no SQL Editor do
 Supabase (Dashboard → SQL Editor → colar o conteúdo do arquivo → Run).
-

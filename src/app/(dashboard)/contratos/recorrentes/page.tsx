@@ -23,6 +23,7 @@ interface Contrato {
   valor_entrada: number | null;
   data_pagamento_entrada: string | null;
   data_primeira_mensalidade: string | null;
+  data_competencia: string | null;
   data_encerramento: string | null;
   motivo_encerramento: string | null;
   observacao_encerramento: string | null;
@@ -181,7 +182,7 @@ export default function ContratosRecorrentesPage() {
     const { data } = await supabase
       .from("contratos")
       .select(
-        `id, numero_contrato, status, forma_pagamento, valor_mensal, valor_entrada, data_pagamento_entrada, data_primeira_mensalidade,
+        `id, numero_contrato, status, forma_pagamento, valor_mensal, valor_entrada, data_pagamento_entrada, data_primeira_mensalidade, data_competencia,
          data_encerramento, motivo_encerramento, observacao_encerramento, tempo_inicial_meses, servico_id, banco_id, plano_conta_id, descricao, comentarios_extras,
          arquivo_path, arquivo_nome, ultima_verificacao_parcelas, eh_migracao, valor_pago_historico, data_proxima_cobranca,
          clientes ( papeis ( pessoas ( nome, razao_social, documento, email ) ) ),
@@ -243,6 +244,7 @@ export default function ContratosRecorrentesPage() {
             descricao: ultimo.descricao,
             valor: c.valor_mensal,
             data_vencimento: cursor.toISOString().slice(0, 10),
+            data_competencia: c.data_competencia ?? null,
             servico_id: c.servico_id,
             banco_id: c.banco_id,
             plano_conta_id: c.plano_conta_id,
@@ -729,6 +731,9 @@ function ContratoRecorrenteForm({
   const [dataPrimeiraMensalidade, setDataPrimeiraMensalidade] = useState(
     contratoEditando?.data_primeira_mensalidade ?? new Date().toISOString().slice(0, 10)
   );
+  const [dataCompetenciaContrato, setDataCompetenciaContrato] = useState(
+    contratoEditando?.data_competencia ?? new Date().toISOString().slice(0, 10)
+  );
   const [tempoInicial, setTempoInicial] = useState(contratoEditando?.tempo_inicial_meses ?? 3);
   const [status, setStatus] = useState<"ativo" | "encerrado">(contratoEditando?.status ?? "ativo");
   const [dataEncerramento, setDataEncerramento] = useState(contratoEditando?.data_encerramento ?? "");
@@ -918,6 +923,7 @@ function ContratoRecorrenteForm({
             valor_entrada: valorEntrada ? Number(valorEntrada) : null,
             data_pagamento_entrada: dataPagamentoEntrada || null,
             data_primeira_mensalidade: dataPrimeiraMensalidade,
+            data_competencia: dataCompetenciaContrato || null,
             tempo_inicial_meses: tempoInicial,
             numero_contrato: numeroContrato.trim() || null,
             banco_id: bancoFinalId,
@@ -961,6 +967,7 @@ function ContratoRecorrenteForm({
             valor_entrada: valorEntrada ? Number(valorEntrada) : null,
             data_pagamento_entrada: dataPagamentoEntrada || null,
             data_primeira_mensalidade: dataPrimeiraMensalidade,
+            data_competencia: dataCompetenciaContrato || null,
             tempo_inicial_meses: tempoInicial,
             descricao: descricao || null,
             comentarios_extras: comentariosExtras || null,
@@ -1000,6 +1007,7 @@ function ContratoRecorrenteForm({
               descricao: `${descricaoPadrao} (entrada)`,
               valor: Number(valorEntrada),
               data_vencimento: dataPagamentoEntrada || dataPrimeiraMensalidade,
+              data_competencia: dataCompetenciaContrato || null,
               servico_id: servicoFinalId,
               banco_id: bancoFinalId,
               plano_conta_id: planoContaFinalId,
@@ -1021,6 +1029,7 @@ function ContratoRecorrenteForm({
               descricao: `${descricaoPadrao} 🔁`,
               valor: Number(valorMensal),
               data_vencimento: venc.toISOString().slice(0, 10),
+              data_competencia: dataCompetenciaContrato || null,
               servico_id: servicoFinalId,
               grupo_id: grupoId,
               recorrencia_tipo: "mensal",
@@ -1329,6 +1338,19 @@ function ContratoRecorrenteForm({
               </option>
             ))}
           </select>
+        </Campo>
+
+        <Campo label="Data de competência" required>
+          <input
+            type="date"
+            required
+            value={dataCompetenciaContrato}
+            onChange={(e) => setDataCompetenciaContrato(e.target.value)}
+            className="input"
+          />
+          <span className="block text-xs text-ink/40 mt-1">
+            Fixa pra todas as parcelas geradas, não muda mês a mês.
+          </span>
         </Campo>
 
         <Campo label={ehMigracao ? "Data de início do contrato" : "Data da primeira parcela"} required>

@@ -620,7 +620,77 @@ export default function LancamentosPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setResumoAberto((v) => !v)}
+            className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-forest to-ink text-white px-4 py-2.5 text-sm font-bold shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+          >
+            📊 Resumo {resumoAberto ? "▲" : "▼"}
+          </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setPainelColunasAberto((v) => !v)}
+              className="rounded-full border-2 border-ink/15 text-ink px-4 py-2.5 text-sm font-bold hover:bg-surface transition-colors"
+            >
+              ⚙ Colunas
+            </button>
+            {painelColunasAberto && (
+              <div
+                className="absolute right-0 z-10 mt-2 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-2"
+                onMouseLeave={() => setPainelColunasAberto(false)}
+              >
+                {colunas.map((c, i) => {
+                  const def = COLUNAS_DISPONIVEIS.find((d) => d.key === c.key);
+                  if (!def) return null;
+                  return (
+                    <div key={c.key} className="flex items-center justify-between px-2 py-1.5 text-sm hover:bg-surface rounded-lg">
+                      <label className="flex items-center gap-2 cursor-pointer flex-1">
+                        <input
+                          type="checkbox"
+                          checked={c.visivel}
+                          onChange={() => alternarVisibilidade(c.key)}
+                          className="h-3.5 w-3.5 rounded accent-forest"
+                        />
+                        <span className={c.visivel ? "text-ink" : "text-ink/40"}>{def.label}</span>
+                      </label>
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={() => moverColuna(c.key, -1)}
+                          disabled={i === 0}
+                          className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          onClick={() => moverColuna(c.key, 1)}
+                          disabled={i === colunas.length - 1}
+                          className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                <label className="flex items-center justify-between gap-2 px-2 py-2 mt-1 border-t border-black/5 text-sm">
+                  <span className="text-ink/70">Linhas por página</span>
+                  <select
+                    value={linhasPorPagina}
+                    onChange={(e) => mudarLinhasPorPagina(Number(e.target.value))}
+                    className="input py-1 text-xs w-20"
+                  >
+                    {LINHAS_POR_PAGINA_OPCOES.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={() => setBuscaAvancadaAberta((v) => !v)}
             className={`flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold border-2 transition-colors ${
@@ -733,15 +803,6 @@ export default function LancamentosPage() {
         </div>
       )}
 
-      <div className="mb-6">
-        <button
-          onClick={() => setResumoAberto((v) => !v)}
-          className="flex items-center gap-2 rounded-full bg-gradient-to-r from-forest to-ink text-white px-5 py-2.5 text-sm font-bold shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
-        >
-          📊 Resumo {resumoAberto ? "▲" : "▼"}
-        </button>
-      </div>
-
       {resumoAberto && (
         <div className="rounded-3xl bg-card border border-black/5 overflow-hidden mb-8">
           <table className="w-full text-sm">
@@ -853,72 +914,6 @@ export default function LancamentosPage() {
           </div>
         </div>
       )}
-
-      <div className="flex items-center justify-between mb-3">
-        <div className="relative">
-          <button
-            onClick={() => setPainelColunasAberto((v) => !v)}
-            className="rounded-full border-2 border-ink/15 text-ink px-4 py-2 text-xs font-bold hover:bg-surface transition-colors"
-          >
-            ⚙ Colunas
-          </button>
-          {painelColunasAberto && (
-            <div
-              className="absolute z-10 mt-2 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-2"
-              onMouseLeave={() => setPainelColunasAberto(false)}
-            >
-              {colunas.map((c, i) => {
-                const def = COLUNAS_DISPONIVEIS.find((d) => d.key === c.key);
-                if (!def) return null;
-                return (
-                  <div key={c.key} className="flex items-center justify-between px-2 py-1.5 text-sm hover:bg-surface rounded-lg">
-                    <label className="flex items-center gap-2 cursor-pointer flex-1">
-                      <input
-                        type="checkbox"
-                        checked={c.visivel}
-                        onChange={() => alternarVisibilidade(c.key)}
-                        className="h-3.5 w-3.5 rounded accent-forest"
-                      />
-                      <span className={c.visivel ? "text-ink" : "text-ink/40"}>{def.label}</span>
-                    </label>
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        onClick={() => moverColuna(c.key, -1)}
-                        disabled={i === 0}
-                        className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        onClick={() => moverColuna(c.key, 1)}
-                        disabled={i === colunas.length - 1}
-                        className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
-                      >
-                        ↓
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <label className="flex items-center gap-2 text-xs text-ink/50">
-          Linhas por página
-          <select
-            value={linhasPorPagina}
-            onChange={(e) => mudarLinhasPorPagina(Number(e.target.value))}
-            className="input py-1.5 text-xs w-20"
-          >
-            {LINHAS_POR_PAGINA_OPCOES.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
 
       <div className="rounded-3xl bg-card border border-black/5 overflow-x-auto">
         {loading ? (
