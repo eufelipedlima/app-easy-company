@@ -6,6 +6,7 @@ import { Line, LineChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis, Tool
 import { Users, TrendingUp, Clock, Wallet, TrendingDown, Package, Timer, UserPlus } from "lucide-react";
 
 interface ContratoRecorrente {
+  cliente_id: string | null;
   status: "ativo" | "encerrado";
   valor_mensal: number | null;
   data_primeira_mensalidade: string | null;
@@ -43,11 +44,84 @@ function diasEntre(inicio: string, fim: string) {
 }
 
 // Métricas calculadas "como se fosse" o fim de um mês específico — pra dar o
-// snapshot correto mesmo pra meses passados, e não só o estado atual.
+// snapshot correto mesmo pra meses passados, e não só o estado atual. Agrupa
+// por cliente único (cliente_id), então um cliente com 2 contratos recorrentes
+// conta como 1 cliente, não 2.
 function calcularMetricas(recorrentes: ContratoRecorrente[], fimDoMes: Date, inicioDoMes: Date) {
-  const ativosNoFim = recorrentes.filter((c) => {
+  function ativoEm(c: ContratoRecorrente, data: Date) {
     if (!c.data_primeira_mensalidade) return false;
     const inicio = new Date(c.data_primeira_mensalidade + "T00:00:00");
+    if (inicio > data) return false;
+    if (c.data_encerramento) {
+      const encerramento = new Date(c.data_encerramento + "T00:00:00");
+      if (encerramento <= data) return false;
+    }
+    return true;
+  }
+
+  const porCliente = new Map<string, ContratoRecorrente[]>();
+  for (const c of recorrentes) {
+    if (!c.cliente_id) continue;
+    if (!porCliente.has(c.cliente_id)) porCliente.set(c.cliente_id, []);
+    porCliente.get(c.cliente_id)!.push(c);
+  }
+
+  let clientesAtivosNoFim = 0;
+  let clientesAtivosNoInicio = 0;
+  let clientesNovos = 0;
+  let clientesChurn = 0;
+  const temposDeCasa: number[] = [];
+  const ltvs: number[] = [];
+
+  for (const contratosDoCliente of porCliente.values()) {
+    const ativosFim = contratosDoCliente.filter((c) => ativoEm(c, fimDoMes));
+    const ativosInicio = contratosDoCliente.filter((c) => ativoEm(c, inicioDoMes));
+    const datasInicio = contratosDoCliente.map((c) => c.data_primeira_mensalidade).filter((d): d is string => !!d).sort();
+    const primeiraData = datasInicio[0];
+
+    if (ativosFim.length > 0) {
+      clientesAtivosNoFim += 1;
+      const inicioMaisAntigoAtivo = ativosFim
+        .map((c) => c.data_primeira_mensalidade)
+        .filter((d): d is string => !!d)
+        .sort()[0];
+      temposDeCasa.push(mesesDeCasa(inicioMaisAntigoAtivo, fimDoMes));
+      const ltvCliente = ativosFim.reduce(
+        (s, c) => s + mesesDeCasa(c.data_primeira_mensalidade, fimDoMes) * (c.valor_mensal ?? 0),
+        0
+      );
+      ltvs.push(ltvCliente);
+    }
+
+    if (ativosInicio.length > 0) clientesAtivosNoInicio += 1;
+
+    if (primeiraData) {
+      const inicio = new Date(primeiraData + "T00:00:00");
+      if (inicio >= inicioDoMes && inicio <= fimDoMes) clientesNovos += 1;
+    }
+
+    // Churn de verdade: estava ativo no início do período e não tem mais
+    // nenhum contrato ativo no fim (todos encerraram)
+    if (ativosInicio.length > 0 && ativosFim.length === 0) clientesChurn += 1;
+  }
+
+  const tempoMedioEmCasa = temposDeCasa.length > 0 ? temposDeCasa.reduce((a, b) => a + b, 0) / temposDeCasa.length : 0;
+  const ltvMedio = ltvs.length > 0 ? ltvs.reduce((a, b) => a + b, 0) / ltvs.length : 0;
+  const churn = clientesAtivosNoInicio > 0 ? (clientesChurn / clientesAtivosNoInicio) * 100 : 0;
+
+  return {
+    clientesAtivos: clientesAtivosNoFim,
+    novosClientes: clientesNovos,
+    tempoMedioEmCasa,
+    ltvMedio,
+    churn,
+  };
+}
+
+function calcularMetricasPontuais(pontuais: ContratoPontual[], fimDoMes: Date, inicioDoMes: Date) {
+  const emAndamento = pontuais.filter((c) => {
+    if (!c.data_fechamento) return false;
+    const inicio = new Date(c.data_fechamento + "T00:00:00");
     if (inicio > fimDoMes) return false;
     if (c.data_encerramento) {
       const encerramento = new Date(c.data_encerramento + "T00:00:00");
@@ -56,47 +130,6 @@ function calcularMetricas(recorrentes: ContratoRecorrente[], fimDoMes: Date, ini
     return true;
   });
 
-  const ativosNoInicio = recorrentes.filter((c) => {
-    if (!c.data_primeira_mensalidade) return false;
-    const inicio = new Date(c.data_primeira_mensalidade + "T00:00:00");
-    if (inicio >= inicioDoMes) return false;
-    if (c.data_encerramento) {
-      const encerramento = new Date(c.data_encerramento + "T00:00:00");
-      if (encerramento <= inicioDoMes) return false;
-    }
-    return true;
-  });
-
-  const novos = recorrentes.filter((c) => {
-    if (!c.data_primeira_mensalidade) return false;
-    const inicio = new Date(c.data_primeira_mensalidade + "T00:00:00");
-    return inicio >= inicioDoMes && inicio <= fimDoMes;
-  });
-
-  const encerradosNoMes = recorrentes.filter((c) => {
-    if (!c.data_encerramento) return false;
-    const encerramento = new Date(c.data_encerramento + "T00:00:00");
-    return encerramento >= inicioDoMes && encerramento <= fimDoMes;
-  });
-
-  const temposDeCasa = ativosNoFim.map((c) => mesesDeCasa(c.data_primeira_mensalidade, fimDoMes));
-  const tempoMedioEmCasa = temposDeCasa.length > 0 ? temposDeCasa.reduce((a, b) => a + b, 0) / temposDeCasa.length : 0;
-
-  const ltvs = ativosNoFim.map((c) => mesesDeCasa(c.data_primeira_mensalidade, fimDoMes) * (c.valor_mensal ?? 0));
-  const ltvMedio = ltvs.length > 0 ? ltvs.reduce((a, b) => a + b, 0) / ltvs.length : 0;
-
-  const churn = ativosNoInicio.length > 0 ? (encerradosNoMes.length / ativosNoInicio.length) * 100 : 0;
-
-  return {
-    clientesAtivos: ativosNoFim.length,
-    novosClientes: novos.length,
-    tempoMedioEmCasa,
-    ltvMedio,
-    churn,
-  };
-}
-
-function calcularMetricasPontuais(pontuais: ContratoPontual[], fimDoMes: Date, inicioDoMes: Date) {
   const novos = pontuais.filter((c) => {
     if (!c.data_fechamento) return false;
     const d = new Date(c.data_fechamento + "T00:00:00");
@@ -119,6 +152,7 @@ function calcularMetricasPontuais(pontuais: ContratoPontual[], fimDoMes: Date, i
     temposConclusaoMes.length > 0 ? temposConclusaoMes.reduce((a, b) => a + b, 0) / temposConclusaoMes.length : 0;
 
   return {
+    emAndamento: emAndamento.length,
     novosContratos: novos.length,
     valorNovosContratos: novos.reduce((s, c) => s + (c.valor_total ?? 0), 0),
     totalContratos: totalAteAgora.length,
@@ -143,7 +177,7 @@ export default function AnaliseContratosPage() {
       const [{ data: r }, { data: p }] = await Promise.all([
         supabase
           .from("contratos")
-          .select("status, valor_mensal, data_primeira_mensalidade, data_encerramento")
+          .select("cliente_id, status, valor_mensal, data_primeira_mensalidade, data_encerramento")
           .eq("tipo_contrato", "recorrente"),
         supabase
           .from("contratos")
@@ -280,7 +314,8 @@ export default function AnaliseContratosPage() {
       <section>
         <h2 className="text-sm font-bold uppercase tracking-wide text-ink/40 mb-4">Pontuais</h2>
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          <Metrica icon={<Clock size={16} />} label="Contratos em andamento" valor={String(metricasPontuais.emAndamento)} />
           <Metrica icon={<UserPlus size={16} />} label="Novos contratos" valor={String(metricasPontuais.novosContratos)} />
           <Metrica
             icon={<Wallet size={16} />}
