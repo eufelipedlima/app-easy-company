@@ -63,6 +63,7 @@ interface PessoaOpcao {
 interface Servico {
   id: string;
   nome: string;
+  plano_conta_id: string | null;
 }
 
 interface Opcao {
@@ -705,7 +706,7 @@ function ContratoRecorrenteForm({
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [servicoSelecionado, setServicoSelecionado] = useState<Servico | null>(
     contratoEditando?.servico_id && contratoEditando.servicos
-      ? { id: contratoEditando.servico_id, nome: contratoEditando.servicos.nome }
+      ? { id: contratoEditando.servico_id, nome: contratoEditando.servicos.nome, plano_conta_id: null }
       : null
   );
   const [buscaServico, setBuscaServico] = useState(contratoEditando?.servicos?.nome ?? "");
@@ -752,6 +753,7 @@ function ContratoRecorrenteForm({
   const [status, setStatus] = useState<"ativo" | "encerrado">(contratoEditando?.status ?? "ativo");
   const [dataEncerramento, setDataEncerramento] = useState(contratoEditando?.data_encerramento ?? "");
   const [motivoEncerramento, setMotivoEncerramento] = useState(contratoEditando?.motivo_encerramento ?? "");
+  const [motivosDisponiveis, setMotivosDisponiveis] = useState<{ id: string; nome: string }[]>([]);
   const [observacaoEncerramento, setObservacaoEncerramento] = useState(contratoEditando?.observacao_encerramento ?? "");
 
   const [ehMigracao, setEhMigracao] = useState(contratoEditando?.eh_migracao ?? false);
@@ -778,6 +780,7 @@ function ContratoRecorrenteForm({
     carregarServicos();
     carregarBancos();
     carregarPlanosConta();
+    carregarMotivos();
     if (editando) {
       setBuscaCliente(contratoEditando?.clientes?.papeis?.pessoas?.nome ?? "");
     }
@@ -792,8 +795,14 @@ function ContratoRecorrenteForm({
 
   async function carregarServicos() {
     const supabase = createClient();
-    const { data } = await supabase.from("servicos").select("id, nome").order("nome");
+    const { data } = await supabase.from("servicos").select("id, nome, plano_conta_id").order("nome");
     setServicos(data ?? []);
+  }
+
+  async function carregarMotivos() {
+    const supabase = createClient();
+    const { data } = await supabase.from("motivos_encerramento").select("id, nome").order("nome");
+    setMotivosDisponiveis(data ?? []);
   }
 
   async function carregarBancos() {
@@ -1216,6 +1225,13 @@ function ContratoRecorrenteForm({
                         setServicoSelecionado(s);
                         setBuscaServico(s.nome);
                         setMostrarSugestoesServico(false);
+                        if (s.plano_conta_id) {
+                          const plano = planosConta.find((p) => p.id === s.plano_conta_id);
+                          if (plano) {
+                            setPlanoContaSelecionado(plano);
+                            setBuscaPlanoConta(plano.nome);
+                          }
+                        }
                       }}
                       className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
                     >
@@ -1445,14 +1461,13 @@ function ContratoRecorrenteForm({
           <Campo label="Motivo do encerramento">
             <select value={motivoEncerramento} onChange={(e) => setMotivoEncerramento(e.target.value)} className="input">
               <option value="">Selecione...</option>
-              <option value="Insatisfação com o serviço">Insatisfação com o serviço</option>
-              <option value="Preço">Preço</option>
-              <option value="Encerrou atividades / fechou empresa">Encerrou atividades / fechou empresa</option>
-              <option value="Passou a fazer internamente">Passou a fazer internamente</option>
-              <option value="Contratou concorrente">Contratou concorrente</option>
-              <option value="Inadimplência">Inadimplência</option>
-              <option value="Outro">Outro</option>
+              {motivosDisponiveis.map((m) => (
+                <option key={m.id} value={m.nome}>
+                  {m.nome}
+                </option>
+              ))}
             </select>
+            <span className="block text-xs text-ink/40 mt-1">Gerencie a lista em Configurações.</span>
           </Campo>
         )}
 

@@ -96,7 +96,7 @@ export function LancamentoForm({
   const [buscaPlanoConta, setBuscaPlanoConta] = useState("");
   const [mostrarSugPlanoConta, setMostrarSugPlanoConta] = useState(false);
 
-  const [servicos, setServicos] = useState<Opcao[]>([]);
+  const [servicos, setServicos] = useState<(Opcao & { plano_conta_id: string | null })[]>([]);
   const [servicoSelecionado, setServicoSelecionado] = useState<Opcao | null>(null);
   const [buscaServico, setBuscaServico] = useState("");
   const [mostrarSugServico, setMostrarSugServico] = useState(false);
@@ -124,12 +124,12 @@ export function LancamentoForm({
         supabase.from("pessoas").select("id, nome, tipo_pessoa").order("nome"),
         supabase.from("bancos").select("id, nome").eq("ativo", true).order("nome"),
         supabase.from("planos_conta").select("id, nome, tipo").order("nome"),
-        supabase.from("servicos").select("id, nome").order("nome"),
+        supabase.from("servicos").select("id, nome, plano_conta_id").order("nome"),
       ]);
       setPessoas(p ?? []);
       setBancos(b ?? []);
       setPlanosConta((pc as PlanoContaOpcao[]) ?? []);
-      setServicos(s ?? []);
+      setServicos((s as { id: string; nome: string; plano_conta_id: string | null }[]) ?? []);
 
       if (lancamentoEditando?.banco_id) {
         const banco = b?.find((x) => x.id === lancamentoEditando.banco_id);
@@ -610,6 +610,13 @@ export function LancamentoForm({
                       setServicoSelecionado(s);
                       setBuscaServico(s.nome);
                       setMostrarSugServico(false);
+                      if (s.plano_conta_id) {
+                        const plano = planosConta.find((p) => p.id === s.plano_conta_id);
+                        if (plano) {
+                          setPlanoContaSelecionado(plano);
+                          setBuscaPlanoConta(plano.nome);
+                        }
+                      }
                     }}
                   >
                     {s.nome}

@@ -9,6 +9,13 @@ interface Servico {
   descricao: string | null;
   entregaveis: string | null;
   valor: number | null;
+  plano_conta_id: string | null;
+  planos_conta: { nome: string } | null;
+}
+
+interface PlanoConta {
+  id: string;
+  nome: string;
 }
 
 function formatarMoeda(valor: number | null) {
@@ -28,9 +35,9 @@ export default function ServicosPage() {
     const supabase = createClient();
     const { data } = await supabase
       .from("servicos")
-      .select("id, nome, descricao, entregaveis, valor")
+      .select("id, nome, descricao, entregaveis, valor, plano_conta_id, planos_conta ( nome )")
       .order("nome");
-    setServicos(data ?? []);
+    setServicos((data as unknown as Servico[]) ?? []);
     setLoading(false);
   }, []);
 
@@ -119,6 +126,11 @@ export default function ServicosPage() {
               <p className="text-xl font-extrabold text-forest">{formatarMoeda(detalhe.valor)}</p>
             </div>
 
+            <div className="rounded-2xl bg-card p-4 mb-4 shadow-sm flex items-center justify-between">
+              <span className="text-xs text-ink/50">Plano de conta</span>
+              <span className="text-sm font-semibold text-ink">{detalhe.planos_conta?.nome ?? "Sem plano de conta"}</span>
+            </div>
+
             {detalhe.descricao && (
               <div className="mb-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Descrição</p>
@@ -180,8 +192,19 @@ function ServicoForm({
   const [descricao, setDescricao] = useState(servicoEditando?.descricao ?? "");
   const [entregaveis, setEntregaveis] = useState(servicoEditando?.entregaveis ?? "");
   const [valor, setValor] = useState(servicoEditando?.valor != null ? String(servicoEditando.valor) : "");
+  const [planoContaId, setPlanoContaId] = useState(servicoEditando?.plano_conta_id ?? "");
+  const [planosConta, setPlanosConta] = useState<PlanoConta[]>([]);
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function carregarPlanosConta() {
+      const supabase = createClient();
+      const { data } = await supabase.from("planos_conta").select("id, nome").eq("tipo", "receita").order("nome");
+      setPlanosConta(data ?? []);
+    }
+    carregarPlanosConta();
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -198,6 +221,7 @@ function ServicoForm({
         descricao: descricao || null,
         entregaveis: entregaveis || null,
         valor: valor ? Number(valor) : null,
+        plano_conta_id: planoContaId || null,
       };
       if (editando && servicoEditando) {
         const { error } = await supabase.from("servicos").update(payload).eq("id", servicoEditando.id);
@@ -234,6 +258,22 @@ function ServicoForm({
           />
         </label>
       </div>
+
+      <label className="block">
+        <span className="block text-sm font-medium text-ink/70 mb-1">Plano de conta</span>
+        <select value={planoContaId} onChange={(e) => setPlanoContaId(e.target.value)} className="input">
+          <option value="">Sem plano de conta</option>
+          {planosConta.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.nome}
+            </option>
+          ))}
+        </select>
+        <span className="block text-xs text-ink/40 mt-1">
+          Ao selecionar esse serviço num contrato ou lançamento, o plano de conta já vem preenchido
+          sozinho.
+        </span>
+      </label>
 
       <label className="block">
         <span className="block text-sm font-medium text-ink/70 mb-1">Descrição</span>

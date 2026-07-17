@@ -54,6 +54,7 @@ const MENU: Grupo[] = [
     icon: <Settings size={18} />,
     itens: [
       { href: "/configuracoes/cargos", label: "Cargos", icon: <Briefcase size={15} /> },
+      { href: "/configuracoes/motivos-encerramento", label: "Motivos de encerramento", icon: <AlertTriangle size={15} /> },
       { href: "/configuracoes/origens", label: "Origens", icon: <Compass size={15} /> },
       { href: "/configuracoes/planos-conta", label: "Planos de conta", icon: <ListTree size={15} /> },
       { href: "/configuracoes/segmentos", label: "Segmentos", icon: <Building2 size={15} /> },

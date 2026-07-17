@@ -973,10 +973,26 @@ export default function LancamentosPage() {
 
       {filtrados.length > 0 && (
         <div className="flex items-center justify-between mt-4 text-sm text-ink/50">
-          <p>
-            Mostrando {(paginaSegura - 1) * linhasPorPagina + 1}–
-            {Math.min(paginaSegura * linhasPorPagina, filtrados.length)} de {filtrados.length}
-          </p>
+          <div className="flex items-center gap-4">
+            <p>
+              Mostrando {(paginaSegura - 1) * linhasPorPagina + 1}–
+              {Math.min(paginaSegura * linhasPorPagina, filtrados.length)} de {filtrados.length}
+            </p>
+            <label className="flex items-center gap-2 text-xs">
+              Linhas
+              <select
+                value={linhasPorPagina}
+                onChange={(e) => mudarLinhasPorPagina(Number(e.target.value))}
+                className="input py-1 text-xs w-16"
+              >
+                {LINHAS_POR_PAGINA_OPCOES.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setPaginaAtual((p) => Math.max(p - 1, 1))}
