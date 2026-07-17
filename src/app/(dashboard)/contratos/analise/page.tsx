@@ -44,9 +44,9 @@ function diasEntre(inicio: string, fim: string) {
 }
 
 // Métricas calculadas "como se fosse" o fim de um mês específico — pra dar o
-// snapshot correto mesmo pra meses passados, e não só o estado atual. Agrupa
-// por cliente único (cliente_id), então um cliente com 2 contratos recorrentes
-// conta como 1 cliente, não 2.
+// snapshot correto mesmo pra meses passados, e não só o estado atual. Conta por
+// contrato (não por cliente único), já que nem todo cliente assinado
+// necessariamente já tem um contrato registrado.
 function calcularMetricas(recorrentes: ContratoRecorrente[], fimDoMes: Date, inicioDoMes: Date) {
   function ativoEm(c: ContratoRecorrente, data: Date) {
     if (!c.data_primeira_mensalidade) return false;
@@ -59,59 +59,32 @@ function calcularMetricas(recorrentes: ContratoRecorrente[], fimDoMes: Date, ini
     return true;
   }
 
-  const porCliente = new Map<string, ContratoRecorrente[]>();
-  for (const c of recorrentes) {
-    if (!c.cliente_id) continue;
-    if (!porCliente.has(c.cliente_id)) porCliente.set(c.cliente_id, []);
-    porCliente.get(c.cliente_id)!.push(c);
-  }
+  const ativosNoFim = recorrentes.filter((c) => ativoEm(c, fimDoMes));
+  const ativosNoInicio = recorrentes.filter((c) => ativoEm(c, inicioDoMes));
 
-  let clientesAtivosNoFim = 0;
-  let clientesAtivosNoInicio = 0;
-  let clientesNovos = 0;
-  let clientesChurn = 0;
-  const temposDeCasa: number[] = [];
-  const ltvs: number[] = [];
+  const novos = recorrentes.filter((c) => {
+    if (!c.data_primeira_mensalidade) return false;
+    const inicio = new Date(c.data_primeira_mensalidade + "T00:00:00");
+    return inicio >= inicioDoMes && inicio <= fimDoMes;
+  });
 
-  for (const contratosDoCliente of porCliente.values()) {
-    const ativosFim = contratosDoCliente.filter((c) => ativoEm(c, fimDoMes));
-    const ativosInicio = contratosDoCliente.filter((c) => ativoEm(c, inicioDoMes));
-    const datasInicio = contratosDoCliente.map((c) => c.data_primeira_mensalidade).filter((d): d is string => !!d).sort();
-    const primeiraData = datasInicio[0];
+  const encerradosNoMes = recorrentes.filter((c) => {
+    if (!c.data_encerramento) return false;
+    const encerramento = new Date(c.data_encerramento + "T00:00:00");
+    return encerramento >= inicioDoMes && encerramento <= fimDoMes;
+  });
 
-    if (ativosFim.length > 0) {
-      clientesAtivosNoFim += 1;
-      const inicioMaisAntigoAtivo = ativosFim
-        .map((c) => c.data_primeira_mensalidade)
-        .filter((d): d is string => !!d)
-        .sort()[0];
-      temposDeCasa.push(mesesDeCasa(inicioMaisAntigoAtivo, fimDoMes));
-      const ltvCliente = ativosFim.reduce(
-        (s, c) => s + mesesDeCasa(c.data_primeira_mensalidade, fimDoMes) * (c.valor_mensal ?? 0),
-        0
-      );
-      ltvs.push(ltvCliente);
-    }
-
-    if (ativosInicio.length > 0) clientesAtivosNoInicio += 1;
-
-    if (primeiraData) {
-      const inicio = new Date(primeiraData + "T00:00:00");
-      if (inicio >= inicioDoMes && inicio <= fimDoMes) clientesNovos += 1;
-    }
-
-    // Churn de verdade: estava ativo no início do período e não tem mais
-    // nenhum contrato ativo no fim (todos encerraram)
-    if (ativosInicio.length > 0 && ativosFim.length === 0) clientesChurn += 1;
-  }
-
+  const temposDeCasa = ativosNoFim.map((c) => mesesDeCasa(c.data_primeira_mensalidade, fimDoMes));
   const tempoMedioEmCasa = temposDeCasa.length > 0 ? temposDeCasa.reduce((a, b) => a + b, 0) / temposDeCasa.length : 0;
+
+  const ltvs = ativosNoFim.map((c) => mesesDeCasa(c.data_primeira_mensalidade, fimDoMes) * (c.valor_mensal ?? 0));
   const ltvMedio = ltvs.length > 0 ? ltvs.reduce((a, b) => a + b, 0) / ltvs.length : 0;
-  const churn = clientesAtivosNoInicio > 0 ? (clientesChurn / clientesAtivosNoInicio) * 100 : 0;
+
+  const churn = ativosNoInicio.length > 0 ? (encerradosNoMes.length / ativosNoInicio.length) * 100 : 0;
 
   return {
-    clientesAtivos: clientesAtivosNoFim,
-    novosClientes: clientesNovos,
+    contratosAtivos: ativosNoFim.length,
+    novosContratos: novos.length,
     tempoMedioEmCasa,
     ltvMedio,
     churn,
@@ -218,7 +191,7 @@ export default function AnaliseContratosPage() {
     const met = calcularMetricas(recorrentes, fim, inicio);
     return {
       label: `${MESES[m].slice(0, 3)}/${String(a).slice(2)}`,
-      clientesAtivos: met.clientesAtivos,
+      contratosAtivos: met.contratosAtivos,
       ltvMedio: Math.round(met.ltvMedio),
       churn: Number(met.churn.toFixed(1)),
     };
@@ -293,8 +266,8 @@ export default function AnaliseContratosPage() {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          <Metrica icon={<Users size={16} />} label="Clientes ativos" valor={String(metricas.clientesAtivos)} />
-          <Metrica icon={<UserPlus size={16} />} label="Novos clientes" valor={String(metricas.novosClientes)} />
+          <Metrica icon={<Users size={16} />} label="Contratos ativos" valor={String(metricas.contratosAtivos)} />
+          <Metrica icon={<UserPlus size={16} />} label="Novos contratos" valor={String(metricas.novosContratos)} />
           <Metrica
             icon={<Clock size={16} />}
             label="Tempo de casa"
@@ -305,7 +278,7 @@ export default function AnaliseContratosPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <GraficoCrescimento titulo="Clientes ativos por mês" dataKey="clientesAtivos" dados={serie} cor="#143421" />
+          <GraficoCrescimento titulo="Contratos ativos por mês" dataKey="contratosAtivos" dados={serie} cor="#143421" />
           <GraficoCrescimento titulo="LTV médio por mês" dataKey="ltvMedio" dados={serie} cor="#02170B" formatoMoeda />
           <GraficoCrescimento titulo="Churn por mês (%)" dataKey="churn" dados={serie} cor="#DC2626" sufixo="%" />
         </div>
