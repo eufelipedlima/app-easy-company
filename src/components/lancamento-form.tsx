@@ -62,17 +62,21 @@ export function nomePessoaLancamento(l: { clientes: Lancamento["clientes"]; pess
 export function LancamentoForm({
   lancamentoEditando,
   escopoEdicao,
+  forcarDespesaFixa,
   onSaved,
   onCancel,
 }: {
   lancamentoEditando: Lancamento | null;
   escopoEdicao: "unico" | "grupo";
+  forcarDespesaFixa?: boolean;
   onSaved: () => void;
   onCancel: () => void;
 }) {
   const editando = !!lancamentoEditando;
 
-  const [tipo, setTipo] = useState<"receita" | "despesa" | "transferencia">(lancamentoEditando?.tipo ?? "receita");
+  const [tipo, setTipo] = useState<"receita" | "despesa" | "transferencia">(
+    lancamentoEditando?.tipo ?? (forcarDespesaFixa ? "despesa" : "receita")
+  );
 
   const [pessoas, setPessoas] = useState<PessoaOpcao[]>([]);
   const [pessoaSelecionada, setPessoaSelecionada] = useState<PessoaOpcao | null>(null);
@@ -113,6 +117,8 @@ export function LancamentoForm({
   const [totalParcelas, setTotalParcelas] = useState("2");
   const [frequenciaRecorrencia, setFrequenciaRecorrencia] = useState<"mensal" | "semanal" | "anual">("mensal");
   const [quantidadeRecorrencias, setQuantidadeRecorrencias] = useState("12");
+
+  const [ehDespesaFixa, setEhDespesaFixa] = useState(!!forcarDespesaFixa);
 
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -285,6 +291,40 @@ export function LancamentoForm({
             .gt("data_vencimento", lancamentoEditando.data_vencimento)
             .neq("id", lancamentoEditando.id);
         }
+      } else if (!editando && ehDespesaFixa) {
+        const { data: novaDespesa, error: despesaError } = await supabase
+          .from("despesas_fixas")
+          .insert({
+            nome: descricao.trim() || "Despesa fixa",
+            fornecedor_pessoa_id: pessoaSelecionada?.id ?? null,
+            valor_mensal: Number(valor),
+            banco_id: bancoFinalId,
+            plano_conta_id: planoContaFinalId,
+            data_inicio: dataVencimento,
+          })
+          .select("id")
+          .single();
+        if (despesaError) throw despesaError;
+
+        const grupoId = crypto.randomUUID();
+        const linhas = Array.from({ length: 12 }, (_, i) => {
+          const venc = new Date(dataVencimento + "T00:00:00");
+          venc.setMonth(venc.getMonth() + i);
+          const vencISO = venc.toISOString().slice(0, 10);
+          return {
+            ...payloadBase,
+            despesa_fixa_id: novaDespesa.id,
+            valor: Number(valor),
+            situacao: i === 0 ? situacao : "pendente",
+            data_vencimento: vencISO,
+            data_quitacao: i === 0 && situacao === "pago" ? dataQuitacao || null : null,
+            data_competencia: vencISO,
+            grupo_id: grupoId,
+            recorrencia_tipo: "mensal",
+          };
+        });
+        const { error: lancError } = await supabase.from("lancamentos").insert(linhas);
+        if (lancError) throw lancError;
       } else if (repeticao === "parcelado") {
         const n = Number(totalParcelas);
         const grupoId = crypto.randomUUID();
@@ -471,11 +511,18 @@ export function LancamentoForm({
             placeholder="0,00"
           />
         </Campo>
-        <Campo label="Data de competência">
-          <input type="date" value={dataCompetencia} onChange={(e) => setDataCompetencia(e.target.value)} className="input" />
-        </Campo>
+        {!ehDespesaFixa && (
+          <Campo label="Data de competência">
+            <input type="date" value={dataCompetencia} onChange={(e) => setDataCompetencia(e.target.value)} className="input" />
+          </Campo>
+        )}
         <Campo label="Data de vencimento" required>
           <input type="date" required value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} className="input" />
+          {ehDespesaFixa && (
+            <span className="block text-xs text-ink/40 mt-1">
+              Vira a data de início. A competência de cada parcela acompanha o mês dela.
+            </span>
+          )}
         </Campo>
         <div>
           <span className="block text-sm font-medium text-ink/70 mb-1">Situação</span>
@@ -507,7 +554,22 @@ export function LancamentoForm({
         )}
       </div>
 
-      {!editando && (
+      {!editando && tipo === "despesa" && !forcarDespesaFixa && (
+        <label className="flex items-center gap-2 text-sm font-semibold text-ink cursor-pointer rounded-2xl bg-surface p-3">
+          <input
+            type="checkbox"
+            checked={ehDespesaFixa}
+            onChange={(e) => setEhDespesaFixa(e.target.checked)}
+            className="h-4 w-4 rounded accent-red-600"
+          />
+          Despesa Fixa
+          <span className="text-xs font-normal text-ink/40">
+            (gera 12 meses e aparece em Financeiro → Despesas Fixas)
+          </span>
+        </label>
+      )}
+
+      {!editando && !ehDespesaFixa && (
         <div className="rounded-2xl bg-surface p-3">
           <span className="block text-sm font-medium text-ink/70 mb-2">Repetição</span>
           <div className="flex items-center gap-1 rounded-full bg-white p-1 w-fit mb-3">

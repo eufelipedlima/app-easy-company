@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
+import { LancamentoForm } from "@/components/lancamento-form";
 
 interface DespesaFixa {
   id: string;
@@ -206,18 +207,31 @@ export default function DespesasFixasPage() {
             <h2 className="text-lg font-bold text-ink mb-5">
               {editando ? "Editar despesa fixa" : "Nova despesa fixa"}
             </h2>
-            <DespesaFixaForm
-              despesaEditando={editando}
-              onSaved={() => {
-                setPainelAberto(false);
-                setEditando(null);
-                carregar();
-              }}
-              onCancel={() => {
-                setPainelAberto(false);
-                setEditando(null);
-              }}
-            />
+            {editando ? (
+              <DespesaFixaForm
+                despesaEditando={editando}
+                onSaved={() => {
+                  setPainelAberto(false);
+                  setEditando(null);
+                  carregar();
+                }}
+                onCancel={() => {
+                  setPainelAberto(false);
+                  setEditando(null);
+                }}
+              />
+            ) : (
+              <LancamentoForm
+                lancamentoEditando={null}
+                escopoEdicao="unico"
+                forcarDespesaFixa
+                onSaved={() => {
+                  setPainelAberto(false);
+                  carregar();
+                }}
+                onCancel={() => setPainelAberto(false)}
+              />
+            )}
           </div>
         </div>
       )}
