@@ -13,7 +13,6 @@ interface DespesaFixa {
   plano_conta_id: string | null;
   data_competencia: string | null;
   data_inicio: string;
-  essencial: boolean;
   status: "ativo" | "encerrado";
   data_encerramento: string | null;
   motivo_encerramento: string | null;
@@ -67,7 +66,7 @@ export default function DespesasFixasPage() {
       .from("despesas_fixas")
       .select(
         `id, nome, fornecedor_pessoa_id, valor_mensal, banco_id, plano_conta_id, data_competencia, data_inicio,
-         essencial, status, data_encerramento, motivo_encerramento, observacoes, ultima_verificacao_parcelas,
+         status, data_encerramento, motivo_encerramento, observacoes, ultima_verificacao_parcelas,
          pessoas ( nome ), bancos ( nome ), planos_conta ( nome )`
       )
       .order("created_at", { ascending: false });
@@ -118,14 +117,15 @@ export default function DespesasFixasPage() {
         const cursor = new Date(maxData);
         while (cursor < alvoFinal) {
           cursor.setMonth(cursor.getMonth() + 1);
+          const vencISO = cursor.toISOString().slice(0, 10);
           linhas.push({
             despesa_fixa_id: d.id,
             tipo: "despesa",
             situacao: "pendente",
             descricao: d.nome,
             valor: d.valor_mensal,
-            data_vencimento: cursor.toISOString().slice(0, 10),
-            data_competencia: d.data_competencia ?? null,
+            data_vencimento: vencISO,
+            data_competencia: vencISO,
             banco_id: d.banco_id,
             plano_conta_id: d.plano_conta_id,
             pessoa_id: d.fornecedor_pessoa_id,
@@ -145,9 +145,6 @@ export default function DespesasFixasPage() {
 
   const filtradas = despesas.filter((d) => filtro === "todos" || d.status === filtro);
   const totalAtivasMensal = despesas.filter((d) => d.status === "ativo").reduce((s, d) => s + d.valor_mensal, 0);
-  const totalEssencialMensal = despesas
-    .filter((d) => d.status === "ativo" && d.essencial)
-    .reduce((s, d) => s + d.valor_mensal, 0);
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
@@ -175,15 +172,9 @@ export default function DespesasFixasPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="rounded-2xl bg-card border border-black/5 p-4">
-          <p className="text-xs text-ink/50 mb-0.5">Total mensal (ativas)</p>
-          <p className="text-xl font-extrabold text-red-600">{formatarMoeda(totalAtivasMensal)}</p>
-        </div>
-        <div className="rounded-2xl bg-card border border-black/5 p-4">
-          <p className="text-xs text-ink/50 mb-0.5">Das quais essenciais (não posso cortar)</p>
-          <p className="text-xl font-extrabold text-ink">{formatarMoeda(totalEssencialMensal)}</p>
-        </div>
+      <div className="rounded-2xl bg-card border border-black/5 p-4 mb-6 w-fit">
+        <p className="text-xs text-ink/50 mb-0.5">Total mensal (ativas)</p>
+        <p className="text-xl font-extrabold text-red-600">{formatarMoeda(totalAtivasMensal)}</p>
       </div>
 
       <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner mb-6">
@@ -244,7 +235,6 @@ export default function DespesasFixasPage() {
                 <th className="px-4 py-3 font-medium">Fornecedor</th>
                 <th className="px-4 py-3 font-medium">Valor mensal</th>
                 <th className="px-4 py-3 font-medium">Tempo pagando</th>
-                <th className="px-4 py-3 font-medium">Essencial</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium"></th>
               </tr>
@@ -257,15 +247,6 @@ export default function DespesasFixasPage() {
                   <td className="px-4 py-3 font-semibold text-red-600">{formatarMoeda(d.valor_mensal)}</td>
                   <td className="px-4 py-3 text-ink/70">
                     {mesesPagando(d.data_inicio, d.status === "encerrado" && d.data_encerramento ? new Date(d.data_encerramento + "T00:00:00") : new Date())} meses
-                  </td>
-                  <td className="px-4 py-3">
-                    {d.essencial ? (
-                      <span className="inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold bg-red-50 text-red-600">
-                        Essencial
-                      </span>
-                    ) : (
-                      <span className="text-xs text-ink/30">—</span>
-                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -312,8 +293,6 @@ function DespesaFixaForm({
   const [nome, setNome] = useState(despesaEditando?.nome ?? "");
   const [valorMensal, setValorMensal] = useState(despesaEditando ? String(despesaEditando.valor_mensal) : "");
   const [dataInicio, setDataInicio] = useState(despesaEditando?.data_inicio ?? hojeISO());
-  const [dataCompetencia, setDataCompetencia] = useState(despesaEditando?.data_competencia ?? hojeISO());
-  const [essencial, setEssencial] = useState(despesaEditando?.essencial ?? false);
   const [observacoes, setObservacoes] = useState(despesaEditando?.observacoes ?? "");
 
   const [status, setStatus] = useState<"ativo" | "encerrado">(despesaEditando?.status ?? "ativo");
@@ -421,9 +400,7 @@ function DespesaFixaForm({
             valor_mensal: Number(valorMensal),
             banco_id: bancoFinalId,
             plano_conta_id: planoContaFinalId,
-            data_competencia: dataCompetencia || null,
             data_inicio: dataInicio,
-            essencial,
             observacoes: observacoes || null,
             status,
             data_encerramento: status === "encerrado" ? dataEncerramento || null : null,
@@ -449,9 +426,7 @@ function DespesaFixaForm({
             valor_mensal: Number(valorMensal),
             banco_id: bancoFinalId,
             plano_conta_id: planoContaFinalId,
-            data_competencia: dataCompetencia || null,
             data_inicio: dataInicio,
-            essencial,
             observacoes: observacoes || null,
           })
           .select("id")
@@ -464,14 +439,15 @@ function DespesaFixaForm({
           for (let i = 0; i < 12; i++) {
             const venc = new Date(dataInicio + "T00:00:00");
             venc.setMonth(venc.getMonth() + i);
+            const vencISO = venc.toISOString().slice(0, 10);
             linhas.push({
               despesa_fixa_id: novaDespesa.id,
               tipo: "despesa",
               situacao: "pendente",
               descricao: nome.trim(),
               valor: Number(valorMensal),
-              data_vencimento: venc.toISOString().slice(0, 10),
-              data_competencia: dataCompetencia || null,
+              data_vencimento: vencISO,
+              data_competencia: vencISO,
               banco_id: bancoFinalId,
               plano_conta_id: planoContaFinalId,
               pessoa_id: fornecedorId,
@@ -588,24 +564,14 @@ function DespesaFixaForm({
           <span className="block text-sm font-medium text-ink/70 mb-1">Data de início *</span>
           <input type="date" required value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className="input" />
         </label>
-
-        <label className="block">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Data de competência</span>
-          <input type="date" value={dataCompetencia} onChange={(e) => setDataCompetencia(e.target.value)} className="input" />
-        </label>
-
-        <div className="flex items-end pb-2">
-          <label className="flex items-center gap-2 text-sm font-medium text-ink/70 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={essencial}
-              onChange={(e) => setEssencial(e.target.checked)}
-              className="h-4 w-4 rounded accent-red-600"
-            />
-            Essencial (não posso deixar de pagar)
-          </label>
-        </div>
       </div>
+
+      {!editando && (
+        <p className="text-xs text-ink/40">
+          A data de competência de cada parcela acompanha o próprio mês dela (ex: parcela de
+          agosto tem competência em agosto) — não precisa preencher à parte.
+        </p>
+      )}
 
       <div className="relative">
         <span className="block text-sm font-medium text-ink/70 mb-1">Banco</span>
