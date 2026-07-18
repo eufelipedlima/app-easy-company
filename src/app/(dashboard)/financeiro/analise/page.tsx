@@ -20,7 +20,9 @@ interface LancamentoResumo {
   valor: number;
   tipo: "receita" | "despesa";
   situacao: "pendente" | "pago";
+  data_vencimento: string;
   data_quitacao: string | null;
+  data_competencia: string | null;
   cliente_id: string | null;
   servicos: { nome: string } | null;
 }
@@ -68,6 +70,7 @@ export default function AnaliseFinanceiraPage() {
 
   const hoje = new Date();
   const [modo, setModo] = useState<"mensal" | "anual">("mensal");
+  const [regime, setRegime] = useState<"pago" | "vencimento" | "competencia">("pago");
   const [mes, setMes] = useState(hoje.getMonth());
   const [ano, setAno] = useState(hoje.getFullYear());
 
@@ -78,7 +81,7 @@ export default function AnaliseFinanceiraPage() {
       const [{ data: lanc }, { data: func }] = await Promise.all([
         supabase
           .from("lancamentos")
-          .select("valor, tipo, situacao, data_quitacao, cliente_id, servicos ( nome )"),
+          .select("valor, tipo, situacao, data_vencimento, data_quitacao, data_competencia, cliente_id, servicos ( nome )"),
         supabase.from("funcionarios").select("id, salario").eq("ativo", true),
       ]);
       setLancamentos((lanc as unknown as LancamentoResumo[]) ?? []);
@@ -112,7 +115,14 @@ export default function AnaliseFinanceiraPage() {
 
   const noPeriodo = (data: string | null) => !!data && data >= periodo.inicio && data <= periodo.fim;
 
-  const pagosNoPeriodo = lancamentos.filter((l) => l.situacao === "pago" && noPeriodo(l.data_quitacao));
+  function dataDoRegime(l: LancamentoResumo): string | null {
+    if (regime === "pago") return l.situacao === "pago" ? l.data_quitacao : null;
+    if (regime === "vencimento") return l.data_vencimento;
+    return l.data_competencia;
+  }
+
+  const lancamentosNoPeriodo = lancamentos.filter((l) => noPeriodo(dataDoRegime(l)));
+  const pagosNoPeriodo = lancamentosNoPeriodo;
   const faturamento = pagosNoPeriodo.filter((l) => l.tipo === "receita").reduce((s, l) => s + l.valor, 0);
   const custoTotal = pagosNoPeriodo.filter((l) => l.tipo === "despesa").reduce((s, l) => s + l.valor, 0);
   const margemLucro = faturamento > 0 ? ((faturamento - custoTotal) / faturamento) * 100 : 0;
@@ -142,9 +152,10 @@ export default function AnaliseFinanceiraPage() {
   const dadosEvolucao = mesesEvolucao.map(({ label, ano: a, mes: m }) => {
     const inicio = toISODate(new Date(a, m, 1));
     const fim = toISODate(new Date(a, m + 1, 0));
-    const doMes = lancamentos.filter(
-      (l) => l.situacao === "pago" && l.data_quitacao && l.data_quitacao >= inicio && l.data_quitacao <= fim
-    );
+    const doMes = lancamentos.filter((l) => {
+      const data = dataDoRegime(l);
+      return !!data && data >= inicio && data <= fim;
+    });
     return {
       nome: label,
       Faturamento: doMes.filter((l) => l.tipo === "receita").reduce((s, l) => s + l.valor, 0),
@@ -238,6 +249,33 @@ export default function AnaliseFinanceiraPage() {
             </option>
           ))}
         </select>
+
+        <div className="inline-flex items-center rounded-full bg-surface p-1 shadow-inner ml-auto">
+          <button
+            onClick={() => setRegime("pago")}
+            className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${
+              regime === "pago" ? "bg-ink text-white" : "text-ink/50"
+            }`}
+          >
+            Pagos
+          </button>
+          <button
+            onClick={() => setRegime("vencimento")}
+            className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${
+              regime === "vencimento" ? "bg-ink text-white" : "text-ink/50"
+            }`}
+          >
+            Vencimento
+          </button>
+          <button
+            onClick={() => setRegime("competencia")}
+            className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${
+              regime === "competencia" ? "bg-ink text-white" : "text-ink/50"
+            }`}
+          >
+            Competência
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
