@@ -23,6 +23,8 @@ export interface Lancamento {
   total_parcelas: number | null;
   grupo_id: string | null;
   recorrencia_tipo: "mensal" | "semanal" | "anual" | null;
+  taxa: number | null;
+  desconto: number | null;
   clientes: { papeis: { pessoas: { nome: string; pix: string | null } | null } | null } | null;
   pessoas: { nome: string; pix: string | null } | null;
   bancos: { nome: string } | null;
@@ -112,6 +114,14 @@ export function LancamentoForm({
   const [dataVencimento, setDataVencimento] = useState(lancamentoEditando?.data_vencimento ?? hojeISOForm);
   const [dataQuitacao, setDataQuitacao] = useState(lancamentoEditando?.data_quitacao ?? "");
   const [dataCompetencia, setDataCompetencia] = useState(lancamentoEditando?.data_competencia ?? hojeISOForm);
+
+  // Taxa e Desconto — opcionais, só fazem sentido quando o lançamento está
+  // sendo marcado como Pago (na criação já pago, ou ao dar baixa numa edição).
+  // Reduzem o valor líquido que efetivamente entra/sai do banco.
+  const [taxa, setTaxa] = useState(lancamentoEditando?.taxa != null ? String(lancamentoEditando.taxa) : "");
+  const [desconto, setDesconto] = useState(
+    lancamentoEditando?.desconto != null ? String(lancamentoEditando.desconto) : ""
+  );
 
   const [repeticao, setRepeticao] = useState<"nenhuma" | "parcelado" | "recorrente">("nenhuma");
   const [totalParcelas, setTotalParcelas] = useState("2");
@@ -267,6 +277,13 @@ export function LancamentoForm({
         ...(clienteId ? { cliente_id: clienteId } : {}),
       };
 
+      // Taxa/Desconto só valem pro pagamento em si — só entram no payload
+      // quando a situação é "pago", e não se propagam pras próximas parcelas.
+      const pagamentoExtra =
+        tipo !== "transferencia" && situacao === "pago"
+          ? { taxa: taxa ? Number(taxa) : null, desconto: desconto ? Number(desconto) : null }
+          : { taxa: null, desconto: null };
+
       if (editando && lancamentoEditando) {
         const payload = {
           ...payloadBase,
@@ -275,14 +292,15 @@ export function LancamentoForm({
           data_vencimento: dataVencimento,
           data_quitacao: situacao === "pago" ? dataQuitacao || null : null,
           data_competencia: dataCompetencia || null,
+          ...pagamentoExtra,
         };
         const { error } = await supabase.from("lancamentos").update(payload).eq("id", lancamentoEditando.id);
         if (error) throw error;
 
         if (escopoEdicao === "grupo" && lancamentoEditando.grupo_id) {
           // Aplica os campos "de conteúdo" (incluindo valor, útil pra reajuste) às próximas
-          // parcelas/recorrências pendentes — situação, vencimento e quitação continuam
-          // sendo por lançamento individual
+          // parcelas/recorrências pendentes — situação, vencimento, quitação e taxa/desconto
+          // continuam sendo por lançamento individual (não fazem sentido propagados)
           await supabase
             .from("lancamentos")
             .update({ ...payloadBase, valor: Number(valor) })
@@ -321,6 +339,7 @@ export function LancamentoForm({
             data_competencia: vencISO,
             grupo_id: grupoId,
             recorrencia_tipo: "mensal",
+            ...(i === 0 ? pagamentoExtra : { taxa: null, desconto: null }),
           };
         });
         const { error: lancError } = await supabase.from("lancamentos").insert(linhas);
@@ -343,6 +362,7 @@ export function LancamentoForm({
             grupo_id: grupoId,
             numero_parcela: i + 1,
             total_parcelas: n,
+            ...(i === 0 ? pagamentoExtra : { taxa: null, desconto: null }),
           };
         });
         const { error } = await supabase.from("lancamentos").insert(linhas);
@@ -372,6 +392,7 @@ export function LancamentoForm({
             data_competencia: comp ? comp.toISOString().slice(0, 10) : null,
             grupo_id: grupoId,
             recorrencia_tipo: frequenciaRecorrencia,
+            ...(i === 0 ? pagamentoExtra : { taxa: null, desconto: null }),
           };
         });
         const { error } = await supabase.from("lancamentos").insert(linhas);
@@ -384,6 +405,7 @@ export function LancamentoForm({
           data_vencimento: dataVencimento,
           data_quitacao: situacao === "pago" ? dataQuitacao || null : null,
           data_competencia: dataCompetencia || null,
+          ...pagamentoExtra,
         };
         const { error } = await supabase.from("lancamentos").insert(payload);
         if (error) throw error;
@@ -553,6 +575,38 @@ export function LancamentoForm({
           </Campo>
         )}
       </div>
+
+      {situacao === "pago" && tipo !== "transferencia" && (
+        <div className="grid grid-cols-2 gap-3 rounded-2xl bg-surface p-3">
+          <Campo label="Taxa (opcional)">
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={taxa}
+              onChange={(e) => setTaxa(e.target.value)}
+              className="input"
+              placeholder="0,00"
+            />
+          </Campo>
+          <Campo label="Desconto (opcional)">
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={desconto}
+              onChange={(e) => setDesconto(e.target.value)}
+              className="input"
+              placeholder="0,00"
+            />
+          </Campo>
+          <p className="col-span-2 text-xs text-ink/40">
+            Reduz o valor líquido que efetivamente entra/sai do banco (ex: taxa do sistema
+            financeiro ou desconto por nota fiscal). O valor de {formatarMoeda(Number(valor) || 0)}{" "}
+            continua registrado como o valor do lançamento.
+          </p>
+        </div>
+      )}
 
       {!editando && tipo === "despesa" && !forcarDespesaFixa && (
         <label className="flex items-center gap-2 text-sm font-semibold text-ink cursor-pointer rounded-2xl bg-surface p-3">
