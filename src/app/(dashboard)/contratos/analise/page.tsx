@@ -11,6 +11,7 @@ interface ContratoRecorrente {
   valor_mensal: number | null;
   data_primeira_mensalidade: string | null;
   data_encerramento: string | null;
+  servico_id: string | null;
 }
 
 interface ContratoPontual {
@@ -18,6 +19,12 @@ interface ContratoPontual {
   valor_total: number | null;
   data_fechamento: string | null;
   data_encerramento: string | null;
+  servico_id: string | null;
+}
+
+interface Servico {
+  id: string;
+  nome: string;
 }
 
 const MESES = [
@@ -141,26 +148,60 @@ export default function AnaliseContratosPage() {
   const hoje = new Date();
   const [recorrentes, setRecorrentes] = useState<ContratoRecorrente[]>([]);
   const [pontuais, setPontuais] = useState<ContratoPontual[]>([]);
+  const [servicos, setServicos] = useState<Servico[]>([]);
+  const [servicosExcluidos, setServicosExcluidos] = useState<Set<string>>(new Set());
+  const [painelServicosAberto, setPainelServicosAberto] = useState(false);
   const [loading, setLoading] = useState(true);
   const [modo, setModo] = useState<"mensal" | "anual">("mensal");
   const [mes, setMes] = useState(hoje.getMonth());
   const [ano, setAno] = useState(hoje.getFullYear());
 
   useEffect(() => {
+    const salvo = window.localStorage.getItem("contratos_analise_servicos_excluidos");
+    if (salvo) {
+      try {
+        setServicosExcluidos(new Set(JSON.parse(salvo)));
+      } catch {
+        // ignora e mantém padrão (todos incluídos)
+      }
+    }
+  }, []);
+
+  function alternarServico(id: string) {
+    setServicosExcluidos((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(id)) {
+        novo.delete(id);
+      } else {
+        novo.add(id);
+      }
+      window.localStorage.setItem("contratos_analise_servicos_excluidos", JSON.stringify(Array.from(novo)));
+      return novo;
+    });
+  }
+
+  function selecionarTodosServicos() {
+    setServicosExcluidos(new Set());
+    window.localStorage.setItem("contratos_analise_servicos_excluidos", JSON.stringify([]));
+  }
+
+  useEffect(() => {
     async function carregar() {
       const supabase = createClient();
-      const [{ data: r }, { data: p }] = await Promise.all([
+      const [{ data: r }, { data: p }, { data: s }] = await Promise.all([
         supabase
           .from("contratos")
-          .select("cliente_id, status, valor_mensal, data_primeira_mensalidade, data_encerramento")
+          .select("cliente_id, status, valor_mensal, data_primeira_mensalidade, data_encerramento, servico_id")
           .eq("tipo_contrato", "recorrente"),
         supabase
           .from("contratos")
-          .select("status, valor_total, data_fechamento, data_encerramento")
+          .select("status, valor_total, data_fechamento, data_encerramento, servico_id")
           .eq("tipo_contrato", "pontual"),
+        supabase.from("servicos").select("id, nome").order("nome"),
       ]);
       setRecorrentes((r as unknown as ContratoRecorrente[]) ?? []);
       setPontuais((p as unknown as ContratoPontual[]) ?? []);
+      setServicos(s ?? []);
       setLoading(false);
     }
     carregar();
@@ -170,13 +211,16 @@ export default function AnaliseContratosPage() {
     return <p className="text-sm text-ink/50">Carregando...</p>;
   }
 
+  const recorrentesFiltrados = recorrentes.filter((c) => !c.servico_id || !servicosExcluidos.has(c.servico_id));
+  const pontuaisFiltrados = pontuais.filter((c) => !c.servico_id || !servicosExcluidos.has(c.servico_id));
+
   const fimDoMesSelecionado = new Date(ano, mes + 1, 0);
   const inicioDoMesSelecionado = new Date(ano, mes, 1);
 
   const metricas =
     modo === "mensal"
-      ? calcularMetricas(recorrentes, fimDoMesSelecionado, inicioDoMesSelecionado)
-      : calcularMetricas(recorrentes, new Date(ano, 11, 31), new Date(ano, 0, 1));
+      ? calcularMetricas(recorrentesFiltrados, fimDoMesSelecionado, inicioDoMesSelecionado)
+      : calcularMetricas(recorrentesFiltrados, new Date(ano, 11, 31), new Date(ano, 0, 1));
 
   // Série mensal pro gráfico de crescimento: últimos 6 meses (modo mensal, terminando
   // no mês escolhido) ou os 12 meses do ano escolhido (modo anual)
@@ -190,7 +234,7 @@ export default function AnaliseContratosPage() {
   ).map(({ ano: a, mes: m }) => {
     const fim = new Date(a, m + 1, 0);
     const inicio = new Date(a, m, 1);
-    const met = calcularMetricas(recorrentes, fim, inicio);
+    const met = calcularMetricas(recorrentesFiltrados, fim, inicio);
     return {
       label: `${MESES[m].slice(0, 3)}/${String(a).slice(2)}`,
       contratosAtivos: met.contratosAtivos,
@@ -201,8 +245,8 @@ export default function AnaliseContratosPage() {
 
   const metricasPontuais =
     modo === "mensal"
-      ? calcularMetricasPontuais(pontuais, fimDoMesSelecionado, inicioDoMesSelecionado)
-      : calcularMetricasPontuais(pontuais, new Date(ano, 11, 31), new Date(ano, 0, 1));
+      ? calcularMetricasPontuais(pontuaisFiltrados, fimDoMesSelecionado, inicioDoMesSelecionado)
+      : calcularMetricasPontuais(pontuaisFiltrados, new Date(ano, 11, 31), new Date(ano, 0, 1));
 
   const seriePontuais = (
     modo === "mensal"
@@ -214,7 +258,7 @@ export default function AnaliseContratosPage() {
   ).map(({ ano: a, mes: m }) => {
     const fim = new Date(a, m + 1, 0);
     const inicio = new Date(a, m, 1);
-    const met = calcularMetricasPontuais(pontuais, fim, inicio);
+    const met = calcularMetricasPontuais(pontuaisFiltrados, fim, inicio);
     return {
       label: `${MESES[m].slice(0, 3)}/${String(a).slice(2)}`,
       novosContratos: met.novosContratos,
@@ -230,6 +274,52 @@ export default function AnaliseContratosPage() {
           <h2 className="text-sm font-bold uppercase tracking-wide text-ink/40">Recorrentes</h2>
 
           <div className="flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <button
+                onClick={() => setPainelServicosAberto((v) => !v)}
+                className="rounded-full border-2 border-ink/15 text-ink px-4 py-2.5 text-sm font-bold hover:bg-surface transition-colors"
+              >
+                🔍 Serviços {servicosExcluidos.size > 0 && `(${servicos.length - servicosExcluidos.size}/${servicos.length})`}
+              </button>
+              {painelServicosAberto && (
+                <div
+                  className="absolute right-0 z-10 mt-2 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-2"
+                  onMouseLeave={() => setPainelServicosAberto(false)}
+                >
+                  <div className="flex items-center justify-between px-2 py-1 mb-1 border-b border-black/5">
+                    <span className="text-xs font-semibold text-ink/50 uppercase tracking-wide">
+                      Incluir na análise
+                    </span>
+                    {servicosExcluidos.size > 0 && (
+                      <button
+                        onClick={selecionarTodosServicos}
+                        className="text-xs font-semibold text-forest hover:underline"
+                      >
+                        Marcar todos
+                      </button>
+                    )}
+                  </div>
+                  {servicos.length === 0 ? (
+                    <p className="px-2 py-2 text-xs text-ink/40">Nenhum serviço cadastrado.</p>
+                  ) : (
+                    servicos.map((s) => (
+                      <label
+                        key={s.id}
+                        className="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-surface rounded-lg cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!servicosExcluidos.has(s.id)}
+                          onChange={() => alternarServico(s.id)}
+                          className="h-3.5 w-3.5 rounded accent-forest"
+                        />
+                        <span className={servicosExcluidos.has(s.id) ? "text-ink/40" : "text-ink"}>{s.nome}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
             <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
               <button
                 onClick={() => setModo("mensal")}
