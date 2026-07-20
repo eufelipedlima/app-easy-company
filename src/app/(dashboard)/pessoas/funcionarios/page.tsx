@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { PessoaForm } from "@/components/pessoa-form";
+import { useTabelaConfig, LINHAS_POR_PAGINA_OPCOES, type ColunaDef } from "@/lib/use-tabela-config";
 
 interface Beneficio {
   id: string;
@@ -71,12 +72,52 @@ function formatarData(data: string | null) {
   return new Date(data + "T00:00:00").toLocaleDateString("pt-BR");
 }
 
+const COLUNAS_DISPONIVEIS: ColunaDef[] = [
+  { key: "nome", label: "Nome" },
+  { key: "cargo", label: "Cargo" },
+  { key: "contrato", label: "Contrato" },
+  { key: "salario", label: "Salário bruto" },
+  { key: "custo_total", label: "Custo total" },
+  { key: "inicio", label: "Início" },
+];
+
+function renderCelulaFuncionario(key: string, f: Funcionario, custoTotal: number) {
+  switch (key) {
+    case "nome":
+      return <span className="font-semibold text-ink">{f.papeis?.pessoas?.nome ?? "—"}</span>;
+    case "cargo":
+      return <span className="text-ink/70">{f.cargos?.nome ?? f.cargo ?? "—"}</span>;
+    case "contrato":
+      return <span className="text-ink/70">{f.tipo_contrato ?? "—"}</span>;
+    case "salario":
+      return <span className="text-ink/70">{formatarMoeda(f.salario)}</span>;
+    case "custo_total":
+      return <span className="font-semibold text-forest">{formatarMoeda(custoTotal)}</span>;
+    case "inicio":
+      return <span className="text-ink/70">{formatarData(f.data_admissao)}</span>;
+    default:
+      return null;
+  }
+}
+
 export default function FuncionariosPage() {
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [beneficiosPorFuncionario, setBeneficiosPorFuncionario] = useState<Record<string, Beneficio[]>>({});
   const [loading, setLoading] = useState(true);
   const [painelAberto, setPainelAberto] = useState(false);
   const [detalhe, setDetalhe] = useState<Funcionario | null>(null);
+
+  const {
+    colunas,
+    painelColunasAberto,
+    setPainelColunasAberto,
+    linhasPorPagina,
+    paginaAtual,
+    setPaginaAtual,
+    alternarVisibilidade,
+    moverColuna,
+    mudarLinhasPorPagina,
+  } = useTabelaConfig("funcionarios", COLUNAS_DISPONIVEIS);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -129,6 +170,10 @@ export default function FuncionariosPage() {
     carregar();
   }
 
+  const totalPaginas = Math.max(Math.ceil(funcionarios.length / linhasPorPagina), 1);
+  const paginaSegura = Math.min(paginaAtual, totalPaginas);
+  const paginados = funcionarios.slice((paginaSegura - 1) * linhasPorPagina, paginaSegura * linhasPorPagina);
+
   return (
     <div>
       <div className="flex items-center justify-between gap-4 mb-6">
@@ -136,14 +181,78 @@ export default function FuncionariosPage() {
           🐟 Esses valores são a base de cálculo pra ter noção do custo de cada funcionário — eles
           não são lançados automaticamente no financeiro. Se for pagar, lance à parte em Lançamentos.
         </p>
-        {!painelAberto && (
-          <button
-            onClick={() => setPainelAberto(true)}
-            className="shrink-0 rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
-          >
-            + Novo funcionário
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="relative">
+            <button
+              onClick={() => setPainelColunasAberto((v) => !v)}
+              className="rounded-full border-2 border-ink/15 text-ink px-4 py-2.5 text-sm font-bold hover:bg-surface transition-colors"
+            >
+              ⚙ Colunas
+            </button>
+            {painelColunasAberto && (
+              <div
+                className="absolute right-0 z-10 mt-2 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-2"
+                onMouseLeave={() => setPainelColunasAberto(false)}
+              >
+                {colunas.map((c, i) => {
+                  const def = COLUNAS_DISPONIVEIS.find((d) => d.key === c.key);
+                  if (!def) return null;
+                  return (
+                    <div key={c.key} className="flex items-center justify-between px-2 py-1.5 text-sm hover:bg-surface rounded-lg">
+                      <label className="flex items-center gap-2 cursor-pointer flex-1">
+                        <input
+                          type="checkbox"
+                          checked={c.visivel}
+                          onChange={() => alternarVisibilidade(c.key)}
+                          className="h-3.5 w-3.5 rounded accent-forest"
+                        />
+                        <span className={c.visivel ? "text-ink" : "text-ink/40"}>{def.label}</span>
+                      </label>
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={() => moverColuna(c.key, -1)}
+                          disabled={i === 0}
+                          className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          onClick={() => moverColuna(c.key, 1)}
+                          disabled={i === colunas.length - 1}
+                          className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                <label className="flex items-center justify-between gap-2 px-2 py-2 mt-1 border-t border-black/5 text-sm">
+                  <span className="text-ink/70">Linhas por página</span>
+                  <select
+                    value={linhasPorPagina}
+                    onChange={(e) => mudarLinhasPorPagina(Number(e.target.value))}
+                    className="input py-1 text-xs w-20"
+                  >
+                    {LINHAS_POR_PAGINA_OPCOES.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+          </div>
+          {!painelAberto && (
+            <button
+              onClick={() => setPainelAberto(true)}
+              className="shrink-0 rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+            >
+              + Novo funcionário
+            </button>
+          )}
+        </div>
       </div>
 
       {painelAberto && (
@@ -176,33 +285,79 @@ export default function FuncionariosPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-ink/50 border-b border-black/5">
-                <th className="px-4 py-3 font-medium">Nome</th>
-                <th className="px-4 py-3 font-medium">Cargo</th>
-                <th className="px-4 py-3 font-medium">Contrato</th>
-                <th className="px-4 py-3 font-medium">Salário bruto</th>
-                <th className="px-4 py-3 font-medium">Custo total</th>
-                <th className="px-4 py-3 font-medium">Início</th>
+                {colunas
+                  .filter((c) => c.visivel)
+                  .map((c) => (
+                    <th key={c.key} className="px-4 py-3 font-medium">
+                      {COLUNAS_DISPONIVEIS.find((d) => d.key === c.key)?.label}
+                    </th>
+                  ))}
               </tr>
             </thead>
             <tbody>
-              {funcionarios.map((f) => (
+              {paginados.map((f) => (
                 <tr
                   key={f.id}
                   onClick={() => setDetalhe(f)}
                   className="border-b border-black/5 last:border-0 hover:bg-surface/60 cursor-pointer"
                 >
-                  <td className="px-4 py-3 font-semibold text-ink">{f.papeis?.pessoas?.nome ?? "—"}</td>
-                  <td className="px-4 py-3 text-ink/70">{f.cargos?.nome ?? f.cargo ?? "—"}</td>
-                  <td className="px-4 py-3 text-ink/70">{f.tipo_contrato ?? "—"}</td>
-                  <td className="px-4 py-3 text-ink/70">{formatarMoeda(f.salario)}</td>
-                  <td className="px-4 py-3 font-semibold text-forest">{formatarMoeda(custoTotal(f))}</td>
-                  <td className="px-4 py-3 text-ink/70">{formatarData(f.data_admissao)}</td>
+                  {colunas
+                    .filter((c) => c.visivel)
+                    .map((c) => (
+                      <td key={c.key} className="px-4 py-3">
+                        {renderCelulaFuncionario(c.key, f, custoTotal(f))}
+                      </td>
+                    ))}
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      {funcionarios.length > 0 && (
+        <div className="flex items-center justify-between mt-4 text-sm text-ink/50">
+          <div className="flex items-center gap-4">
+            <p>
+              Mostrando {(paginaSegura - 1) * linhasPorPagina + 1}–
+              {Math.min(paginaSegura * linhasPorPagina, funcionarios.length)} de {funcionarios.length}
+            </p>
+            <label className="flex items-center gap-2 text-xs">
+              Linhas
+              <select
+                value={linhasPorPagina}
+                onChange={(e) => mudarLinhasPorPagina(Number(e.target.value))}
+                className="input py-1 text-xs w-16"
+              >
+                {LINHAS_POR_PAGINA_OPCOES.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPaginaAtual((p) => Math.max(p - 1, 1))}
+              disabled={paginaSegura === 1}
+              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+            >
+              ← Anterior
+            </button>
+            <span className="px-2 text-xs">
+              Página {paginaSegura} de {totalPaginas}
+            </span>
+            <button
+              onClick={() => setPaginaAtual((p) => Math.min(p + 1, totalPaginas))}
+              disabled={paginaSegura === totalPaginas}
+              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+            >
+              Próxima →
+            </button>
+          </div>
+        </div>
+      )}
 
       {detalhe && (
         <DetalheFuncionario
