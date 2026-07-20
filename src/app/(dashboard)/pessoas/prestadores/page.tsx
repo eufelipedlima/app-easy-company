@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { PessoaForm } from "@/components/pessoa-form";
+import { useTabelaConfig, LINHAS_POR_PAGINA_OPCOES, type ColunaDef } from "@/lib/use-tabela-config";
 
 interface Prestador {
   id: string;
@@ -18,10 +19,49 @@ interface PessoaOpcao {
   tipo_pessoa: "PF" | "PJ";
 }
 
+const COLUNAS_DISPONIVEIS: ColunaDef[] = [
+  { key: "nome", label: "Nome" },
+  { key: "tipo_servico", label: "Tipo de serviço" },
+  { key: "contato", label: "Contato" },
+  { key: "pix", label: "PIX" },
+];
+
+function renderCelulaPrestador(key: string, p: Prestador) {
+  switch (key) {
+    case "nome":
+      return <span className="font-semibold text-ink">{p.papeis?.pessoas?.nome ?? "—"}</span>;
+    case "tipo_servico":
+      return <span className="text-ink/70">{p.tipo_servico ?? "—"}</span>;
+    case "contato":
+      return (
+        <span className="text-ink/70">
+          {p.papeis?.pessoas?.whatsapp && <span className="block">{p.papeis.pessoas.whatsapp}</span>}
+          {p.papeis?.pessoas?.email && <span className="block text-xs text-ink/50">{p.papeis.pessoas.email}</span>}
+        </span>
+      );
+    case "pix":
+      return <span className="text-ink/70">{p.papeis?.pessoas?.pix ?? "—"}</span>;
+    default:
+      return null;
+  }
+}
+
 export default function PrestadoresPage() {
   const [prestadores, setPrestadores] = useState<Prestador[]>([]);
   const [loading, setLoading] = useState(true);
   const [painelAberto, setPainelAberto] = useState(false);
+
+  const {
+    colunas,
+    painelColunasAberto,
+    setPainelColunasAberto,
+    linhasPorPagina,
+    paginaAtual,
+    setPaginaAtual,
+    alternarVisibilidade,
+    moverColuna,
+    mudarLinhasPorPagina,
+  } = useTabelaConfig("prestadores", COLUNAS_DISPONIVEIS);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -45,9 +85,75 @@ export default function PrestadoresPage() {
     carregar();
   }
 
+  const totalPaginas = Math.max(Math.ceil(prestadores.length / linhasPorPagina), 1);
+  const paginaSegura = Math.min(paginaAtual, totalPaginas);
+  const paginados = prestadores.slice((paginaSegura - 1) * linhasPorPagina, paginaSegura * linhasPorPagina);
+
   return (
     <div>
-      <div className="flex items-center justify-end mb-6">
+      <div className="flex items-center justify-end gap-2 mb-6">
+        <div className="relative">
+          <button
+            onClick={() => setPainelColunasAberto((v) => !v)}
+            className="rounded-full border-2 border-ink/15 text-ink px-4 py-2.5 text-sm font-bold hover:bg-surface transition-colors"
+          >
+            ⚙ Colunas
+          </button>
+          {painelColunasAberto && (
+            <div
+              className="absolute right-0 z-10 mt-2 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-2"
+              onMouseLeave={() => setPainelColunasAberto(false)}
+            >
+              {colunas.map((c, i) => {
+                const def = COLUNAS_DISPONIVEIS.find((d) => d.key === c.key);
+                if (!def) return null;
+                return (
+                  <div key={c.key} className="flex items-center justify-between px-2 py-1.5 text-sm hover:bg-surface rounded-lg">
+                    <label className="flex items-center gap-2 cursor-pointer flex-1">
+                      <input
+                        type="checkbox"
+                        checked={c.visivel}
+                        onChange={() => alternarVisibilidade(c.key)}
+                        className="h-3.5 w-3.5 rounded accent-forest"
+                      />
+                      <span className={c.visivel ? "text-ink" : "text-ink/40"}>{def.label}</span>
+                    </label>
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => moverColuna(c.key, -1)}
+                        disabled={i === 0}
+                        className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => moverColuna(c.key, 1)}
+                        disabled={i === colunas.length - 1}
+                        className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              <label className="flex items-center justify-between gap-2 px-2 py-2 mt-1 border-t border-black/5 text-sm">
+                <span className="text-ink/70">Linhas por página</span>
+                <select
+                  value={linhasPorPagina}
+                  onChange={(e) => mudarLinhasPorPagina(Number(e.target.value))}
+                  className="input py-1 text-xs w-20"
+                >
+                  {LINHAS_POR_PAGINA_OPCOES.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+        </div>
         {!painelAberto && (
           <button
             onClick={() => setPainelAberto(true)}
@@ -88,23 +194,26 @@ export default function PrestadoresPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-ink/50 border-b border-black/5">
-                <th className="px-4 py-3 font-medium">Nome</th>
-                <th className="px-4 py-3 font-medium">Tipo de serviço</th>
-                <th className="px-4 py-3 font-medium">Contato</th>
-                <th className="px-4 py-3 font-medium">PIX</th>
+                {colunas
+                  .filter((c) => c.visivel)
+                  .map((c) => (
+                    <th key={c.key} className="px-4 py-3 font-medium">
+                      {COLUNAS_DISPONIVEIS.find((d) => d.key === c.key)?.label}
+                    </th>
+                  ))}
                 <th className="px-4 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
-              {prestadores.map((p) => (
+              {paginados.map((p) => (
                 <tr key={p.id} className="border-b border-black/5 last:border-0 hover:bg-surface/60">
-                  <td className="px-4 py-3 font-semibold text-ink">{p.papeis?.pessoas?.nome ?? "—"}</td>
-                  <td className="px-4 py-3 text-ink/70">{p.tipo_servico ?? "—"}</td>
-                  <td className="px-4 py-3 text-ink/70">
-                    {p.papeis?.pessoas?.whatsapp && <span className="block">{p.papeis.pessoas.whatsapp}</span>}
-                    {p.papeis?.pessoas?.email && <span className="block text-xs text-ink/50">{p.papeis.pessoas.email}</span>}
-                  </td>
-                  <td className="px-4 py-3 text-ink/70">{p.papeis?.pessoas?.pix ?? "—"}</td>
+                  {colunas
+                    .filter((c) => c.visivel)
+                    .map((c) => (
+                      <td key={c.key} className="px-4 py-3">
+                        {renderCelulaPrestador(c.key, p)}
+                      </td>
+                    ))}
                   <td className="px-4 py-3">
                     <button
                       onClick={() => remover(p.id)}
@@ -119,6 +228,50 @@ export default function PrestadoresPage() {
           </table>
         )}
       </div>
+
+      {prestadores.length > 0 && (
+        <div className="flex items-center justify-between mt-4 text-sm text-ink/50">
+          <div className="flex items-center gap-4">
+            <p>
+              Mostrando {(paginaSegura - 1) * linhasPorPagina + 1}–
+              {Math.min(paginaSegura * linhasPorPagina, prestadores.length)} de {prestadores.length}
+            </p>
+            <label className="flex items-center gap-2 text-xs">
+              Linhas
+              <select
+                value={linhasPorPagina}
+                onChange={(e) => mudarLinhasPorPagina(Number(e.target.value))}
+                className="input py-1 text-xs w-16"
+              >
+                {LINHAS_POR_PAGINA_OPCOES.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPaginaAtual((p) => Math.max(p - 1, 1))}
+              disabled={paginaSegura === 1}
+              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+            >
+              ← Anterior
+            </button>
+            <span className="px-2 text-xs">
+              Página {paginaSegura} de {totalPaginas}
+            </span>
+            <button
+              onClick={() => setPaginaAtual((p) => Math.min(p + 1, totalPaginas))}
+              disabled={paginaSegura === totalPaginas}
+              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+            >
+              Próxima →
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
