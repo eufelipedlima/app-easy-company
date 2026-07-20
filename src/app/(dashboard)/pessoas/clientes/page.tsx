@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PessoaForm } from "@/components/pessoa-form";
+import { useTabelaConfig, LINHAS_POR_PAGINA_OPCOES, type ColunaDef } from "@/lib/use-tabela-config";
 
 interface Pessoa {
   id: string;
@@ -37,6 +38,47 @@ function formatarData(data: string | null) {
   return new Date(data + "T00:00:00").toLocaleDateString("pt-BR");
 }
 
+const COLUNAS_DISPONIVEIS: ColunaDef[] = [
+  { key: "nome", label: "Nome" },
+  { key: "tipo", label: "Tipo" },
+  { key: "documento", label: "Documento" },
+  { key: "segmento", label: "Segmento" },
+  { key: "whatsapp", label: "WhatsApp" },
+  { key: "email", label: "E-mail" },
+];
+
+function renderCelulaPessoa(key: string, p: Pessoa) {
+  switch (key) {
+    case "nome":
+      return (
+        <span className="font-semibold text-ink">
+          {p.nome}
+          {p.razao_social && <span className="block text-xs font-normal text-ink/50">{p.razao_social}</span>}
+        </span>
+      );
+    case "tipo":
+      return (
+        <span
+          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+            p.tipo_pessoa === "PJ" ? "bg-mint text-forest" : "bg-surface text-ink/70"
+          }`}
+        >
+          {p.tipo_pessoa}
+        </span>
+      );
+    case "documento":
+      return <span className="text-ink/70">{p.documento}</span>;
+    case "segmento":
+      return <span className="text-ink/70">{p.segmentos?.nome ?? "—"}</span>;
+    case "whatsapp":
+      return <span className="text-ink/70">{p.whatsapp ?? "—"}</span>;
+    case "email":
+      return <span className="text-ink/70">{p.email ?? "—"}</span>;
+    default:
+      return null;
+  }
+}
+
 export default function PessoasPage() {
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +110,18 @@ export default function PessoasPage() {
   }, [detalhe]);
   const [filtroPapel, setFiltroPapel] = useState<FiltroPapel>("todos");
 
+  const {
+    colunas,
+    painelColunasAberto,
+    setPainelColunasAberto,
+    linhasPorPagina,
+    paginaAtual,
+    setPaginaAtual,
+    alternarVisibilidade,
+    moverColuna,
+    mudarLinhasPorPagina,
+  } = useTabelaConfig("pessoas", COLUNAS_DISPONIVEIS);
+
   const carregar = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
@@ -90,6 +144,15 @@ export default function PessoasPage() {
     if (filtroPapel === "sem_papel") return p.papeis.length === 0;
     return p.papeis.some((papel) => papel.papel === filtroPapel);
   });
+
+  const totalPaginas = Math.max(Math.ceil(pessoasFiltradas.length / linhasPorPagina), 1);
+  const paginaSegura = Math.min(paginaAtual, totalPaginas);
+  const paginados = pessoasFiltradas.slice((paginaSegura - 1) * linhasPorPagina, paginaSegura * linhasPorPagina);
+
+  useEffect(() => {
+    setPaginaAtual(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtroPapel]);
 
   return (
     <div>
@@ -115,14 +178,78 @@ export default function PessoasPage() {
             </button>
           ))}
         </div>
-        {!painelAberto && !editando && (
-          <button
-            onClick={() => setPainelAberto(true)}
-            className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
-          >
-            + Nova pessoa
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              onClick={() => setPainelColunasAberto((v) => !v)}
+              className="rounded-full border-2 border-ink/15 text-ink px-4 py-2.5 text-sm font-bold hover:bg-surface transition-colors"
+            >
+              ⚙ Colunas
+            </button>
+            {painelColunasAberto && (
+              <div
+                className="absolute right-0 z-10 mt-2 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-2"
+                onMouseLeave={() => setPainelColunasAberto(false)}
+              >
+                {colunas.map((c, i) => {
+                  const def = COLUNAS_DISPONIVEIS.find((d) => d.key === c.key);
+                  if (!def) return null;
+                  return (
+                    <div key={c.key} className="flex items-center justify-between px-2 py-1.5 text-sm hover:bg-surface rounded-lg">
+                      <label className="flex items-center gap-2 cursor-pointer flex-1">
+                        <input
+                          type="checkbox"
+                          checked={c.visivel}
+                          onChange={() => alternarVisibilidade(c.key)}
+                          className="h-3.5 w-3.5 rounded accent-forest"
+                        />
+                        <span className={c.visivel ? "text-ink" : "text-ink/40"}>{def.label}</span>
+                      </label>
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={() => moverColuna(c.key, -1)}
+                          disabled={i === 0}
+                          className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          onClick={() => moverColuna(c.key, 1)}
+                          disabled={i === colunas.length - 1}
+                          className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                <label className="flex items-center justify-between gap-2 px-2 py-2 mt-1 border-t border-black/5 text-sm">
+                  <span className="text-ink/70">Linhas por página</span>
+                  <select
+                    value={linhasPorPagina}
+                    onChange={(e) => mudarLinhasPorPagina(Number(e.target.value))}
+                    className="input py-1 text-xs w-20"
+                  >
+                    {LINHAS_POR_PAGINA_OPCOES.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+          </div>
+          {!painelAberto && !editando && (
+            <button
+              onClick={() => setPainelAberto(true)}
+              className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+            >
+              + Nova pessoa
+            </button>
+          )}
+        </div>
       </div>
 
       {(painelAberto || editando) && (
@@ -164,53 +291,33 @@ export default function PessoasPage() {
             Nenhuma pessoa encontrada com esse filtro.
           </p>
         ) : (
-          <table className="w-full text-sm table-fixed">
-            <colgroup>
-              <col className="w-auto" />
-              <col className="w-20" />
-              <col className="w-36" />
-              <col className="w-32" />
-              <col className="w-32" />
-              <col className="w-44" />
-              <col className="w-20" />
-            </colgroup>
+          <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-ink/50 border-b border-black/5">
-                <th className="px-3 py-3 font-medium">Nome</th>
-                <th className="px-3 py-3 font-medium">Tipo</th>
-                <th className="px-3 py-3 font-medium">Documento</th>
-                <th className="px-3 py-3 font-medium">Segmento</th>
-                <th className="px-3 py-3 font-medium">WhatsApp</th>
-                <th className="px-3 py-3 font-medium">E-mail</th>
+                {colunas
+                  .filter((c) => c.visivel)
+                  .map((c) => (
+                    <th key={c.key} className="px-3 py-3 font-medium">
+                      {COLUNAS_DISPONIVEIS.find((d) => d.key === c.key)?.label}
+                    </th>
+                  ))}
                 <th className="px-3 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
-              {pessoasFiltradas.map((p) => (
+              {paginados.map((p) => (
                 <tr
                   key={p.id}
                   onClick={() => setDetalhe(p)}
                   className="border-b border-black/5 last:border-0 hover:bg-surface/60 cursor-pointer"
                 >
-                  <td className="px-3 py-3 font-semibold text-ink truncate">
-                    {p.nome}
-                    {p.razao_social && (
-                      <span className="block text-xs font-normal text-ink/50 truncate">{p.razao_social}</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                        p.tipo_pessoa === "PJ" ? "bg-mint text-forest" : "bg-surface text-ink/70"
-                      }`}
-                    >
-                      {p.tipo_pessoa}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 text-ink/70 truncate">{p.documento}</td>
-                  <td className="px-3 py-3 text-ink/70 truncate">{p.segmentos?.nome ?? "—"}</td>
-                  <td className="px-3 py-3 text-ink/70 truncate">{p.whatsapp ?? "—"}</td>
-                  <td className="px-3 py-3 text-ink/70 truncate">{p.email ?? "—"}</td>
+                  {colunas
+                    .filter((c) => c.visivel)
+                    .map((c) => (
+                      <td key={c.key} className="px-3 py-3">
+                        {renderCelulaPessoa(c.key, p)}
+                      </td>
+                    ))}
                   <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => {
@@ -228,6 +335,50 @@ export default function PessoasPage() {
           </table>
         )}
       </div>
+
+      {pessoasFiltradas.length > 0 && (
+        <div className="flex items-center justify-between mt-4 text-sm text-ink/50">
+          <div className="flex items-center gap-4">
+            <p>
+              Mostrando {(paginaSegura - 1) * linhasPorPagina + 1}–
+              {Math.min(paginaSegura * linhasPorPagina, pessoasFiltradas.length)} de {pessoasFiltradas.length}
+            </p>
+            <label className="flex items-center gap-2 text-xs">
+              Linhas
+              <select
+                value={linhasPorPagina}
+                onChange={(e) => mudarLinhasPorPagina(Number(e.target.value))}
+                className="input py-1 text-xs w-16"
+              >
+                {LINHAS_POR_PAGINA_OPCOES.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPaginaAtual((p) => Math.max(p - 1, 1))}
+              disabled={paginaSegura === 1}
+              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+            >
+              ← Anterior
+            </button>
+            <span className="px-2 text-xs">
+              Página {paginaSegura} de {totalPaginas}
+            </span>
+            <button
+              onClick={() => setPaginaAtual((p) => Math.min(p + 1, totalPaginas))}
+              disabled={paginaSegura === totalPaginas}
+              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+            >
+              Próxima →
+            </button>
+          </div>
+        </div>
+      )}
 
       {detalhe && (
         <div
