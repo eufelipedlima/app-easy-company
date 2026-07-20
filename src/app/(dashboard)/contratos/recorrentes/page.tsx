@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { PessoaForm } from "@/components/pessoa-form";
+import { useTabelaConfig, LINHAS_POR_PAGINA_OPCOES, type ColunaDef } from "@/lib/use-tabela-config";
 
 interface HistoricoValor {
   id: string;
@@ -98,6 +99,42 @@ function mesesDeCasa(inicio: string | null, fim: string | null) {
 }
 
 type Filtro = "todos" | "ativo" | "encerrado";
+
+const COLUNAS_DISPONIVEIS: ColunaDef[] = [
+  { key: "numero", label: "Nº" },
+  { key: "cliente", label: "Cliente" },
+  { key: "servico", label: "Serviço" },
+  { key: "inicio", label: "Início" },
+  { key: "valor", label: "Valor" },
+  { key: "status", label: "Status" },
+];
+
+function renderCelulaContratoRecorrente(key: string, c: Contrato) {
+  switch (key) {
+    case "numero":
+      return <span className="text-ink/50 font-mono text-xs">{c.numero_contrato ?? "—"}</span>;
+    case "cliente":
+      return <span className="font-semibold text-ink">{c.clientes?.papeis?.pessoas?.nome ?? "—"}</span>;
+    case "servico":
+      return <span className="text-ink/70">{c.servicos?.nome ?? "—"}</span>;
+    case "inicio":
+      return <span className="text-ink/70">{formatarData(c.data_primeira_mensalidade)}</span>;
+    case "valor":
+      return <span className="text-ink/70">{formatarMoeda(c.valor_mensal)}</span>;
+    case "status":
+      return (
+        <span
+          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+            c.status === "ativo" ? "bg-mint text-forest" : "bg-black/5 text-ink/50"
+          }`}
+        >
+          {c.status === "ativo" ? "Ativo" : "Encerrado"}
+        </span>
+      );
+    default:
+      return null;
+  }
+}
 
 export default function ContratosRecorrentesPage() {
   const [contratos, setContratos] = useState<Contrato[]>([]);
@@ -276,7 +313,28 @@ export default function ContratosRecorrentesPage() {
     carregar();
   }, [carregar]);
 
+  const {
+    colunas,
+    painelColunasAberto,
+    setPainelColunasAberto,
+    linhasPorPagina,
+    paginaAtual,
+    setPaginaAtual,
+    alternarVisibilidade,
+    moverColuna,
+    mudarLinhasPorPagina,
+  } = useTabelaConfig("contratos_recorrentes", COLUNAS_DISPONIVEIS);
+
   const contratosFiltrados = contratos.filter((c) => filtro === "todos" || c.status === filtro);
+
+  const totalPaginas = Math.max(Math.ceil(contratosFiltrados.length / linhasPorPagina), 1);
+  const paginaSegura = Math.min(paginaAtual, totalPaginas);
+  const paginados = contratosFiltrados.slice((paginaSegura - 1) * linhasPorPagina, paginaSegura * linhasPorPagina);
+
+  useEffect(() => {
+    setPaginaAtual(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtro]);
 
   return (
     <div>
@@ -296,14 +354,78 @@ export default function ContratosRecorrentesPage() {
             </button>
           ))}
         </div>
-        {!painelAberto && !editando && (
-          <button
-            onClick={() => setPainelAberto(true)}
-            className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
-          >
-            + Novo contrato recorrente
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              onClick={() => setPainelColunasAberto((v) => !v)}
+              className="rounded-full border-2 border-ink/15 text-ink px-4 py-2.5 text-sm font-bold hover:bg-surface transition-colors"
+            >
+              ⚙ Colunas
+            </button>
+            {painelColunasAberto && (
+              <div
+                className="absolute right-0 z-10 mt-2 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-2"
+                onMouseLeave={() => setPainelColunasAberto(false)}
+              >
+                {colunas.map((c, i) => {
+                  const def = COLUNAS_DISPONIVEIS.find((d) => d.key === c.key);
+                  if (!def) return null;
+                  return (
+                    <div key={c.key} className="flex items-center justify-between px-2 py-1.5 text-sm hover:bg-surface rounded-lg">
+                      <label className="flex items-center gap-2 cursor-pointer flex-1">
+                        <input
+                          type="checkbox"
+                          checked={c.visivel}
+                          onChange={() => alternarVisibilidade(c.key)}
+                          className="h-3.5 w-3.5 rounded accent-forest"
+                        />
+                        <span className={c.visivel ? "text-ink" : "text-ink/40"}>{def.label}</span>
+                      </label>
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={() => moverColuna(c.key, -1)}
+                          disabled={i === 0}
+                          className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          onClick={() => moverColuna(c.key, 1)}
+                          disabled={i === colunas.length - 1}
+                          className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                <label className="flex items-center justify-between gap-2 px-2 py-2 mt-1 border-t border-black/5 text-sm">
+                  <span className="text-ink/70">Linhas por página</span>
+                  <select
+                    value={linhasPorPagina}
+                    onChange={(e) => mudarLinhasPorPagina(Number(e.target.value))}
+                    className="input py-1 text-xs w-20"
+                  >
+                    {LINHAS_POR_PAGINA_OPCOES.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+          </div>
+          {!painelAberto && !editando && (
+            <button
+              onClick={() => setPainelAberto(true)}
+              className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+            >
+              + Novo contrato recorrente
+            </button>
+          )}
+        </div>
       </div>
 
       {erroCarregamento && (
@@ -350,53 +472,34 @@ export default function ContratosRecorrentesPage() {
         ) : contratosFiltrados.length === 0 ? (
           <p className="p-6 text-sm text-ink/50">Nenhum contrato encontrado.</p>
         ) : (
-          <table className="w-full text-sm table-fixed">
-            <colgroup>
-              <col className="w-16" />
-              <col className="w-48" />
-              <col className="w-40" />
-              <col className="w-24" />
-              <col className="w-24" />
-              <col className="w-24" />
-              <col className="w-24" />
-            </colgroup>
+          <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-ink/50 border-b border-black/5">
-                <th className="px-3 py-3 font-medium">Nº</th>
-                <th className="px-3 py-3 font-medium">Cliente</th>
-                <th className="px-3 py-3 font-medium">Serviço</th>
-                <th className="px-3 py-3 font-medium">Início</th>
-                <th className="px-3 py-3 font-medium">Valor</th>
-                <th className="px-3 py-3 font-medium">Status</th>
+                {colunas
+                  .filter((c) => c.visivel)
+                  .map((c) => (
+                    <th key={c.key} className="px-3 py-3 font-medium">
+                      {COLUNAS_DISPONIVEIS.find((d) => d.key === c.key)?.label}
+                    </th>
+                  ))}
                 <th className="px-3 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
-              {contratosFiltrados.map((c) => {
+              {paginados.map((c) => {
                 return (
                   <tr
                     key={c.id}
                     onClick={() => setDetalhe(c)}
                     className="border-b border-black/5 last:border-0 hover:bg-surface/60 cursor-pointer"
                   >
-                    <td className="px-3 py-3 text-ink/50 font-mono text-xs truncate">
-                      {c.numero_contrato ?? "—"}
-                    </td>
-                    <td className="px-3 py-3 font-semibold text-ink truncate">
-                      {c.clientes?.papeis?.pessoas?.nome ?? "—"}
-                    </td>
-                    <td className="px-3 py-3 text-ink/70 truncate">{c.servicos?.nome ?? "—"}</td>
-                    <td className="px-3 py-3 text-ink/70">{formatarData(c.data_primeira_mensalidade)}</td>
-                    <td className="px-3 py-3 text-ink/70">{formatarMoeda(c.valor_mensal)}</td>
-                    <td className="px-3 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                          c.status === "ativo" ? "bg-mint text-forest" : "bg-black/5 text-ink/50"
-                        }`}
-                      >
-                        {c.status === "ativo" ? "Ativo" : "Encerrado"}
-                      </span>
-                    </td>
+                    {colunas
+                      .filter((c2) => c2.visivel)
+                      .map((c2) => (
+                        <td key={c2.key} className="px-3 py-3">
+                          {renderCelulaContratoRecorrente(c2.key, c)}
+                        </td>
+                      ))}
                     <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => {
@@ -416,6 +519,50 @@ export default function ContratosRecorrentesPage() {
           </table>
         )}
       </div>
+
+      {contratosFiltrados.length > 0 && (
+        <div className="flex items-center justify-between mt-4 text-sm text-ink/50">
+          <div className="flex items-center gap-4">
+            <p>
+              Mostrando {(paginaSegura - 1) * linhasPorPagina + 1}–
+              {Math.min(paginaSegura * linhasPorPagina, contratosFiltrados.length)} de {contratosFiltrados.length}
+            </p>
+            <label className="flex items-center gap-2 text-xs">
+              Linhas
+              <select
+                value={linhasPorPagina}
+                onChange={(e) => mudarLinhasPorPagina(Number(e.target.value))}
+                className="input py-1 text-xs w-16"
+              >
+                {LINHAS_POR_PAGINA_OPCOES.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPaginaAtual((p) => Math.max(p - 1, 1))}
+              disabled={paginaSegura === 1}
+              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+            >
+              ← Anterior
+            </button>
+            <span className="px-2 text-xs">
+              Página {paginaSegura} de {totalPaginas}
+            </span>
+            <button
+              onClick={() => setPaginaAtual((p) => Math.min(p + 1, totalPaginas))}
+              disabled={paginaSegura === totalPaginas}
+              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+            >
+              Próxima →
+            </button>
+          </div>
+        </div>
+      )}
 
       {detalhe && (
         <div
