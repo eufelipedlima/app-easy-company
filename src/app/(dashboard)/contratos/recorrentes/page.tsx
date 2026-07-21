@@ -45,7 +45,7 @@ interface Contrato {
       pessoas: {
         nome: string;
         razao_social: string | null;
-        documento: string;
+        documento: string | null;
         email: string | null;
       } | null;
     } | null;
