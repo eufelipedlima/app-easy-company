@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 
 interface Banco {
@@ -33,6 +34,20 @@ export default function BancosPage() {
   const [verSaldoAte, setVerSaldoAte] = useState(hojeISO());
   const [mostrarArquivados, setMostrarArquivados] = useState(false);
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (!menuAbertoId) return;
+    function fechar() {
+      setMenuAbertoId(null);
+    }
+    window.addEventListener("scroll", fechar, true);
+    window.addEventListener("resize", fechar);
+    return () => {
+      window.removeEventListener("scroll", fechar, true);
+      window.removeEventListener("resize", fechar);
+    };
+  }, [menuAbertoId]);
 
   const [painelNovoBanco, setPainelNovoBanco] = useState(false);
   const [novoNome, setNovoNome] = useState("");
@@ -243,40 +258,19 @@ export default function BancosPage() {
                   </td>
                   <td className="px-4 py-3 text-right relative">
                     <button
-                      onClick={() => setMenuAbertoId(menuAbertoId === banco.id ? null : banco.id)}
+                      onClick={(e) => {
+                        if (menuAbertoId === banco.id) {
+                          setMenuAbertoId(null);
+                          return;
+                        }
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setMenuPos({ top: rect.bottom + 4, left: rect.right - 176 });
+                        setMenuAbertoId(banco.id);
+                      }}
                       className="text-ink/40 hover:text-ink px-2"
                     >
                       •••
                     </button>
-                    {menuAbertoId === banco.id && (
-                      <div
-                        className="absolute right-4 top-10 z-10 w-44 rounded-xl bg-white border border-black/10 shadow-lg overflow-hidden text-left"
-                        onMouseLeave={() => setMenuAbertoId(null)}
-                      >
-                        <button
-                          onClick={() => {
-                            setPainelAjuste(banco);
-                            setSaldoEditado(String(saldoAte(banco, hojeISO())));
-                            setMenuAbertoId(null);
-                          }}
-                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
-                        >
-                          Ajustar saldo
-                        </button>
-                        <button
-                          onClick={() => arquivar(banco.id, false)}
-                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
-                        >
-                          Arquivar
-                        </button>
-                        <button
-                          onClick={() => remover(banco.id)}
-                          className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
-                        >
-                          Remover
-                        </button>
-                      </div>
-                    )}
                   </td>
                 </tr>
               ))
@@ -284,6 +278,53 @@ export default function BancosPage() {
           </tbody>
         </table>
       </div>
+
+      {menuAbertoId &&
+        menuPos &&
+        typeof document !== "undefined" &&
+        createPortal(
+          (() => {
+            const banco = bancos.find((b) => b.id === menuAbertoId);
+            if (!banco) return null;
+            return (
+              <div
+                className="fixed z-50 w-44 rounded-xl bg-white border border-black/10 shadow-lg overflow-hidden text-left"
+                style={{ top: menuPos.top, left: menuPos.left }}
+                onMouseLeave={() => setMenuAbertoId(null)}
+              >
+                <button
+                  onClick={() => {
+                    setPainelAjuste(banco);
+                    setSaldoEditado(String(saldoAte(banco, hojeISO())));
+                    setMenuAbertoId(null);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
+                >
+                  Ajustar saldo
+                </button>
+                <button
+                  onClick={() => {
+                    arquivar(banco.id, false);
+                    setMenuAbertoId(null);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
+                >
+                  Arquivar
+                </button>
+                <button
+                  onClick={() => {
+                    remover(banco.id);
+                    setMenuAbertoId(null);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
+                >
+                  Remover
+                </button>
+              </div>
+            );
+          })(),
+          document.body
+        )}
 
       {bancosArquivados.length > 0 && (
         <div className="mt-4">
