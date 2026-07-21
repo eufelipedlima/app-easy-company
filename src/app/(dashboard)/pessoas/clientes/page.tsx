@@ -11,7 +11,7 @@ interface Pessoa {
   nome: string;
   razao_social: string | null;
   nome_fantasia: string | null;
-  documento: string;
+  documento: string | null;
   data_nascimento: string | null;
   email: string | null;
   whatsapp: string | null;
@@ -67,7 +67,7 @@ function renderCelulaPessoa(key: string, p: Pessoa) {
         </span>
       );
     case "documento":
-      return <span className="text-ink/70">{p.documento}</span>;
+      return <span className="text-ink/70">{p.documento ?? "—"}</span>;
     case "segmento":
       return <span className="text-ink/70">{p.segmentos?.nome ?? "—"}</span>;
     case "whatsapp":
@@ -416,7 +416,7 @@ export default function PessoasPage() {
             </div>
 
             <SecaoDetalhe titulo="Dados">
-              <DetalheLinha label="Documento" valor={detalhe.documento} />
+              <DetalheLinha label="Documento" valor={detalhe.documento ?? "—"} />
               {detalhe.tipo_pessoa === "PF" && (
                 <DetalheLinha label="Data de nascimento" valor={formatarData(detalhe.data_nascimento)} />
               )}
