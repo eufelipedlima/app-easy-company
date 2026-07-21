@@ -33,7 +33,7 @@ interface PessoaEditando {
   nome: string;
   razao_social: string | null;
   nome_fantasia: string | null;
-  documento: string;
+  documento: string | null;
   data_nascimento: string | null;
   email: string | null;
   whatsapp: string | null;
@@ -151,7 +151,7 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
       nome,
       razao_social: tipo === "PJ" ? razaoSocial : null,
       nome_fantasia: tipo === "PF" ? nomeFantasia || null : null,
-      documento,
+      documento: documento.trim() || null,
       data_nascimento: tipo === "PF" ? dataNascimento || null : null,
       email: email || null,
       whatsapp: whatsapp || null,
@@ -271,9 +271,8 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
           </Campo>
         )}
 
-        <Campo label={tipo === "PF" ? "CPF" : "CNPJ"} required>
+        <Campo label={tipo === "PF" ? "CPF (opcional)" : "CNPJ (opcional)"}>
           <input
-            required
             value={documento}
             onChange={(e) =>
               setDocumento(tipo === "PF" ? CPF_MASK(e.target.value) : CNPJ_MASK(e.target.value))
