@@ -11,8 +11,14 @@ interface Banco {
   ativo: boolean;
 }
 
-interface LancamentoPago {
-  tipo: "receita" | "despesa" | "transferencia";
+interface PagamentoComTipo {
+  banco_id: string | null;
+  valor: number;
+  data_pagamento: string;
+  lancamentos: { tipo: "receita" | "despesa" | "transferencia" } | null;
+}
+
+interface Transferencia {
   valor: number;
   banco_id: string | null;
   banco_destino_id: string | null;
@@ -29,7 +35,8 @@ function hojeISO() {
 
 export default function BancosPage() {
   const [bancos, setBancos] = useState<Banco[]>([]);
-  const [lancamentosPagos, setLancamentosPagos] = useState<LancamentoPago[]>([]);
+  const [pagamentos, setPagamentos] = useState<PagamentoComTipo[]>([]);
+  const [transferencias, setTransferencias] = useState<Transferencia[]>([]);
   const [loading, setLoading] = useState(true);
   const [verSaldoAte, setVerSaldoAte] = useState(hojeISO());
   const [mostrarArquivados, setMostrarArquivados] = useState(false);
@@ -68,15 +75,20 @@ export default function BancosPage() {
   const carregar = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
-    const [{ data: b }, { data: l }] = await Promise.all([
+    const [{ data: b }, { data: p }, { data: t }] = await Promise.all([
       supabase.from("bancos").select("id, nome, saldo_inicial, ativo").order("nome"),
       supabase
+        .from("lancamento_pagamentos")
+        .select("banco_id, valor, data_pagamento, lancamentos ( tipo )"),
+      supabase
         .from("lancamentos")
-        .select("tipo, valor, banco_id, banco_destino_id, data_quitacao")
+        .select("valor, banco_id, banco_destino_id, data_quitacao")
+        .eq("tipo", "transferencia")
         .eq("situacao", "pago"),
     ]);
     setBancos((b as Banco[]) ?? []);
-    setLancamentosPagos((l as LancamentoPago[]) ?? []);
+    setPagamentos((p as unknown as PagamentoComTipo[]) ?? []);
+    setTransferencias((t as Transferencia[]) ?? []);
     setLoading(false);
   }, []);
 
@@ -86,14 +98,15 @@ export default function BancosPage() {
 
   function saldoAte(banco: Banco, dataLimite: string) {
     let saldo = banco.saldo_inicial;
-    for (const l of lancamentosPagos) {
-      if (!l.data_quitacao || l.data_quitacao > dataLimite) continue;
-      if (l.tipo === "receita" && l.banco_id === banco.id) saldo += l.valor;
-      else if (l.tipo === "despesa" && l.banco_id === banco.id) saldo -= l.valor;
-      else if (l.tipo === "transferencia") {
-        if (l.banco_id === banco.id) saldo -= l.valor;
-        if (l.banco_destino_id === banco.id) saldo += l.valor;
-      }
+    for (const p of pagamentos) {
+      if (p.banco_id !== banco.id || p.data_pagamento > dataLimite) continue;
+      if (p.lancamentos?.tipo === "receita") saldo += p.valor;
+      else if (p.lancamentos?.tipo === "despesa") saldo -= p.valor;
+    }
+    for (const t of transferencias) {
+      if (!t.data_quitacao || t.data_quitacao > dataLimite) continue;
+      if (t.banco_id === banco.id) saldo -= t.valor;
+      if (t.banco_destino_id === banco.id) saldo += t.valor;
     }
     return saldo;
   }
@@ -138,15 +151,27 @@ export default function BancosPage() {
     if (delta !== 0) {
       const supabase = createClient();
       const hoje = hojeISO();
-      await supabase.from("lancamentos").insert({
-        tipo: delta > 0 ? "receita" : "despesa",
-        situacao: "pago",
-        descricao: "Ajuste de saldo",
-        valor: Math.abs(delta),
-        data_vencimento: hoje,
-        data_quitacao: hoje,
-        banco_id: painelAjuste.id,
-      });
+      const { data: lancamento, error } = await supabase
+        .from("lancamentos")
+        .insert({
+          tipo: delta > 0 ? "receita" : "despesa",
+          situacao: "pago",
+          descricao: "Ajuste de saldo",
+          valor: Math.abs(delta),
+          data_vencimento: hoje,
+          data_quitacao: hoje,
+          banco_id: painelAjuste.id,
+        })
+        .select("id")
+        .single();
+      if (!error && lancamento) {
+        await supabase.from("lancamento_pagamentos").insert({
+          lancamento_id: lancamento.id,
+          data_pagamento: hoje,
+          banco_id: painelAjuste.id,
+          valor: Math.abs(delta),
+        });
+      }
     }
     setPainelAjuste(null);
     carregar();
@@ -362,8 +387,9 @@ export default function BancosPage() {
       )}
 
       <p className="text-xs text-ink/40 mt-3">
-        Saldo = saldo inicial + receitas pagas − despesas pagas até a data escolhida, considerando
-        também transferências entre contas. Só entram lançamentos marcados como &ldquo;Pago&rdquo;.
+        Saldo = saldo inicial + pagamentos recebidos − pagamentos feitos até a data escolhida
+        (considerando o banco selecionado na hora de marcar como pago), mais transferências entre
+        contas. Só entram lançamentos com pagamento já registrado.
       </p>
 
       {painelNovoBanco && (
