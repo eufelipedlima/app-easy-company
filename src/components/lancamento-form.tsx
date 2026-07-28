@@ -207,6 +207,28 @@ export function LancamentoForm({
     return novoCliente.id;
   }
 
+  // Garante que o lançamento tenha um registro de pagamento em lancamento_pagamentos
+  // batendo com a situação/banco/valor atuais do form. É esse registro (não o banco_id
+  // "esperado" salvo no próprio lançamento) que alimenta o saldo dos bancos.
+  async function sincronizarPagamento(lancamentoId: string, bancoId: string | null) {
+    const supabase = createClient();
+
+    if (situacao === "pago") {
+      // Substitui qualquer pagamento anterior por um único registro refletindo o
+      // estado atual do formulário — mantém o saldo consistente com o que está na tela.
+      await supabase.from("lancamento_pagamentos").delete().eq("lancamento_id", lancamentoId);
+      await supabase.from("lancamento_pagamentos").insert({
+        lancamento_id: lancamentoId,
+        data_pagamento: dataQuitacao || hojeISOForm,
+        banco_id: bancoId,
+        valor: Number(valor),
+      });
+    } else {
+      // Voltou a pendente: não conta mais como pago em banco nenhum
+      await supabase.from("lancamento_pagamentos").delete().eq("lancamento_id", lancamentoId);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -279,6 +301,10 @@ export function LancamentoForm({
         const { error } = await supabase.from("lancamentos").update(payload).eq("id", lancamentoEditando.id);
         if (error) throw error;
 
+        if (tipo !== "transferencia") {
+          await sincronizarPagamento(lancamentoEditando.id, bancoFinalId);
+        }
+
         if (escopoEdicao === "grupo" && lancamentoEditando.grupo_id) {
           // Aplica os campos "de conteúdo" (incluindo valor, útil pra reajuste) às próximas
           // parcelas/recorrências pendentes — situação, vencimento e quitação continuam
@@ -323,8 +349,12 @@ export function LancamentoForm({
             recorrencia_tipo: "mensal",
           };
         });
-        const { error: lancError } = await supabase.from("lancamentos").insert(linhas);
+        const { data: inseridos, error: lancError } = await supabase.from("lancamentos").insert(linhas).select("id");
         if (lancError) throw lancError;
+
+        if (situacao === "pago" && inseridos && inseridos[0]) {
+          await sincronizarPagamento(inseridos[0].id, bancoFinalId);
+        }
       } else if (repeticao === "parcelado") {
         const n = Number(totalParcelas);
         const grupoId = crypto.randomUUID();
@@ -345,8 +375,12 @@ export function LancamentoForm({
             total_parcelas: n,
           };
         });
-        const { error } = await supabase.from("lancamentos").insert(linhas);
+        const { data: inseridos, error } = await supabase.from("lancamentos").insert(linhas).select("id");
         if (error) throw error;
+
+        if (situacao === "pago" && tipo !== "transferencia" && inseridos && inseridos[0]) {
+          await sincronizarPagamento(inseridos[0].id, bancoFinalId);
+        }
       } else if (repeticao === "recorrente") {
         const n = Number(quantidadeRecorrencias);
         const grupoId = crypto.randomUUID();
@@ -374,8 +408,12 @@ export function LancamentoForm({
             recorrencia_tipo: frequenciaRecorrencia,
           };
         });
-        const { error } = await supabase.from("lancamentos").insert(linhas);
+        const { data: inseridos, error } = await supabase.from("lancamentos").insert(linhas).select("id");
         if (error) throw error;
+
+        if (situacao === "pago" && tipo !== "transferencia" && inseridos && inseridos[0]) {
+          await sincronizarPagamento(inseridos[0].id, bancoFinalId);
+        }
       } else {
         const payload = {
           ...payloadBase,
@@ -385,8 +423,12 @@ export function LancamentoForm({
           data_quitacao: situacao === "pago" ? dataQuitacao || null : null,
           data_competencia: dataCompetencia || null,
         };
-        const { error } = await supabase.from("lancamentos").insert(payload);
+        const { data: inserido, error } = await supabase.from("lancamentos").insert(payload).select("id").single();
         if (error) throw error;
+
+        if (situacao === "pago" && tipo !== "transferencia" && inserido) {
+          await sincronizarPagamento(inserido.id, bancoFinalId);
+        }
       }
 
       setSaving(false);
@@ -553,6 +595,12 @@ export function LancamentoForm({
           </Campo>
         )}
       </div>
+
+      {situacao === "pago" && tipo !== "transferencia" && (
+        <p className="text-xs text-ink/40 -mt-2">
+          O banco selecionado abaixo é de onde o pagamento saiu/entrou — é ele que atualiza o saldo.
+        </p>
+      )}
 
       {!editando && tipo === "despesa" && !forcarDespesaFixa && (
         <label className="flex items-center gap-2 text-sm font-semibold text-ink cursor-pointer rounded-2xl bg-surface p-3">
