@@ -31,8 +31,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: posts, error: postsError } = await supabase
     .from("posts_conteudo")
     .select(
-      `id, data_publicacao, legenda, objetivo, status, arquivo_path, arquivo_nome, arquivo_tipo,
-       redes_sociais ( nome ),
+      `id, data_publicacao, hora_publicacao, legenda, objetivo, status,
+       posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
        posts_conteudo_comentarios ( id, autor, texto, created_at )`
     )
     .eq("cliente_id", cliente.id)
@@ -46,9 +46,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const postsComMidia = (posts ?? []).map((p) => ({
     ...p,
-    midia_url: p.arquivo_path
-      ? supabase.storage.from("conteudo-midia").getPublicUrl(p.arquivo_path).data.publicUrl
-      : null,
+    posts_conteudo_midias: [...(p.posts_conteudo_midias ?? [])]
+      .sort((a, b) => a.ordem - b.ordem)
+      .map((m) => ({
+        ...m,
+        url: supabase.storage.from("conteudo-midia").getPublicUrl(m.arquivo_path).data.publicUrl,
+      })),
   }));
 
   const nomeCliente =

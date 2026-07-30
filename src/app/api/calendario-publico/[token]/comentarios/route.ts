@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: comentarioError.message }, { status: 500 });
   }
 
-  await supabase.from("posts_conteudo").update({ status: "alteracoes_cliente" }).eq("id", postId);
+  await supabase.from("posts_conteudo").update({ status: "em_alteracao" }).eq("id", postId);
 
   return NextResponse.json({ ok: true });
 }

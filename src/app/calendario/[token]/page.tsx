@@ -9,25 +9,34 @@ interface Comentario {
   created_at: string;
 }
 
+interface Midia {
+  id: string;
+  arquivo_tipo: string | null;
+  ordem: number;
+  url: string;
+}
+
 interface Post {
   id: string;
   data_publicacao: string;
+  hora_publicacao: string | null;
   legenda: string | null;
   objetivo: "atracao" | "educacao" | "conversao" | null;
   status: string;
-  arquivo_nome: string | null;
-  arquivo_tipo: string | null;
-  midia_url: string | null;
-  redes_sociais: { nome: string } | null;
+  posts_conteudo_midias: Midia[];
   posts_conteudo_comentarios: Comentario[];
 }
 
-const STATUS_CONFIG: Record<string, { label: string; cor: string; dot: string }> = {
-  para_aprovar_interno: { label: "Em preparação", cor: "bg-sky-50 text-sky-700", dot: "bg-sky-500" },
-  aprovado_interno: { label: "Em preparação", cor: "bg-purple-50 text-purple-700", dot: "bg-purple-500" },
-  alteracoes_interno: { label: "Em preparação", cor: "bg-purple-50 text-purple-700", dot: "bg-purple-500" },
-  aprovado_cliente: { label: "Aprovado", cor: "bg-mint text-forest", dot: "bg-forest" },
-  alteracoes_cliente: { label: "Ajuste solicitado", cor: "bg-amber-50 text-amber-700", dot: "bg-amber-500" },
+const STATUS_CONFIG: Record<string, { label: string; cor: string }> = {
+  ideia: { label: "Ideia", cor: "bg-slate-100 text-slate-600" },
+  planejamento: { label: "Planejamento", cor: "bg-indigo-50 text-indigo-700" },
+  captacao: { label: "Captação", cor: "bg-cyan-50 text-cyan-700" },
+  criacao: { label: "Em criação", cor: "bg-sky-50 text-sky-700" },
+  revisao: { label: "Em revisão", cor: "bg-purple-50 text-purple-700" },
+  aprovacao: { label: "Aguardando aprovação", cor: "bg-amber-50 text-amber-700" },
+  em_alteracao: { label: "Em alteração", cor: "bg-red-50 text-red-700" },
+  agendamento: { label: "Agendado", cor: "bg-teal-50 text-teal-700" },
+  concluido: { label: "Publicado", cor: "bg-mint text-forest" },
 };
 
 const OBJETIVO_LABEL: Record<string, string> = {
@@ -196,7 +205,7 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
                         onClick={() => setPostAberto(p)}
                         className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${STATUS_CONFIG[p.status].cor}`}
                       >
-                        {p.redes_sociais?.nome ?? "Post"}
+                        {p.hora_publicacao?.slice(0, 5) ?? "Post"}
                       </button>
                     ))}
                   </div>
@@ -228,6 +237,10 @@ function PostPublicoModal({
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
+  const [midiaIndex, setMidiaIndex] = useState(0);
+
+  const midias = [...post.posts_conteudo_midias].sort((a, b) => a.ordem - b.ordem);
+  const midiaAtual = midias[midiaIndex];
 
   async function enviarComentario() {
     if (!texto.trim()) return;
@@ -253,28 +266,53 @@ function PostPublicoModal({
       >
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className="text-xs text-ink/40">{formatarData(post.data_publicacao)}</p>
-            <h2 className="text-lg font-bold text-ink">{post.redes_sociais?.nome ?? "Post"}</h2>
+            <p className="text-xs text-ink/40">
+              {formatarData(post.data_publicacao)}
+              {post.hora_publicacao && ` às ${post.hora_publicacao.slice(0, 5)}`}
+            </p>
           </div>
           <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${STATUS_CONFIG[post.status].cor}`}>
             {STATUS_CONFIG[post.status].label}
           </span>
         </div>
 
-        {post.midia_url && (
-          <div className="mb-4 rounded-2xl overflow-hidden bg-black/5">
-            {post.arquivo_tipo?.startsWith("video") ? (
-              <video src={post.midia_url} controls className="w-full max-h-96" />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={post.midia_url} alt="Mídia do post" className="w-full max-h-96 object-contain" />
+        {midias.length > 0 && (
+          <div className="mb-4">
+            <div className="relative rounded-2xl overflow-hidden bg-black/5">
+              {midiaAtual.arquivo_tipo?.startsWith("video") ? (
+                <video src={midiaAtual.url} controls className="w-full max-h-96" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={midiaAtual.url} alt="Mídia do post" className="w-full max-h-96 object-contain" />
+              )}
+              {midias.length > 1 && (
+                <>
+                  <button
+                    onClick={() => setMidiaIndex((i) => Math.max(i - 1, 0))}
+                    disabled={midiaIndex === 0}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white/90 flex items-center justify-center disabled:opacity-30"
+                  >
+                    ←
+                  </button>
+                  <button
+                    onClick={() => setMidiaIndex((i) => Math.min(i + 1, midias.length - 1))}
+                    disabled={midiaIndex === midias.length - 1}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white/90 flex items-center justify-center disabled:opacity-30"
+                  >
+                    →
+                  </button>
+                </>
+              )}
+            </div>
+            {midias.length > 1 && (
+              <p className="text-center text-xs text-ink/40 mt-1">
+                {midiaIndex + 1} de {midias.length}
+              </p>
             )}
           </div>
         )}
 
-        {post.objetivo && (
-          <p className="text-xs text-ink/40 mb-2">Objetivo: {OBJETIVO_LABEL[post.objetivo]}</p>
-        )}
+        {post.objetivo && <p className="text-xs text-ink/40 mb-2">Objetivo: {OBJETIVO_LABEL[post.objetivo]}</p>}
 
         {post.legenda && (
           <div className="rounded-2xl bg-surface p-4 mb-4">
