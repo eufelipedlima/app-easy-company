@@ -8,6 +8,7 @@ const ABAS = [
   { href: "/configuracoes/motivos-encerramento", label: "Motivos de encerramento" },
   { href: "/configuracoes/origens", label: "Origens" },
   { href: "/configuracoes/planos-conta", label: "Planos de conta" },
+  { href: "/configuracoes/redes-sociais", label: "Redes sociais" },
   { href: "/configuracoes/segmentos", label: "Segmentos" },
   { href: "/configuracoes/servicos", label: "Serviços" },
 ];

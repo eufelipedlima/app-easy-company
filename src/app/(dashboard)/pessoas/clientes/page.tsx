@@ -108,6 +108,32 @@ export default function PessoasPage() {
     }
     carregarResponsavel();
   }, [detalhe]);
+
+  const [linkCalendarioToken, setLinkCalendarioToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!detalhe || !detalhe.papeis?.some((p) => p.papel === "cliente")) {
+      setLinkCalendarioToken(null);
+      return;
+    }
+    async function carregarLinkCalendario() {
+      const supabase = createClient();
+      const { data: papel } = await supabase
+        .from("papeis")
+        .select("id")
+        .eq("pessoa_id", detalhe!.id)
+        .eq("papel", "cliente")
+        .maybeSingle();
+      if (!papel) return;
+      const { data: cliente } = await supabase
+        .from("clientes")
+        .select("link_publico_token")
+        .eq("papel_id", papel.id)
+        .maybeSingle();
+      setLinkCalendarioToken(cliente?.link_publico_token ?? null);
+    }
+    carregarLinkCalendario();
+  }, [detalhe]);
   const [filtroPapel, setFiltroPapel] = useState<FiltroPapel>("todos");
 
   const {
@@ -446,6 +472,30 @@ export default function PessoasPage() {
               <DetalheLinha label="Chave PIX" valor={detalhe.pix ?? "—"} />
               <DetalheLinha label="E-mail" valor={detalhe.email ?? "—"} />
             </SecaoDetalhe>
+
+            {linkCalendarioToken && (
+              <div className="rounded-2xl bg-card p-4 mb-4 shadow-sm">
+                <p className="text-xs text-ink/50 mb-1">Link do calendário de conteúdo (compartilhe com o cliente)</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={`${typeof window !== "undefined" ? window.location.origin : ""}/calendario/${linkCalendarioToken}`}
+                    className="input text-xs"
+                    onFocus={(e) => e.target.select()}
+                  />
+                  <button
+                    onClick={() =>
+                      navigator.clipboard.writeText(
+                        `${window.location.origin}/calendario/${linkCalendarioToken}`
+                      )
+                    }
+                    className="shrink-0 rounded-full bg-forest text-white px-3 py-1.5 text-xs font-bold hover:bg-ink transition-colors"
+                  >
+                    Copiar
+                  </button>
+                </div>
+              </div>
+            )}
 
             <SecaoDetalhe titulo="Endereço">
               <DetalheLinha
