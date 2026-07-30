@@ -28,6 +28,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const inicio = new Date(anoNum, mesNum, 1).toISOString().slice(0, 10);
   const fim = new Date(anoNum, mesNum + 1, 0).toISOString().slice(0, 10);
 
+  const { data: statusVisiveis } = await supabase.from("status_conteudo").select("id").eq("visivel_cliente", true);
+  const idsStatusVisiveis = (statusVisiveis ?? []).map((s) => s.id);
+
   const { data: posts, error: postsError } = await supabase
     .from("posts_conteudo")
     .select(
@@ -37,6 +40,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
        posts_conteudo_comentarios ( id, autor, texto, created_at )`
     )
     .eq("cliente_id", cliente.id)
+    .in("status_id", idsStatusVisiveis.length > 0 ? idsStatusVisiveis : ["00000000-0000-0000-0000-000000000000"])
     .gte("data_publicacao", inicio)
     .lte("data_publicacao", fim)
     .order("data_publicacao");

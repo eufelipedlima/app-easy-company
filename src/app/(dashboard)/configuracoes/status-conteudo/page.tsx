@@ -9,6 +9,7 @@ interface StatusItem {
   nome: string;
   cor: string;
   ordem: number;
+  visivel_cliente: boolean;
 }
 
 export default function StatusConteudoPage() {
@@ -24,7 +25,7 @@ export default function StatusConteudoPage() {
   const carregar = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
-    const { data } = await supabase.from("status_conteudo").select("id, nome, cor, ordem").order("ordem");
+    const { data } = await supabase.from("status_conteudo").select("id, nome, cor, ordem, visivel_cliente").order("ordem");
     setItens(data ?? []);
     setLoading(false);
   }, []);
@@ -62,6 +63,12 @@ export default function StatusConteudoPage() {
       window.alert("Não foi possível remover — provavelmente ainda tem post usando esse status.");
       return;
     }
+    carregar();
+  }
+
+  async function alternarVisivelCliente(item: StatusItem) {
+    const supabase = createClient();
+    await supabase.from("status_conteudo").update({ visivel_cliente: !item.visivel_cliente }).eq("id", item.id);
     carregar();
   }
 
@@ -145,6 +152,15 @@ export default function StatusConteudoPage() {
                       {item.nome}
                     </span>
                     <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => alternarVisivelCliente(item)}
+                        className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                          item.visivel_cliente ? "bg-mint text-forest" : "bg-black/5 text-ink/40"
+                        }`}
+                        title="Clique pra alternar se o cliente vê esse status no link público"
+                      >
+                        {item.visivel_cliente ? "👁 Visível pro cliente" : "Só interno"}
+                      </button>
                       <button onClick={() => mover(item, -1)} disabled={i === 0} className="text-ink/40 hover:text-ink disabled:opacity-20 px-1.5">
                         ↑
                       </button>

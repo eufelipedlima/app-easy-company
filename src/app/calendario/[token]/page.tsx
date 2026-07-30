@@ -226,123 +226,157 @@ function PostPublicoModal({
   onComentado: () => void;
 }) {
   const [texto, setTexto] = useState("");
-  const [enviando, setEnviando] = useState(false);
-  const [enviado, setEnviado] = useState(false);
+  const [enviando, setEnviando] = useState<"aprovar" | "solicitar_alteracao" | null>(null);
+  const [enviado, setEnviado] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
   const [midiaIndex, setMidiaIndex] = useState(0);
+  const [mostrarCampoAlteracao, setMostrarCampoAlteracao] = useState(false);
 
   const midias = [...post.posts_conteudo_midias].sort((a, b) => a.ordem - b.ordem);
   const midiaAtual = midias[midiaIndex];
 
-  async function enviarComentario() {
-    if (!texto.trim()) return;
-    setEnviando(true);
+  async function enviar(acao: "aprovar" | "solicitar_alteracao") {
+    if (acao === "solicitar_alteracao" && !texto.trim()) {
+      setMostrarCampoAlteracao(true);
+      setErro("Descreva o que precisa ser ajustado.");
+      return;
+    }
+    setEnviando(acao);
+    setErro(null);
     const res = await fetch(`/api/calendario-publico/${token}/comentarios`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ postId: post.id, texto }),
+      body: JSON.stringify({ postId: post.id, texto, acao }),
     });
-    setEnviando(false);
+    const data = await res.json();
+    setEnviando(null);
     if (res.ok) {
       setTexto("");
-      setEnviado(true);
+      setMostrarCampoAlteracao(false);
+      setEnviado(acao === "aprovar" ? "Conteúdo aprovado! 🎉" : "Ajuste solicitado! A equipe foi avisada.");
       onComentado();
+    } else {
+      setErro(data.error ?? "Não foi possível enviar.");
     }
   }
 
   return (
     <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
       <div
-        className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
+        className="w-full max-w-3xl rounded-3xl bg-card shadow-2xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-xs text-ink/40">
-              {formatarData(post.data_publicacao)}
-              {post.hora_publicacao && ` às ${post.hora_publicacao.slice(0, 5)}`}
-            </p>
-          </div>
-          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${corDoStatus(post.status_conteudo?.cor ?? "cinza").cor}`}>
-            {post.status_conteudo?.nome ?? "—"}
-          </span>
-        </div>
-
-        {midias.length > 0 && (
-          <div className="mb-4">
-            <div className="relative rounded-2xl overflow-hidden bg-black/5">
-              {midiaAtual.arquivo_tipo?.startsWith("video") ? (
-                <video src={midiaAtual.url} controls className="w-full max-h-96" />
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={midiaAtual.url} alt="Mídia do post" className="w-full max-h-96 object-contain" />
-              )}
-              {midias.length > 1 && (
-                <>
-                  <button
-                    onClick={() => setMidiaIndex((i) => Math.max(i - 1, 0))}
-                    disabled={midiaIndex === 0}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white/90 flex items-center justify-center disabled:opacity-30"
-                  >
-                    ←
-                  </button>
-                  <button
-                    onClick={() => setMidiaIndex((i) => Math.min(i + 1, midias.length - 1))}
-                    disabled={midiaIndex === midias.length - 1}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white/90 flex items-center justify-center disabled:opacity-30"
-                  >
-                    →
-                  </button>
-                </>
-              )}
-            </div>
-            {midias.length > 1 && (
-              <p className="text-center text-xs text-ink/40 mt-1">
-                {midiaIndex + 1} de {midias.length}
-              </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+          <div className="bg-black/5 md:rounded-l-3xl flex items-center justify-center p-4">
+            {midias.length > 0 ? (
+              <div className="w-full">
+                <div className="relative rounded-2xl overflow-hidden bg-black/10">
+                  {midiaAtual.arquivo_tipo?.startsWith("video") ? (
+                    <video src={midiaAtual.url} controls className="w-full max-h-[420px] mx-auto" />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={midiaAtual.url} alt="Mídia do post" className="w-full max-h-[420px] object-contain mx-auto" />
+                  )}
+                  {midias.length > 1 && (
+                    <>
+                      <button
+                        onClick={() => setMidiaIndex((i) => Math.max(i - 1, 0))}
+                        disabled={midiaIndex === 0}
+                        className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white/90 flex items-center justify-center disabled:opacity-30"
+                      >
+                        ←
+                      </button>
+                      <button
+                        onClick={() => setMidiaIndex((i) => Math.min(i + 1, midias.length - 1))}
+                        disabled={midiaIndex === midias.length - 1}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white/90 flex items-center justify-center disabled:opacity-30"
+                      >
+                        →
+                      </button>
+                    </>
+                  )}
+                </div>
+                {midias.length > 1 && (
+                  <p className="text-center text-xs text-ink/40 mt-1">
+                    {midiaIndex + 1} de {midias.length}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-ink/40 py-16">Sem mídia anexada</p>
             )}
           </div>
-        )}
 
-        {post.objetivo && <p className="text-xs text-ink/40 mb-2">Objetivo: {OBJETIVO_LABEL[post.objetivo]}</p>}
+          <div className="p-6 flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs text-ink/40">
+                {formatarData(post.data_publicacao)}
+                {post.hora_publicacao && ` às ${post.hora_publicacao.slice(0, 5)}`}
+              </p>
+              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${corDoStatus(post.status_conteudo?.cor ?? "cinza").cor}`}>
+                {post.status_conteudo?.nome ?? "—"}
+              </span>
+            </div>
 
-        {post.legenda && (
-          <div className="rounded-2xl bg-surface p-4 mb-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">Legenda</p>
-            <p className="text-sm text-ink whitespace-pre-wrap">{post.legenda}</p>
-          </div>
-        )}
+            {post.objetivo && <p className="text-xs text-ink/40 mb-2">Objetivo: {OBJETIVO_LABEL[post.objetivo]}</p>}
 
-        {post.posts_conteudo_comentarios?.length > 0 && (
-          <div className="space-y-2 mb-4">
-            {post.posts_conteudo_comentarios.map((c) => (
-              <div key={c.id} className="text-sm rounded-xl bg-surface p-3">
-                <span className={`font-semibold ${c.autor === "cliente" ? "text-amber-700" : "text-forest"}`}>
-                  {c.autor === "cliente" ? "Você" : "Equipe Easy Company"}:
-                </span>{" "}
-                {c.texto}
+            {post.legenda && (
+              <div className="rounded-2xl bg-surface p-4 mb-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">Legenda</p>
+                <p className="text-sm text-ink whitespace-pre-wrap">{post.legenda}</p>
               </div>
-            ))}
-          </div>
-        )}
+            )}
 
-        <div className="space-y-2">
-          <span className="block text-sm font-medium text-ink/70">Pedir um ajuste ou deixar um comentário</span>
-          <textarea
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            className="input"
-            rows={3}
-            placeholder="Ex: pode trocar a foto de capa?"
-          />
-          <div className="flex items-center gap-3">
-            <button
-              onClick={enviarComentario}
-              disabled={enviando || !texto.trim()}
-              className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
-            >
-              {enviando ? "Enviando..." : "Enviar"}
-            </button>
-            {enviado && <span className="text-xs text-forest font-semibold">Enviado! A equipe foi avisada.</span>}
+            {post.posts_conteudo_comentarios?.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {post.posts_conteudo_comentarios.map((c) => (
+                  <div key={c.id} className="text-sm rounded-xl bg-surface p-3">
+                    <span className={`font-semibold ${c.autor === "cliente" ? "text-amber-700" : "text-forest"}`}>
+                      {c.autor === "cliente" ? "Você" : "Equipe Easy Company"}:
+                    </span>{" "}
+                    {c.texto}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-auto space-y-3 pt-2">
+              {mostrarCampoAlteracao && (
+                <label className="block">
+                  <span className="block text-sm font-medium text-ink/70 mb-1">
+                    Deixe aqui suas alterações, observações ou algo do tipo
+                  </span>
+                  <textarea
+                    autoFocus
+                    value={texto}
+                    onChange={(e) => setTexto(e.target.value)}
+                    className="input"
+                    rows={3}
+                    placeholder="Ex: pode trocar a foto de capa?"
+                  />
+                </label>
+              )}
+
+              {erro && <p className="text-sm text-red-600">{erro}</p>}
+              {enviado && <p className="text-sm text-forest font-semibold">{enviado}</p>}
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => enviar("aprovar")}
+                  disabled={enviando !== null}
+                  className="rounded-full bg-forest text-white px-5 py-2.5 text-sm font-semibold hover:bg-ink transition-colors disabled:opacity-50"
+                >
+                  {enviando === "aprovar" ? "Enviando..." : "✓ Aprovar conteúdo"}
+                </button>
+                <button
+                  onClick={() => (mostrarCampoAlteracao ? enviar("solicitar_alteracao") : setMostrarCampoAlteracao(true))}
+                  disabled={enviando !== null}
+                  className="rounded-full border-2 border-ink/15 text-ink px-5 py-2.5 text-sm font-semibold hover:bg-surface transition-colors disabled:opacity-50"
+                >
+                  {enviando === "solicitar_alteracao" ? "Enviando..." : "Solicitar alteração"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

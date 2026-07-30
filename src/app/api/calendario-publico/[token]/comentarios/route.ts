@@ -4,10 +4,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export async function POST(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const body = await request.json();
-  const { postId, texto } = body as { postId?: string; texto?: string };
+  const { postId, texto, acao } = body as {
+    postId?: string;
+    texto?: string;
+    acao?: "aprovar" | "solicitar_alteracao";
+  };
 
-  if (!token || !postId || !texto?.trim()) {
+  if (!token || !postId || !acao) {
     return NextResponse.json({ error: "Dados incompletos." }, { status: 400 });
+  }
+  if (acao === "solicitar_alteracao" && !texto?.trim()) {
+    return NextResponse.json({ error: "Descreva o que precisa ser ajustado." }, { status: 400 });
   }
 
   const supabase = createAdminClient();
@@ -34,25 +41,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Post não encontrado." }, { status: 404 });
   }
 
-  const { error: comentarioError } = await supabase.from("posts_conteudo_comentarios").insert({
-    post_id: postId,
-    autor: "cliente",
-    texto: texto.trim(),
-  });
-  if (comentarioError) {
-    return NextResponse.json({ error: comentarioError.message }, { status: 500 });
+  if (texto?.trim()) {
+    const { error: comentarioError } = await supabase.from("posts_conteudo_comentarios").insert({
+      post_id: postId,
+      autor: "cliente",
+      texto: texto.trim(),
+    });
+    if (comentarioError) {
+      return NextResponse.json({ error: comentarioError.message }, { status: 500 });
+    }
   }
 
-  // Move o post pro status de "alteração" automaticamente, se existir um cadastrado assim
-  const { data: statusAlteracao } = await supabase
+  // Move o post pro status equivalente ("Agendamento" ao aprovar, "Em alteração"
+  // ao pedir ajuste), se existir um cadastrado com nome parecido
+  const termoBusca = acao === "aprovar" ? "%agend%" : "%altera%";
+  const { data: statusAlvo } = await supabase
     .from("status_conteudo")
     .select("id")
-    .ilike("nome", "%altera%")
+    .ilike("nome", termoBusca)
     .order("ordem")
     .limit(1)
     .maybeSingle();
-  if (statusAlteracao) {
-    await supabase.from("posts_conteudo").update({ status_id: statusAlteracao.id }).eq("id", postId);
+  if (statusAlvo) {
+    await supabase.from("posts_conteudo").update({ status_id: statusAlvo.id }).eq("id", postId);
   }
 
   return NextResponse.json({ ok: true });
