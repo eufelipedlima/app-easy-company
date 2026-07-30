@@ -23,6 +23,7 @@ interface Post {
   hora_publicacao: string | null;
   legenda: string | null;
   objetivo: "atracao" | "educacao" | "conversao" | null;
+  formato: "estatico" | "carrossel" | "video" | null;
   status_conteudo: { nome: string; cor: string } | null;
   posts_conteudo_midias: Midia[];
   posts_conteudo_comentarios: Comentario[];
@@ -34,6 +35,12 @@ const OBJETIVO_LABEL: Record<string, string> = {
   atracao: "Atração",
   educacao: "Educação",
   conversao: "Conversão",
+};
+
+const FORMATO_LABEL: Record<string, string> = {
+  estatico: "Estático",
+  carrossel: "Carrossel",
+  video: "Vídeo",
 };
 
 const MESES = [
@@ -61,9 +68,11 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [postAberto, setPostAberto] = useState<Post | null>(null);
+  const [ultimaAtualizacao, setUltimaAtualizacao] = useState<Date | null>(null);
+  const [atualizando, setAtualizando] = useState(false);
 
   const carregar = useCallback(async () => {
-    setLoading(true);
+    setAtualizando(true);
     setErro(null);
     try {
       const res = await fetch(`/api/calendario-publico/${token}?mes=${mes}&ano=${ano}`);
@@ -71,14 +80,17 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
       if (!res.ok) {
         setErro(data.error ?? "Não foi possível carregar o calendário.");
         setLoading(false);
+        setAtualizando(false);
         return;
       }
       setNomeCliente(data.nomeCliente);
       setPosts(data.posts);
+      setUltimaAtualizacao(new Date());
     } catch {
       setErro("Não foi possível carregar o calendário.");
     }
     setLoading(false);
+    setAtualizando(false);
   }, [token, mes, ano]);
 
   useEffect(() => {
@@ -120,9 +132,28 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
   return (
     <main className="min-h-screen bg-surface px-6 py-10">
       <div className="mx-auto max-w-5xl">
-        <div className="mb-6">
-          <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Easy Company</p>
-          <h1 className="text-2xl font-extrabold text-ink">{loading ? "Carregando..." : `Calendário de ${nomeCliente}`}</h1>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Easy Company</p>
+            <h1 className="text-2xl font-extrabold text-ink">{loading ? "Carregando..." : `Calendário de ${nomeCliente}`}</h1>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-xs text-ink/40 mb-1">
+              {ultimaAtualizacao
+                ? `Última atualização: ${ultimaAtualizacao.toLocaleDateString("pt-BR")} às ${ultimaAtualizacao.toLocaleTimeString(
+                    "pt-BR",
+                    { hour: "2-digit", minute: "2-digit" }
+                  )}`
+                : ""}
+            </p>
+            <button
+              onClick={carregar}
+              disabled={atualizando}
+              className="inline-flex items-center gap-1.5 rounded-full border-2 border-ink/15 text-ink px-3 py-1.5 text-xs font-semibold hover:bg-white transition-colors disabled:opacity-50"
+            >
+              {atualizando ? "Atualizando..." : "🔄 Atualizar"}
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 mb-6">
@@ -318,7 +349,13 @@ function PostPublicoModal({
               </span>
             </div>
 
-            {post.objetivo && <p className="text-xs text-ink/40 mb-2">Objetivo: {OBJETIVO_LABEL[post.objetivo]}</p>}
+            {(post.formato || post.objetivo) && (
+              <p className="text-xs text-ink/40 mb-2">
+                {post.formato && FORMATO_LABEL[post.formato]}
+                {post.formato && post.objetivo && " · "}
+                {post.objetivo && `Objetivo: ${OBJETIVO_LABEL[post.objetivo]}`}
+              </p>
+            )}
 
             {post.legenda && (
               <div className="rounded-2xl bg-surface p-4 mb-4">

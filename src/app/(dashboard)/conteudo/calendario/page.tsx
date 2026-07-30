@@ -27,6 +27,7 @@ interface Post {
   hora_publicacao: string | null;
   legenda: string | null;
   objetivo: "atracao" | "educacao" | "conversao" | null;
+  formato: "estatico" | "carrossel" | "video" | null;
   status_id: string;
   observacoes_internas: string | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
@@ -43,6 +44,12 @@ const OBJETIVO_CONFIG: Record<string, { label: string }> = {
   atracao: { label: "Atração" },
   educacao: { label: "Educação" },
   conversao: { label: "Conversão" },
+};
+
+const FORMATO_CONFIG: Record<string, { label: string }> = {
+  estatico: { label: "Estático" },
+  carrossel: { label: "Carrossel" },
+  video: { label: "Vídeo" },
 };
 
 const MESES = [
@@ -137,7 +144,7 @@ export default function CalendarioConteudoPage() {
     let query = supabase
       .from("posts_conteudo")
       .select(
-        `id, cliente_id, data_publicacao, hora_publicacao, legenda, objetivo, status_id, observacoes_internas,
+        `id, cliente_id, data_publicacao, hora_publicacao, legenda, objetivo, formato, status_id, observacoes_internas,
          clientes ( papeis ( pessoas ( nome ) ) ),
          posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
          status_conteudo ( nome, cor )`
@@ -466,6 +473,7 @@ function PostModal({
   const [horaPublicacao, setHoraPublicacao] = useState(post?.hora_publicacao?.slice(0, 5) ?? "");
   const [legenda, setLegenda] = useState(post?.legenda ?? "");
   const [objetivo, setObjetivo] = useState<string>(post?.objetivo ?? "");
+  const [formato, setFormato] = useState<string>(post?.formato ?? "");
   const [statusId, setStatusId] = useState<string>(post?.status_id ?? statusList[0]?.id ?? "");
   const [observacoes, setObservacoes] = useState(post?.observacoes_internas ?? "");
   const [midiasExistentes, setMidiasExistentes] = useState<Midia[]>(
@@ -569,6 +577,7 @@ function PostModal({
         hora_publicacao: horaPublicacao || null,
         legenda: legenda || null,
         objetivo: objetivo || null,
+        formato: formato || null,
         status_id: statusId,
         observacoes_internas: observacoes || null,
       };
@@ -734,6 +743,29 @@ function PostModal({
                 ))}
               </div>
             )}
+          </div>
+
+          <div>
+            <span className="block text-sm font-medium text-ink/70 mb-1">Formato</span>
+            <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
+              <button
+                type="button"
+                onClick={() => setFormato("")}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold ${formato === "" ? "bg-ink text-white" : "text-ink/60"}`}
+              >
+                Nenhum
+              </button>
+              {Object.entries(FORMATO_CONFIG).map(([key, cfg]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setFormato(key)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${formato === key ? "bg-ink text-white" : "text-ink/60"}`}
+                >
+                  {cfg.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>
