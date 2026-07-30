@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { corDoStatus } from "@/lib/status-conteudo";
 
 interface Midia {
   id: string;
@@ -12,6 +13,13 @@ interface Midia {
   url?: string;
 }
 
+interface StatusItem {
+  id: string;
+  nome: string;
+  cor: string;
+  ordem: number;
+}
+
 interface Post {
   id: string;
   cliente_id: string;
@@ -19,50 +27,17 @@ interface Post {
   hora_publicacao: string | null;
   legenda: string | null;
   objetivo: "atracao" | "educacao" | "conversao" | null;
-  status: StatusPost;
+  status_id: string;
   observacoes_internas: string | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
   posts_conteudo_midias: Midia[];
-}
-
-interface Comentario {
-  id: string;
-  autor: "equipe" | "cliente";
-  texto: string;
-  created_at: string;
+  status_conteudo: { nome: string; cor: string } | null;
 }
 
 interface ClienteOpcao {
   id: string;
   nome: string;
 }
-
-export type StatusPost =
-  | "ideia"
-  | "planejamento"
-  | "captacao"
-  | "criacao"
-  | "revisao"
-  | "aprovacao"
-  | "em_alteracao"
-  | "agendamento"
-  | "concluido";
-
-export const STATUS_ORDEM: StatusPost[] = [
-  "ideia", "planejamento", "captacao", "criacao", "revisao", "aprovacao", "em_alteracao", "agendamento", "concluido",
-];
-
-export const STATUS_CONFIG: Record<StatusPost, { label: string; cor: string; dot: string }> = {
-  ideia: { label: "Ideia", cor: "bg-slate-100 text-slate-600", dot: "bg-slate-400" },
-  planejamento: { label: "Planejamento", cor: "bg-indigo-50 text-indigo-700", dot: "bg-indigo-500" },
-  captacao: { label: "Captação", cor: "bg-cyan-50 text-cyan-700", dot: "bg-cyan-500" },
-  criacao: { label: "Criação", cor: "bg-sky-50 text-sky-700", dot: "bg-sky-500" },
-  revisao: { label: "Revisão", cor: "bg-purple-50 text-purple-700", dot: "bg-purple-500" },
-  aprovacao: { label: "Aprovação", cor: "bg-amber-50 text-amber-700", dot: "bg-amber-500" },
-  em_alteracao: { label: "Em alteração", cor: "bg-red-50 text-red-700", dot: "bg-red-500" },
-  agendamento: { label: "Agendamento", cor: "bg-teal-50 text-teal-700", dot: "bg-teal-500" },
-  concluido: { label: "Concluído", cor: "bg-mint text-forest", dot: "bg-forest" },
-};
 
 const OBJETIVO_CONFIG: Record<string, { label: string }> = {
   atracao: { label: "Atração" },
@@ -98,6 +73,7 @@ export default function CalendarioConteudoPage() {
   const [ano, setAno] = useState(hoje.getFullYear());
   const [clienteFiltroId, setClienteFiltroId] = useState("");
   const [clientes, setClientes] = useState<ClienteOpcao[]>([]);
+  const [statusList, setStatusList] = useState<StatusItem[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [editando, setEditando] = useState<Post | null>(null);
@@ -113,6 +89,12 @@ export default function CalendarioConteudoPage() {
     setClientes(lista);
   }, []);
 
+  const carregarStatus = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase.from("status_conteudo").select("id, nome, cor, ordem").order("ordem");
+    setStatusList(data ?? []);
+  }, []);
+
   const carregarPosts = useCallback(async () => {
     setLoading(true);
     setErroCarregamento(null);
@@ -122,9 +104,10 @@ export default function CalendarioConteudoPage() {
     let query = supabase
       .from("posts_conteudo")
       .select(
-        `id, cliente_id, data_publicacao, hora_publicacao, legenda, objetivo, status, observacoes_internas,
+        `id, cliente_id, data_publicacao, hora_publicacao, legenda, objetivo, status_id, observacoes_internas,
          clientes ( papeis ( pessoas ( nome ) ) ),
-         posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem )`
+         posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
+         status_conteudo ( nome, cor )`
       )
       .gte("data_publicacao", inicio)
       .lte("data_publicacao", fim)
@@ -142,7 +125,8 @@ export default function CalendarioConteudoPage() {
 
   useEffect(() => {
     carregarClientes();
-  }, [carregarClientes]);
+    carregarStatus();
+  }, [carregarClientes, carregarStatus]);
 
   useEffect(() => {
     carregarPosts();
@@ -282,7 +266,7 @@ export default function CalendarioConteudoPage() {
                     <button
                       key={p.id}
                       onClick={() => setEditando(p)}
-                      className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${STATUS_CONFIG[p.status].cor}`}
+                      className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
                     >
                       {!clienteFiltroId && <span className="font-semibold">{nomeCliente(p)}</span>}
                       {!clienteFiltroId && p.hora_publicacao && " · "}
@@ -298,10 +282,10 @@ export default function CalendarioConteudoPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-4 mt-4">
-        {STATUS_ORDEM.map((s) => (
-          <span key={s} className="flex items-center gap-1.5 text-xs text-ink/60">
-            <span className={`h-2.5 w-2.5 rounded-full ${STATUS_CONFIG[s].dot}`} />
-            {STATUS_CONFIG[s].label}
+        {statusList.map((s) => (
+          <span key={s.id} className="flex items-center gap-1.5 text-xs text-ink/60">
+            <span className={`h-2.5 w-2.5 rounded-full ${corDoStatus(s.cor).dot}`} />
+            {s.nome}
           </span>
         ))}
       </div>
@@ -311,6 +295,7 @@ export default function CalendarioConteudoPage() {
           post={editando}
           dataInicial={novoEmData}
           clienteFixoId={clienteFiltroId || null}
+          statusList={statusList}
           onClose={() => {
             setEditando(null);
             setNovoEmData(null);
@@ -326,40 +311,54 @@ export default function CalendarioConteudoPage() {
   );
 }
 
-function StatusSelect({ value, onChange }: { value: StatusPost; onChange: (v: StatusPost) => void }) {
+function StatusSelect({
+  value,
+  statusList,
+  onChange,
+}: {
+  value: string;
+  statusList: StatusItem[];
+  onChange: (v: string) => void;
+}) {
   const [aberto, setAberto] = useState(false);
+  const atual = statusList.find((s) => s.id === value);
+  const corAtual = corDoStatus(atual?.cor ?? "cinza");
+
   return (
     <div className="relative">
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
-        className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${STATUS_CONFIG[value].cor}`}
+        className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold whitespace-nowrap ${corAtual.cor}`}
       >
-        <span className={`h-2 w-2 rounded-full ${STATUS_CONFIG[value].dot}`} />
-        {STATUS_CONFIG[value].label}
+        <span className={`h-2 w-2 rounded-full shrink-0 ${corAtual.dot}`} />
+        {atual?.nome ?? "Selecione"}
         <span className="text-xs opacity-60">▾</span>
       </button>
       {aberto && (
         <div
-          className="absolute z-20 mt-1 w-56 rounded-2xl bg-white border border-black/10 shadow-lg p-1.5"
+          className="absolute z-20 right-0 mt-1 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-1.5 max-h-80 overflow-y-auto"
           onMouseLeave={() => setAberto(false)}
         >
-          {STATUS_ORDEM.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => {
-                onChange(s);
-                setAberto(false);
-              }}
-              className={`w-full flex items-center gap-2 text-left px-3 py-2 rounded-xl text-sm font-medium hover:bg-surface ${
-                s === value ? "bg-surface" : ""
-              }`}
-            >
-              <span className={`h-2 w-2 rounded-full ${STATUS_CONFIG[s].dot}`} />
-              {STATUS_CONFIG[s].label}
-            </button>
-          ))}
+          {statusList.map((s) => {
+            const cor = corDoStatus(s.cor);
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  onChange(s.id);
+                  setAberto(false);
+                }}
+                className={`w-full flex items-center gap-2 text-left px-3 py-2 rounded-xl text-sm font-medium hover:bg-surface whitespace-nowrap ${
+                  s.id === value ? "bg-surface" : ""
+                }`}
+              >
+                <span className={`h-2 w-2 rounded-full shrink-0 ${cor.dot}`} />
+                {s.nome}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -406,12 +405,14 @@ function PostModal({
   post,
   dataInicial,
   clienteFixoId,
+  statusList,
   onClose,
   onSaved,
 }: {
   post: Post | null;
   dataInicial: string | null;
   clienteFixoId: string | null;
+  statusList: StatusItem[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -424,15 +425,20 @@ function PostModal({
   const [horaPublicacao, setHoraPublicacao] = useState(post?.hora_publicacao?.slice(0, 5) ?? "");
   const [legenda, setLegenda] = useState(post?.legenda ?? "");
   const [objetivo, setObjetivo] = useState<string>(post?.objetivo ?? "");
-  const [status, setStatus] = useState<StatusPost>(post?.status ?? "ideia");
+  const [statusId, setStatusId] = useState<string>(post?.status_id ?? statusList[0]?.id ?? "");
   const [observacoes, setObservacoes] = useState(post?.observacoes_internas ?? "");
   const [midiasExistentes, setMidiasExistentes] = useState<Midia[]>(
     [...(post?.posts_conteudo_midias ?? [])].sort((a, b) => a.ordem - b.ordem)
   );
   const [novosArquivos, setNovosArquivos] = useState<File[]>([]);
-  const [comentarios, setComentarios] = useState<Comentario[]>([]);
+  const [comentarios, setComentarios] = useState<{ id: string; autor: string; texto: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!statusId && statusList[0]) setStatusId(statusList[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusList]);
 
   useEffect(() => {
     async function carregarClientes() {
@@ -511,8 +517,8 @@ function PostModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!clienteId || !dataPublicacao) {
-      setErro("Selecione o cliente e a data de publicação.");
+    if (!clienteId || !dataPublicacao || !statusId) {
+      setErro("Selecione o cliente, a data de publicação e o status.");
       return;
     }
     setSaving(true);
@@ -525,7 +531,7 @@ function PostModal({
         hora_publicacao: horaPublicacao || null,
         legenda: legenda || null,
         objetivo: objetivo || null,
-        status,
+        status_id: statusId,
         observacoes_internas: observacoes || null,
       };
 
@@ -540,7 +546,6 @@ function PostModal({
       }
       if (!postId) throw new Error("Não foi possível salvar o post.");
 
-      // Remove do banco as mídias existentes que o usuário tirou da lista
       const idsOriginais = (post?.posts_conteudo_midias ?? []).map((m) => m.id);
       const idsMantidos = new Set(midiasExistentes.map((m) => m.id));
       const idsRemovidos = idsOriginais.filter((id) => !idsMantidos.has(id));
@@ -548,12 +553,10 @@ function PostModal({
         await supabase.from("posts_conteudo_midias").delete().in("id", idsRemovidos);
       }
 
-      // Reatualiza a ordem das mídias que continuam
       for (let i = 0; i < midiasExistentes.length; i++) {
         await supabase.from("posts_conteudo_midias").update({ ordem: i }).eq("id", midiasExistentes[i].id);
       }
 
-      // Sobe e registra os arquivos novos, continuando a ordem depois das existentes
       for (let i = 0; i < novosArquivos.length; i++) {
         const arquivo = novosArquivos[i];
         const path = `${postId}/${Date.now()}-${arquivo.name}`;
@@ -587,12 +590,12 @@ function PostModal({
   return (
     <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
       <div
-        className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
+        className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto overflow-x-visible"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-ink">{editando ? "Editar post" : "Novo post"}</h2>
-          <StatusSelect value={status} onChange={setStatus} />
+        <div className="flex items-center justify-between gap-3 mb-5">
+          <h2 className="text-lg font-bold text-ink shrink-0">{editando ? "Editar post" : "Novo post"}</h2>
+          <StatusSelect value={statusId} statusList={statusList} onChange={setStatusId} />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -645,9 +648,7 @@ function PostModal({
           </div>
 
           <div>
-            <span className="block text-sm font-medium text-ink/70 mb-1">
-              Mídia (uma ou mais — pra carrossel, a ordem abaixo é a ordem de publicação)
-            </span>
+            <span className="block text-sm font-medium text-ink/70 mb-1">Mídia</span>
             <input
               type="file"
               accept="image/*,video/*"

@@ -11,6 +11,7 @@ const ABAS = [
   { href: "/configuracoes/redes-sociais", label: "Redes sociais" },
   { href: "/configuracoes/segmentos", label: "Segmentos" },
   { href: "/configuracoes/servicos", label: "Serviços" },
+  { href: "/configuracoes/status-conteudo", label: "Status de conteúdo" },
 ];
 
 export default function ConfiguracoesLayout({ children }: { children: React.ReactNode }) {

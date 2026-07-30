@@ -43,7 +43,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: comentarioError.message }, { status: 500 });
   }
 
-  await supabase.from("posts_conteudo").update({ status: "em_alteracao" }).eq("id", postId);
+  // Move o post pro status de "alteração" automaticamente, se existir um cadastrado assim
+  const { data: statusAlteracao } = await supabase
+    .from("status_conteudo")
+    .select("id")
+    .ilike("nome", "%altera%")
+    .order("ordem")
+    .limit(1)
+    .maybeSingle();
+  if (statusAlteracao) {
+    await supabase.from("posts_conteudo").update({ status_id: statusAlteracao.id }).eq("id", postId);
+  }
 
   return NextResponse.json({ ok: true });
 }

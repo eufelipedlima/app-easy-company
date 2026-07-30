@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, use } from "react";
+import { corDoStatus } from "@/lib/status-conteudo";
 
 interface Comentario {
   id: string;
@@ -22,22 +23,12 @@ interface Post {
   hora_publicacao: string | null;
   legenda: string | null;
   objetivo: "atracao" | "educacao" | "conversao" | null;
-  status: string;
+  status_conteudo: { nome: string; cor: string } | null;
   posts_conteudo_midias: Midia[];
   posts_conteudo_comentarios: Comentario[];
 }
 
-const STATUS_CONFIG: Record<string, { label: string; cor: string }> = {
-  ideia: { label: "Ideia", cor: "bg-slate-100 text-slate-600" },
-  planejamento: { label: "Planejamento", cor: "bg-indigo-50 text-indigo-700" },
-  captacao: { label: "Captação", cor: "bg-cyan-50 text-cyan-700" },
-  criacao: { label: "Em criação", cor: "bg-sky-50 text-sky-700" },
-  revisao: { label: "Em revisão", cor: "bg-purple-50 text-purple-700" },
-  aprovacao: { label: "Aguardando aprovação", cor: "bg-amber-50 text-amber-700" },
-  em_alteracao: { label: "Em alteração", cor: "bg-red-50 text-red-700" },
-  agendamento: { label: "Agendado", cor: "bg-teal-50 text-teal-700" },
-  concluido: { label: "Publicado", cor: "bg-mint text-forest" },
-};
+
 
 const OBJETIVO_LABEL: Record<string, string> = {
   atracao: "Atração",
@@ -203,7 +194,7 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
                       <button
                         key={p.id}
                         onClick={() => setPostAberto(p)}
-                        className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${STATUS_CONFIG[p.status].cor}`}
+                        className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
                       >
                         {p.hora_publicacao?.slice(0, 5) ?? "Post"}
                       </button>
@@ -271,8 +262,8 @@ function PostPublicoModal({
               {post.hora_publicacao && ` às ${post.hora_publicacao.slice(0, 5)}`}
             </p>
           </div>
-          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${STATUS_CONFIG[post.status].cor}`}>
-            {STATUS_CONFIG[post.status].label}
+          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${corDoStatus(post.status_conteudo?.cor ?? "cinza").cor}`}>
+            {post.status_conteudo?.nome ?? "—"}
           </span>
         </div>
 

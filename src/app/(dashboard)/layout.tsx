@@ -68,6 +68,7 @@ const MENU: Grupo[] = [
       { href: "/configuracoes/redes-sociais", label: "Redes sociais", icon: <Share2 size={15} /> },
       { href: "/configuracoes/segmentos", label: "Segmentos", icon: <Building2 size={15} /> },
       { href: "/configuracoes/servicos", label: "Serviços", icon: <Wrench size={15} /> },
+      { href: "/configuracoes/status-conteudo", label: "Status de conteúdo", icon: <Calendar size={15} /> },
     ],
   },
 ];
