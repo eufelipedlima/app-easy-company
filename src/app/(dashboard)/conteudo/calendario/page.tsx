@@ -63,6 +63,41 @@ function toISODate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// Um cliente só entra no calendário de conteúdo se tiver pelo menos um contrato
+// recorrente ativo usando um serviço marcado como "Gera Calendário de Conteúdo"
+// (isso é configurado em Configurações → Serviços).
+async function buscarClientesComConteudo(
+  supabase: ReturnType<typeof createClient>
+): Promise<(ClienteOpcao & { token: string })[]> {
+  const { data: servicosValidos } = await supabase
+    .from("servicos")
+    .select("id")
+    .eq("gera_calendario_conteudo", true);
+  const idsServicos = (servicosValidos ?? []).map((s) => s.id);
+  if (idsServicos.length === 0) return [];
+
+  const { data: contratosValidos } = await supabase
+    .from("contratos")
+    .select("cliente_id")
+    .eq("tipo_contrato", "recorrente")
+    .eq("status", "ativo")
+    .in("servico_id", idsServicos);
+  const idsClientes = [...new Set((contratosValidos ?? []).map((c) => c.cliente_id).filter(Boolean))];
+  if (idsClientes.length === 0) return [];
+
+  const { data } = await supabase
+    .from("clientes")
+    .select("id, link_publico_token, papeis ( pessoas ( nome ) )")
+    .in("id", idsClientes);
+  return ((data ?? []) as unknown as {
+    id: string;
+    link_publico_token: string;
+    papeis: { pessoas: { nome: string } | null } | null;
+  }[])
+    .map((c) => ({ id: c.id, nome: c.papeis?.pessoas?.nome ?? "—", token: c.link_publico_token }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
 function nomeCliente(p: Post) {
   return p.clientes?.papeis?.pessoas?.nome ?? "—";
 }
@@ -78,14 +113,12 @@ export default function CalendarioConteudoPage() {
   const [loading, setLoading] = useState(true);
   const [editando, setEditando] = useState<Post | null>(null);
   const [novoEmData, setNovoEmData] = useState<string | null>(null);
+  const [linkPublicoAberto, setLinkPublicoAberto] = useState(false);
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
 
   const carregarClientes = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )");
-    const lista = ((data ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[])
-      .map((c) => ({ id: c.id, nome: c.papeis?.pessoas?.nome ?? "—" }))
-      .sort((a, b) => a.nome.localeCompare(b.nome));
+    const lista = await buscarClientesComConteudo(supabase);
     setClientes(lista);
   }, []);
 
@@ -217,6 +250,12 @@ export default function CalendarioConteudoPage() {
             ))}
           </select>
           <button
+            onClick={() => setLinkPublicoAberto(true)}
+            className="rounded-full border-2 border-ink/15 text-ink px-4 py-2 text-sm font-semibold hover:bg-surface transition-colors"
+          >
+            🔗 Link público
+          </button>
+          <button
             onClick={() => setNovoEmData(hojeISO)}
             className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors"
           >
@@ -289,6 +328,8 @@ export default function CalendarioConteudoPage() {
           </span>
         ))}
       </div>
+
+      {linkPublicoAberto && <LinkPublicoModal onClose={() => setLinkPublicoAberto(false)} />}
 
       {(editando || novoEmData) && (
         <PostModal
@@ -443,10 +484,7 @@ function PostModal({
   useEffect(() => {
     async function carregarClientes() {
       const supabase = createClient();
-      const { data } = await supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )");
-      const lista = ((data ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[])
-        .map((x) => ({ id: x.id, nome: x.papeis?.pessoas?.nome ?? "—" }))
-        .sort((a, b) => a.nome.localeCompare(b.nome));
+      const lista = await buscarClientesComConteudo(supabase);
       setClientes(lista);
     }
     carregarClientes();
@@ -760,6 +798,92 @@ function PostModal({
             )}
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function LinkPublicoModal({ onClose }: { onClose: () => void }) {
+  const [clientes, setClientes] = useState<(ClienteOpcao & { token: string })[]>([]);
+  const [busca, setBusca] = useState("");
+  const [selecionado, setSelecionado] = useState<(ClienteOpcao & { token: string }) | null>(null);
+  const [copiado, setCopiado] = useState(false);
+
+  useEffect(() => {
+    async function carregar() {
+      const supabase = createClient();
+      const lista = await buscarClientesComConteudo(supabase);
+      setClientes(lista);
+    }
+    carregar();
+  }, []);
+
+  const filtrados = clientes.filter((c) => c.nome.toLowerCase().includes(busca.toLowerCase()));
+  const link = selecionado ? `${window.location.origin}/calendario/${selecionado.token}` : "";
+
+  return (
+    <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-ink mb-1">Link público do calendário</h2>
+        <p className="text-sm text-ink/60 mb-4">Escolha o cliente pra gerar o link de acompanhamento.</p>
+
+        {!selecionado ? (
+          <>
+            <input
+              autoFocus
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="input mb-2"
+              placeholder="Buscar cliente..."
+            />
+            <div className="max-h-72 overflow-y-auto rounded-2xl border border-black/5">
+              {filtrados.length === 0 ? (
+                <p className="p-4 text-sm text-ink/50">Nenhum cliente encontrado.</p>
+              ) : (
+                filtrados.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelecionado(c)}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface border-b border-black/5 last:border-0"
+                  >
+                    {c.nome}
+                  </button>
+                ))
+              )}
+            </div>
+          </>
+        ) : (
+          <div>
+            <p className="text-sm font-semibold text-ink mb-2">{selecionado.nome}</p>
+            <div className="flex items-center gap-2 mb-4">
+              <input readOnly value={link} className="input text-xs" onFocus={(e) => e.target.select()} />
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(link);
+                  setCopiado(true);
+                }}
+                className="shrink-0 rounded-full bg-forest text-white px-4 py-2 text-sm font-bold hover:bg-ink transition-colors"
+              >
+                {copiado ? "Copiado!" : "Copiar"}
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                setSelecionado(null);
+                setCopiado(false);
+              }}
+              className="text-sm font-semibold text-ink/50 hover:text-ink"
+            >
+              ← Escolher outro cliente
+            </button>
+          </div>
+        )}
+
+        <div className="mt-4 pt-4 border-t border-black/5">
+          <button onClick={onClose} className="text-sm font-semibold text-ink/60 hover:text-ink">
+            Fechar
+          </button>
+        </div>
       </div>
     </div>
   );

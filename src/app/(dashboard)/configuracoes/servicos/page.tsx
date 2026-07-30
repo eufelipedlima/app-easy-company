@@ -10,6 +10,7 @@ interface Servico {
   entregaveis: string | null;
   valor: number | null;
   plano_conta_id: string | null;
+  gera_calendario_conteudo: boolean;
   planos_conta: { nome: string } | null;
 }
 
@@ -35,7 +36,7 @@ export default function ServicosPage() {
     const supabase = createClient();
     const { data } = await supabase
       .from("servicos")
-      .select("id, nome, descricao, entregaveis, valor, plano_conta_id, planos_conta ( nome )")
+      .select("id, nome, descricao, entregaveis, valor, plano_conta_id, gera_calendario_conteudo, planos_conta ( nome )")
       .order("nome");
     setServicos((data as unknown as Servico[]) ?? []);
     setLoading(false);
@@ -131,6 +132,12 @@ export default function ServicosPage() {
               <span className="text-sm font-semibold text-ink">{detalhe.planos_conta?.nome ?? "Sem plano de conta"}</span>
             </div>
 
+            {detalhe.gera_calendario_conteudo && (
+              <div className="rounded-2xl bg-mint p-3 mb-4 text-xs font-semibold text-forest">
+                📅 Gera Calendário de Conteúdo
+              </div>
+            )}
+
             {detalhe.descricao && (
               <div className="mb-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Descrição</p>
@@ -193,6 +200,7 @@ function ServicoForm({
   const [entregaveis, setEntregaveis] = useState(servicoEditando?.entregaveis ?? "");
   const [valor, setValor] = useState(servicoEditando?.valor != null ? String(servicoEditando.valor) : "");
   const [planoContaId, setPlanoContaId] = useState(servicoEditando?.plano_conta_id ?? "");
+  const [geraCalendarioConteudo, setGeraCalendarioConteudo] = useState(servicoEditando?.gera_calendario_conteudo ?? false);
   const [planosConta, setPlanosConta] = useState<PlanoConta[]>([]);
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -222,6 +230,7 @@ function ServicoForm({
         entregaveis: entregaveis || null,
         valor: valor ? Number(valor) : null,
         plano_conta_id: planoContaId || null,
+        gera_calendario_conteudo: geraCalendarioConteudo,
       };
       if (editando && servicoEditando) {
         const { error } = await supabase.from("servicos").update(payload).eq("id", servicoEditando.id);
@@ -272,6 +281,19 @@ function ServicoForm({
         <span className="block text-xs text-ink/40 mt-1">
           Ao selecionar esse serviço num contrato ou lançamento, o plano de conta já vem preenchido
           sozinho.
+        </span>
+      </label>
+
+      <label className="flex items-center gap-2 text-sm font-semibold text-ink cursor-pointer rounded-2xl bg-surface p-3">
+        <input
+          type="checkbox"
+          checked={geraCalendarioConteudo}
+          onChange={(e) => setGeraCalendarioConteudo(e.target.checked)}
+          className="h-4 w-4 rounded accent-forest"
+        />
+        Gera Calendário de Conteúdo
+        <span className="text-xs font-normal text-ink/40">
+          (clientes com contrato ativo nesse serviço aparecem no Calendário de Conteúdo)
         </span>
       </label>
 
