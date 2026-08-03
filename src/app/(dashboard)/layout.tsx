@@ -156,10 +156,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className={`px-6 py-7 flex items-center ${expandidoVisual ? "justify-between" : "justify-center px-0"}`}>
           {expandidoVisual ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo-completa.png" alt="Easy Company" className="h-8 w-auto" />
+            <img src="/logo-completa.png" alt="Easy Company" className="h-8 w-auto object-contain" />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo-reduzida.png" alt="Easy Company" className="h-8 w-8" />
+            <img src="/logo-reduzida.png" alt="Easy Company" className="h-9 w-auto object-contain" />
           )}
           {expandidoVisual && (
             <button
