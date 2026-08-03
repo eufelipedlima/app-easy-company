@@ -14,9 +14,17 @@ interface Canal {
 
 interface CanalComInfo extends Canal {
   nomeExibicao: string;
+  subtitulo: string | null;
   ultimaMensagem: string | null;
   ultimaMensagemHora: string | null;
   naoLidas: number;
+}
+
+interface Reacao {
+  id: string;
+  mensagem_id: string;
+  autor_id: string;
+  emoji: string;
 }
 
 interface Mensagem {
@@ -25,11 +33,13 @@ interface Mensagem {
   autor_id: string;
   texto: string;
   created_at: string;
+  resposta_a_id: string | null;
 }
 
 interface Colega {
   authUserId: string;
   nome: string;
+  cargo: string | null;
 }
 
 const EMOJIS = [
@@ -37,6 +47,8 @@ const EMOJIS = [
   "👍", "👏", "🙌", "🔥", "✨", "💥", "💪", "🙏", "❤️", "💛",
   "💚", "💙", "💜", "⭐", "🎉", "🎯", "📈", "✅", "❗", "❓",
 ];
+
+const REACOES_RAPIDAS = ["👍", "❤️", "😂", "🎉", "✅", "👀"];
 
 function tocarSom() {
   try {
@@ -88,26 +100,24 @@ function iniciais(nome: string) {
   return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
 }
 
-function Avatar({ nome, tamanho = 9 }: { nome: string; tamanho?: number }) {
+function Avatar({ nome, tamanho = 36 }: { nome: string; tamanho?: number }) {
   return (
     <div
-      className={`h-${tamanho} w-${tamanho} rounded-full ${corAvatar(nome)} text-white flex items-center justify-center text-xs font-bold shrink-0`}
-      style={{ height: tamanho * 4, width: tamanho * 4 }}
+      className={`rounded-full ${corAvatar(nome)} text-white flex items-center justify-center text-xs font-bold shrink-0 ring-2 ring-white`}
+      style={{ height: tamanho, width: tamanho }}
     >
       {iniciais(nome)}
     </div>
   );
 }
 
-// Suporta **negrito** e @Menções (reconhece só nomes de pessoas que
-// realmente têm acesso ao chat, pra não grifar um "@" qualquer à toa)
 function renderizarMensagem(texto: string, todosOsNomes: string[]) {
   const partesBold = texto.split(/(\*\*[^*]+\*\*)/g);
   return partesBold.map((parte, i) => {
     if (parte.startsWith("**") && parte.endsWith("**") && parte.length > 4) {
       return <strong key={i}>{parte.slice(2, -2)}</strong>;
     }
-    if (todosOsNomes.length === 0) return parte;
+    if (todosOsNomes.length === 0) return <span key={i}>{parte}</span>;
     const nomesEscapados = [...todosOsNomes]
       .sort((a, b) => b.length - a.length)
       .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
@@ -131,6 +141,7 @@ export default function ChatPage() {
   const [canais, setCanais] = useState<CanalComInfo[]>([]);
   const [canalAtivoId, setCanalAtivoId] = useState<string | null>(null);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
+  const [reacoes, setReacoes] = useState<Reacao[]>([]);
   const [colegas, setColegas] = useState<Colega[]>([]);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -138,25 +149,10 @@ export default function ChatPage() {
   const [adicionarParticipanteAberto, setAdicionarParticipanteAberto] = useState(false);
   const [mostrarEmoji, setMostrarEmoji] = useState(false);
   const [mencaoBusca, setMencaoBusca] = useState<string | null>(null);
-
-  const colegasParaMencao = colegas.filter((c) => mencaoBusca !== null && normalizar(c.nome).includes(normalizar(mencaoBusca)));
-
-  function selecionarMencao(nome: string) {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const posicaoCursor = textarea.selectionStart ?? texto.length;
-    const antesDoCursor = texto.slice(0, posicaoCursor);
-    const depoisDoCursor = texto.slice(posicaoCursor);
-    const novoAntes = antesDoCursor.replace(/@([a-zA-ZÀ-ÿ]*)$/, `@${nome} `);
-    const novoTexto = novoAntes + depoisDoCursor;
-    setTexto(novoTexto);
-    setMencaoBusca(null);
-    requestAnimationFrame(() => {
-      textarea.focus();
-      const novaPosicao = novoAntes.length;
-      textarea.selectionStart = textarea.selectionEnd = novaPosicao;
-    });
-  }
+  const [buscaConversa, setBuscaConversa] = useState("");
+  const [respondendoA, setRespondendoA] = useState<Mensagem | null>(null);
+  const [mensagemComMenu, setMensagemComMenu] = useState<string | null>(null);
+  const [seletorReacaoAberto, setSeletorReacaoAberto] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -170,6 +166,11 @@ export default function ChatPage() {
   const nomeDoParticipante = useCallback(
     (authUserId: string) => (authUserId === meuId ? meuNome : colegas.find((c) => c.authUserId === authUserId)?.nome ?? "Alguém"),
     [colegas, meuId, meuNome]
+  );
+
+  const cargoDoParticipante = useCallback(
+    (authUserId: string) => colegas.find((c) => c.authUserId === authUserId)?.cargo ?? null,
+    [colegas]
   );
 
   const carregarCanais = useCallback(async () => {
@@ -188,13 +189,9 @@ export default function ChatPage() {
       .select("canal_id, ultima_leitura, chat_canais ( id, tipo, nome, cliente_id, criado_por )")
       .eq("auth_user_id", user.id);
 
-    const lista = (participacoes ?? [])
-      .map((p) => p.chat_canais)
-      .filter(Boolean) as unknown as Canal[];
-
+    const lista = (participacoes ?? []).map((p) => p.chat_canais).filter(Boolean) as unknown as Canal[];
     const leituraPorCanal = new Map((participacoes ?? []).map((p) => [p.canal_id, p.ultima_leitura as string]));
 
-    // Nomes dos clientes (pra canais tipo "cliente")
     const idsClientes = lista.filter((c) => c.tipo === "cliente" && c.cliente_id).map((c) => c.cliente_id!) as string[];
     let nomesClientes = new Map<string, string>();
     if (idsClientes.length > 0) {
@@ -203,13 +200,13 @@ export default function ChatPage() {
         .select("id, papeis ( pessoas ( nome ) )")
         .in("id", idsClientes);
       nomesClientes = new Map(
-        ((clientesData ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[]).map(
-          (c) => [c.id, c.papeis?.pessoas?.nome ?? "Cliente"]
-        )
+        ((clientesData ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[]).map((c) => [
+          c.id,
+          c.papeis?.pessoas?.nome ?? "Cliente",
+        ])
       );
     }
 
-    // Pra DMs, preciso saber quem é o OUTRO participante
     const idsDm = lista.filter((c) => c.tipo === "dm").map((c) => c.id);
     const outroParticipantePorCanal = new Map<string, string>();
     if (idsDm.length > 0) {
@@ -222,19 +219,25 @@ export default function ChatPage() {
       }
     }
 
-    // Nomes de todos os funcionários com acesso (usado pra DM e pra exibir autor das mensagens)
+    // Nomes/apelidos/cargos de todos os funcionários com acesso
     const { data: func } = await supabase
       .from("funcionarios")
-      .select("auth_user_id, papeis ( pessoas ( nome ) )")
+      .select("auth_user_id, cargo, cargos ( nome ), papeis ( pessoas ( nome, apelido ) )")
       .not("auth_user_id", "is", null);
-    const todosComNome = ((func ?? []) as unknown as { auth_user_id: string; papeis: { pessoas: { nome: string } | null } | null }[]).map(
-      (f) => ({ authUserId: f.auth_user_id, nome: f.papeis?.pessoas?.nome ?? "Colega" })
-    );
+    const todosComNome = ((func ?? []) as unknown as {
+      auth_user_id: string;
+      cargo: string | null;
+      cargos: { nome: string } | null;
+      papeis: { pessoas: { nome: string; apelido: string | null } | null } | null;
+    }[]).map((f) => ({
+      authUserId: f.auth_user_id,
+      nome: f.papeis?.pessoas?.apelido || f.papeis?.pessoas?.nome || "Colega",
+      cargo: f.cargos?.nome ?? f.cargo ?? null,
+    }));
     const listaColegas = todosComNome.filter((c) => c.authUserId !== user.id);
     setColegas(listaColegas);
     setMeuNome(todosComNome.find((c) => c.authUserId === user.id)?.nome ?? "Você");
 
-    // Última mensagem + contagem de não lidas por canal
     const canaisComInfo: CanalComInfo[] = await Promise.all(
       lista.map(async (c) => {
         const { data: ultimasMsgs } = await supabase
@@ -254,9 +257,12 @@ export default function ChatPage() {
           .neq("autor_id", user.id);
 
         let nomeExibicao = c.nome ?? "";
+        let subtitulo: string | null = null;
         if (c.tipo === "dm") {
           const outroId = outroParticipantePorCanal.get(c.id);
-          nomeExibicao = outroId ? listaColegas.find((cl) => cl.authUserId === outroId)?.nome ?? "Colega" : "Colega";
+          const colega = outroId ? listaColegas.find((cl) => cl.authUserId === outroId) : null;
+          nomeExibicao = colega?.nome ?? "Colega";
+          subtitulo = colega?.cargo ?? null;
         } else if (c.tipo === "cliente") {
           nomeExibicao = (c.cliente_id && nomesClientes.get(c.cliente_id)) || c.nome || "Cliente";
         }
@@ -264,6 +270,7 @@ export default function ChatPage() {
         return {
           ...c,
           nomeExibicao,
+          subtitulo,
           ultimaMensagem: ultima?.texto ?? null,
           ultimaMensagemHora: ultima?.created_at ?? null,
           naoLidas: count ?? 0,
@@ -289,14 +296,26 @@ export default function ChatPage() {
     const supabase = createClient();
     const { data } = await supabase
       .from("chat_mensagens")
-      .select("id, canal_id, autor_id, texto, created_at")
+      .select("id, canal_id, autor_id, texto, created_at, resposta_a_id")
       .eq("canal_id", canalId)
       .order("created_at", { ascending: true });
     setMensagens(data ?? []);
+
+    const idsMensagens = (data ?? []).map((m) => m.id);
+    if (idsMensagens.length > 0) {
+      const { data: reacoesData } = await supabase
+        .from("chat_mensagens_reacoes")
+        .select("id, mensagem_id, autor_id, emoji")
+        .in("mensagem_id", idsMensagens);
+      setReacoes(reacoesData ?? []);
+    } else {
+      setReacoes([]);
+    }
   }, []);
 
   async function abrirCanal(canalId: string) {
     setCanalAtivoId(canalId);
+    setRespondendoA(null);
     await carregarMensagens(canalId);
     const supabase = createClient();
     const {
@@ -312,54 +331,56 @@ export default function ChatPage() {
     setCanais((atual) => atual.map((c) => (c.id === canalId ? { ...c, naoLidas: 0 } : c)));
   }
 
-  // Tempo real: qualquer mensagem nova em QUALQUER um dos meus canais —
-  // toca som + atualiza contador se não for do canal aberto (ou se não for minha)
   useEffect(() => {
     if (!meuId) return;
     const supabase = createClient();
     const canal = supabase
       .channel("chat-mensagens-globais")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "chat_mensagens" },
-        (payload) => {
-          const nova = payload.new as Mensagem;
-          const éMinha = nova.autor_id === meuId;
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_mensagens" }, (payload) => {
+        const nova = payload.new as Mensagem;
+        const éMinha = nova.autor_id === meuId;
 
-          setMensagens((atual) => (nova.canal_id === canalAtivoIdRef.current ? [...atual, nova] : atual));
+        setMensagens((atual) => (nova.canal_id === canalAtivoIdRef.current ? [...atual, nova] : atual));
 
-          setCanais((atual) => {
-            const existeCanal = atual.some((c) => c.id === nova.canal_id);
-            if (!existeCanal) {
-              carregarCanais();
-              return atual;
-            }
-            return atual
-              .map((c) =>
-                c.id === nova.canal_id
-                  ? {
-                      ...c,
-                      ultimaMensagem: nova.texto,
-                      ultimaMensagemHora: nova.created_at,
-                      naoLidas: !éMinha && nova.canal_id !== canalAtivoIdRef.current ? c.naoLidas + 1 : c.naoLidas,
-                    }
-                  : c
-              )
-              .sort((a, b) => new Date(b.ultimaMensagemHora ?? 0).getTime() - new Date(a.ultimaMensagemHora ?? 0).getTime());
-          });
+        setCanais((atual) => {
+          const existeCanal = atual.some((c) => c.id === nova.canal_id);
+          if (!existeCanal) {
+            carregarCanais();
+            return atual;
+          }
+          return atual
+            .map((c) =>
+              c.id === nova.canal_id
+                ? {
+                    ...c,
+                    ultimaMensagem: nova.texto,
+                    ultimaMensagemHora: nova.created_at,
+                    naoLidas: !éMinha && nova.canal_id !== canalAtivoIdRef.current ? c.naoLidas + 1 : c.naoLidas,
+                  }
+                : c
+            )
+            .sort((a, b) => new Date(b.ultimaMensagemHora ?? 0).getTime() - new Date(a.ultimaMensagemHora ?? 0).getTime());
+        });
 
-          if (!éMinha) {
-            tocarSom();
-            if (nova.canal_id === canalAtivoIdRef.current) {
-              supabase
-                .from("chat_participantes")
-                .update({ ultima_leitura: new Date().toISOString() })
-                .eq("canal_id", nova.canal_id)
-                .eq("auth_user_id", meuId);
-            }
+        if (!éMinha) {
+          tocarSom();
+          if (nova.canal_id === canalAtivoIdRef.current) {
+            supabase
+              .from("chat_participantes")
+              .update({ ultima_leitura: new Date().toISOString() })
+              .eq("canal_id", nova.canal_id)
+              .eq("auth_user_id", meuId);
           }
         }
-      )
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_mensagens_reacoes" }, (payload) => {
+        const nova = payload.new as Reacao;
+        setReacoes((atual) => (atual.some((r) => r.id === nova.id) ? atual : [...atual, nova]));
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "chat_mensagens_reacoes" }, (payload) => {
+        const antiga = payload.old as { id: string };
+        setReacoes((atual) => atual.filter((r) => r.id !== antiga.id));
+      })
       .subscribe();
 
     return () => {
@@ -381,9 +402,35 @@ export default function ChatPage() {
       canal_id: canalAtivoId,
       autor_id: meuId,
       texto: texto.trim(),
+      resposta_a_id: respondendoA?.id ?? null,
     });
-    if (!error) setTexto("");
+    if (!error) {
+      setTexto("");
+      setRespondendoA(null);
+    }
     setEnviando(false);
+  }
+
+  async function alternarReacao(mensagemId: string, emoji: string) {
+    if (!meuId) return;
+    const supabase = createClient();
+    const existente = reacoes.find((r) => r.mensagem_id === mensagemId && r.autor_id === meuId && r.emoji === emoji);
+    if (existente) {
+      setReacoes((atual) => atual.filter((r) => r.id !== existente.id));
+      await supabase.from("chat_mensagens_reacoes").delete().eq("id", existente.id);
+    } else {
+      const idTemp = `temp-${Date.now()}`;
+      setReacoes((atual) => [...atual, { id: idTemp, mensagem_id: mensagemId, autor_id: meuId, emoji }]);
+      const { data } = await supabase
+        .from("chat_mensagens_reacoes")
+        .insert({ mensagem_id: mensagemId, autor_id: meuId, emoji })
+        .select("id")
+        .single();
+      if (data) {
+        setReacoes((atual) => atual.map((r) => (r.id === idTemp ? { ...r, id: data.id } : r)));
+      }
+    }
+    setSeletorReacaoAberto(null);
   }
 
   function inserirEmoji(emoji: string) {
@@ -402,72 +449,116 @@ export default function ChatPage() {
     });
   }
 
+  const colegasParaMencao = colegas.filter((c) => mencaoBusca !== null && normalizar(c.nome).includes(normalizar(mencaoBusca)));
+
+  function selecionarMencao(nome: string) {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const posicaoCursor = textarea.selectionStart ?? texto.length;
+    const antesDoCursor = texto.slice(0, posicaoCursor);
+    const depoisDoCursor = texto.slice(posicaoCursor);
+    const novoAntes = antesDoCursor.replace(/@([a-zA-ZÀ-ÿ]*)$/, `@${nome} `);
+    const novoTexto = novoAntes + depoisDoCursor;
+    setTexto(novoTexto);
+    setMencaoBusca(null);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = novoAntes.length;
+    });
+  }
+
   const totalNaoLidas = canais.reduce((s, c) => s + c.naoLidas, 0);
+  const canaisFiltrados = canais.filter((c) => normalizar(c.nomeExibicao).includes(normalizar(buscaConversa)));
+  const mensagemRespondida = respondendoA;
 
   return (
-    <main className="h-screen flex">
+    <main className="h-screen flex bg-white">
       <div className="w-80 shrink-0 border-r border-black/5 bg-card flex flex-col">
-        <div className="p-5 border-b border-black/5">
-          <div className="flex items-center justify-between mb-1">
-            <h1 className="text-xl font-extrabold text-ink">Chat</h1>
-            {totalNaoLidas > 0 && (
-              <span className="rounded-full bg-red-500 text-white text-xs font-bold px-2 py-0.5">{totalNaoLidas}</span>
-            )}
+        <div className="p-4 border-b border-black/5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-extrabold text-ink">Chat</h1>
+              {totalNaoLidas > 0 && (
+                <span className="rounded-full bg-red-500 text-white text-xs font-bold px-2 py-0.5">{totalNaoLidas}</span>
+              )}
+            </div>
+            <button
+              onClick={() => setNovaConversaAberta(true)}
+              title="Nova conversa"
+              className="h-8 w-8 rounded-full bg-ink text-white flex items-center justify-center text-lg font-semibold hover:bg-forest transition-colors"
+            >
+              +
+            </button>
           </div>
-          <button
-            onClick={() => setNovaConversaAberta(true)}
-            className="w-full mt-2 rounded-full bg-ink text-white px-4 py-2 text-sm font-semibold hover:bg-forest transition-colors"
-          >
-            + Nova conversa
-          </button>
+          <input
+            value={buscaConversa}
+            onChange={(e) => setBuscaConversa(e.target.value)}
+            placeholder="Buscar conversa..."
+            className="input py-2 text-sm"
+          />
         </div>
 
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <p className="p-4 text-sm text-ink/50">Carregando...</p>
-          ) : canais.length === 0 ? (
-            <p className="p-4 text-sm text-ink/50">Nenhuma conversa ainda. Comece uma nova!</p>
+          ) : canaisFiltrados.length === 0 ? (
+            <p className="p-4 text-sm text-ink/50">
+              {canais.length === 0 ? "Nenhuma conversa ainda. Comece uma nova!" : "Nenhuma conversa encontrada."}
+            </p>
           ) : (
-            canais.map((c) => (
+            canaisFiltrados.map((c) => (
               <button
                 key={c.id}
                 onClick={() => abrirCanal(c.id)}
-                className={`w-full text-left px-4 py-3 border-b border-black/5 hover:bg-surface transition-colors ${
+                className={`w-full text-left px-4 py-3 border-b border-black/5 hover:bg-surface transition-colors flex items-start gap-2.5 ${
                   canalAtivoId === c.id ? "bg-surface" : ""
                 }`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-ink truncate flex items-center gap-1.5">
-                    {c.tipo === "grupo" && "# "}
-                    {c.tipo === "cliente" && "🏢 "}
-                    {c.nomeExibicao}
+                {c.tipo === "dm" ? (
+                  <Avatar nome={c.nomeExibicao} tamanho={32} />
+                ) : (
+                  <span className="h-8 w-8 rounded-full bg-surface flex items-center justify-center text-sm shrink-0">
+                    {c.tipo === "cliente" ? "🏢" : "#"}
                   </span>
-                  {c.naoLidas > 0 && (
-                    <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">
-                      {c.naoLidas}
-                    </span>
-                  )}
-                </div>
-                {c.ultimaMensagem && <p className="text-xs text-ink/50 truncate mt-0.5">{c.ultimaMensagem}</p>}
+                )}
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-ink truncate">{c.nomeExibicao}</span>
+                    {c.naoLidas > 0 && (
+                      <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">
+                        {c.naoLidas}
+                      </span>
+                    )}
+                  </span>
+                  {c.ultimaMensagem && <span className="block text-xs text-ink/50 truncate mt-0.5">{c.ultimaMensagem}</span>}
+                </span>
               </button>
             ))
           )}
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col bg-surface/30">
+      <div className="flex-1 flex flex-col bg-gradient-to-b from-surface/40 to-white">
         {!canalAtivo ? (
           <div className="flex-1 flex items-center justify-center text-sm text-ink/40">
             Escolha uma conversa ao lado, ou comece uma nova.
           </div>
         ) : (
           <>
-            <div className="px-6 py-4 border-b border-black/5 bg-card flex items-center justify-between">
-              <p className="font-bold text-ink flex items-center gap-1.5">
-                {canalAtivo.tipo === "grupo" && "# "}
-                {canalAtivo.tipo === "cliente" && "🏢 "}
-                {canalAtivo.nomeExibicao}
-              </p>
+            <div className="px-6 py-4 border-b border-black/5 bg-card/80 backdrop-blur-sm flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-3">
+                {canalAtivo.tipo === "dm" ? (
+                  <Avatar nome={canalAtivo.nomeExibicao} tamanho={34} />
+                ) : (
+                  <span className="h-8 w-8 rounded-full bg-surface flex items-center justify-center text-sm shrink-0">
+                    {canalAtivo.tipo === "cliente" ? "🏢" : "#"}
+                  </span>
+                )}
+                <div>
+                  <p className="font-bold text-ink leading-tight">{canalAtivo.nomeExibicao}</p>
+                  {canalAtivo.subtitulo && <p className="text-xs text-ink/40">{canalAtivo.subtitulo}</p>}
+                </div>
+              </div>
               {canalAtivo.tipo !== "dm" && (
                 <button
                   onClick={() => setAdicionarParticipanteAberto(true)}
@@ -484,7 +575,15 @@ export default function ChatPage() {
                 const novoDia = !anterior || formatarDiaSeparador(anterior.created_at) !== formatarDiaSeparador(m.created_at);
                 const mesmoAutorSeguido = anterior && anterior.autor_id === m.autor_id && !novoDia;
                 const nomeAutor = nomeDoParticipante(m.autor_id);
+                const cargoAutor = m.autor_id === meuId ? null : cargoDoParticipante(m.autor_id);
                 const todosOsNomes = [meuNome, ...colegas.map((c) => c.nome)];
+                const original = m.resposta_a_id ? mensagens.find((x) => x.id === m.resposta_a_id) : null;
+                const reacoesDaMensagem = reacoes.filter((r) => r.mensagem_id === m.id);
+                const reacoesAgrupadas = new Map<string, string[]>();
+                for (const r of reacoesDaMensagem) {
+                  reacoesAgrupadas.set(r.emoji, [...(reacoesAgrupadas.get(r.emoji) ?? []), r.autor_id]);
+                }
+
                 return (
                   <div key={m.id}>
                     {novoDia && (
@@ -494,27 +593,115 @@ export default function ChatPage() {
                         </span>
                       </div>
                     )}
-                    <div className={`flex items-start gap-3 px-2 py-1 rounded-xl hover:bg-white/60 ${mesmoAutorSeguido ? "" : "mt-3"}`}>
+                    <div
+                      className={`group relative flex items-start gap-3 px-3 py-1 rounded-xl hover:bg-surface/60 transition-colors ${
+                        mesmoAutorSeguido ? "" : "mt-3"
+                      }`}
+                      onMouseEnter={() => setMensagemComMenu(m.id)}
+                      onMouseLeave={() => {
+                        setMensagemComMenu(null);
+                        setSeletorReacaoAberto(null);
+                      }}
+                    >
                       <div className="w-9 shrink-0">{!mesmoAutorSeguido && <Avatar nome={nomeAutor} />}</div>
                       <div className="flex-1 min-w-0">
                         {!mesmoAutorSeguido && (
                           <div className="flex items-baseline gap-2 mb-0.5">
                             <span className="text-sm font-bold text-ink">{nomeAutor}</span>
+                            {cargoAutor && <span className="text-[11px] text-ink/40">{cargoAutor}</span>}
                             <span className="text-[11px] text-ink/40">{formatarHora(m.created_at)}</span>
                           </div>
                         )}
+
+                        {original && (
+                          <div className="mb-1 pl-2.5 border-l-2 border-forest/30 text-xs text-ink/50 flex items-center gap-1">
+                            <span className="font-semibold">{nomeDoParticipante(original.autor_id)}:</span>
+                            <span className="truncate">{original.texto}</span>
+                          </div>
+                        )}
+
                         <p className="text-sm text-ink whitespace-pre-wrap break-words leading-relaxed">
                           {renderizarMensagem(m.texto, todosOsNomes)}
                         </p>
+
+                        {reacoesAgrupadas.size > 0 && (
+                          <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                            {[...reacoesAgrupadas.entries()].map(([emoji, autores]) => (
+                              <button
+                                key={emoji}
+                                onClick={() => alternarReacao(m.id, emoji)}
+                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border transition-colors ${
+                                  autores.includes(meuId ?? "")
+                                    ? "bg-mint border-forest/30 text-forest font-semibold"
+                                    : "bg-surface border-black/5 text-ink/60 hover:border-black/20"
+                                }`}
+                              >
+                                {emoji} {autores.length}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
+
+                      {mensagemComMenu === m.id && (
+                        <div className="absolute -top-3 right-3 flex items-center gap-0.5 bg-white border border-black/10 rounded-full shadow-md px-1 py-1">
+                          <div className="relative">
+                            <button
+                              onClick={() => setSeletorReacaoAberto(seletorReacaoAberto === m.id ? null : m.id)}
+                              className="h-7 w-7 rounded-full hover:bg-surface flex items-center justify-center text-sm"
+                              title="Reagir"
+                            >
+                              🙂
+                            </button>
+                            {seletorReacaoAberto === m.id && (
+                              <div className="absolute z-20 top-8 right-0 bg-white border border-black/10 rounded-full shadow-lg px-2 py-1.5 flex items-center gap-1">
+                                {REACOES_RAPIDAS.map((emoji) => (
+                                  <button
+                                    key={emoji}
+                                    onClick={() => alternarReacao(m.id, emoji)}
+                                    className="text-base hover:scale-125 transition-transform"
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => {
+                              setRespondendoA(m);
+                              textareaRef.current?.focus();
+                            }}
+                            className="h-7 w-7 rounded-full hover:bg-surface flex items-center justify-center text-ink/50 text-sm"
+                            title="Responder"
+                          >
+                            ↩
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            <form onSubmit={enviarMensagem} className="p-4 border-t border-black/5 bg-card flex items-end gap-2">
-              <div className="relative">
+            {mensagemRespondida && (
+              <div className="px-6 pt-3 flex items-center justify-between bg-card">
+                <div className="flex items-center gap-2 text-xs text-ink/60 border-l-2 border-forest pl-2.5">
+                  <span>
+                    Respondendo <span className="font-semibold">{nomeDoParticipante(mensagemRespondida.autor_id)}</span>:{" "}
+                    {mensagemRespondida.texto.slice(0, 60)}
+                    {mensagemRespondida.texto.length > 60 ? "..." : ""}
+                  </span>
+                </div>
+                <button onClick={() => setRespondendoA(null)} className="text-ink/40 hover:text-ink text-xs px-2">
+                  ✕
+                </button>
+              </div>
+            )}
+
+            <form onSubmit={enviarMensagem} className="p-4 border-t border-black/5 bg-card flex items-center gap-2">
+              <div className="relative shrink-0">
                 <button
                   type="button"
                   onClick={() => setMostrarEmoji((v) => !v)}
@@ -561,7 +748,7 @@ export default function ChatPage() {
                   }}
                   rows={1}
                   placeholder="Escreva uma mensagem... (** pra negrito, @ pra mencionar)"
-                  className="input resize-none w-full"
+                  className="input resize-none w-full !py-2.5"
                 />
                 {mencaoBusca !== null && colegasParaMencao.length > 0 && (
                   <div className="absolute z-20 bottom-14 left-0 w-64 rounded-2xl bg-white border border-black/10 shadow-lg py-1 max-h-48 overflow-y-auto">
@@ -581,7 +768,7 @@ export default function ChatPage() {
               <button
                 type="submit"
                 disabled={enviando || !texto.trim()}
-                className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+                className="shrink-0 rounded-full bg-ink text-white px-5 h-10 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
               >
                 Enviar
               </button>
@@ -742,7 +929,6 @@ function NovaConversaModal({
       return;
     }
 
-    // Pra DM, reaproveita o canal se já existir entre essas duas pessoas
     if (tipo === "dm") {
       const outroId = selecionados[0];
       const { data: meusCanais } = await supabase
@@ -784,9 +970,7 @@ function NovaConversaModal({
     }
 
     const participantes = [user.id, ...(tipo === "cliente" ? [] : selecionados)];
-    await supabase
-      .from("chat_participantes")
-      .insert(participantes.map((id) => ({ canal_id: novoCanal.id, auth_user_id: id })));
+    await supabase.from("chat_participantes").insert(participantes.map((id) => ({ canal_id: novoCanal.id, auth_user_id: id })));
 
     setSalvando(false);
     onCriado(novoCanal.id);
@@ -841,12 +1025,7 @@ function NovaConversaModal({
             <span className="block text-sm font-medium text-ink/70 mb-1">
               {tipo === "dm" ? "Com quem?" : "Participantes (opcional — dá pra adicionar depois)"}
             </span>
-            <input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              className="input mb-2"
-              placeholder="Buscar colega..."
-            />
+            <input value={busca} onChange={(e) => setBusca(e.target.value)} className="input mb-2" placeholder="Buscar colega..." />
             <div className="max-h-48 overflow-y-auto rounded-2xl border border-black/5">
               {colegasFiltrados.length === 0 ? (
                 <p className="p-3 text-sm text-ink/50">Nenhum colega encontrado.</p>
@@ -855,14 +1034,13 @@ function NovaConversaModal({
                   <button
                     key={c.authUserId}
                     type="button"
-                    onClick={() =>
-                      tipo === "dm" ? setSelecionados([c.authUserId]) : alternarSelecionado(c.authUserId)
-                    }
-                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface border-b border-black/5 last:border-0 ${
+                    onClick={() => (tipo === "dm" ? setSelecionados([c.authUserId]) : alternarSelecionado(c.authUserId))}
+                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface border-b border-black/5 last:border-0 flex items-center justify-between ${
                       selecionados.includes(c.authUserId) ? "bg-mint font-semibold" : ""
                     }`}
                   >
-                    {c.nome}
+                    <span>{c.nome}</span>
+                    {c.cargo && <span className="text-xs text-ink/40">{c.cargo}</span>}
                   </button>
                 ))
               )}
