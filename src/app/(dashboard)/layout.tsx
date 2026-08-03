@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Users, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, ListTree, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2 } from "lucide-react";
+import { Users, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, ListTree, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -17,12 +17,14 @@ interface Grupo {
   icon: React.ReactNode;
   href?: string;
   itens?: SubItem[];
+  areaSlug?: string;
 }
 
 const MENU: Grupo[] = [
   {
     label: "Conteúdo",
     icon: <Calendar size={18} />,
+    areaSlug: "conteudo",
     itens: [
       { href: "/conteudo/calendario", label: "Calendário", icon: <CalendarDays size={15} /> },
       { href: "/conteudo/calendario/kanban", label: "Kanban", icon: <ListTree size={15} /> },
@@ -31,6 +33,7 @@ const MENU: Grupo[] = [
   {
     label: "Contratos",
     icon: <FileText size={18} />,
+    areaSlug: "contratos",
     itens: [
       { href: "/contratos/analise", label: "Análise", icon: <BarChart3 size={15} /> },
       { href: "/contratos/pontuais", label: "Pontuais", icon: <Package size={15} /> },
@@ -40,6 +43,7 @@ const MENU: Grupo[] = [
   {
     label: "Financeiro",
     icon: <DollarSign size={18} />,
+    areaSlug: "financeiro",
     itens: [
       { href: "/financeiro/analise", label: "Análise", icon: <BarChart3 size={15} /> },
       { href: "/financeiro/bancos", label: "Bancos", icon: <Landmark size={15} /> },
@@ -52,6 +56,7 @@ const MENU: Grupo[] = [
   {
     label: "Pessoas",
     icon: <Users size={18} />,
+    areaSlug: "pessoas",
     itens: [
       { href: "/pessoas/clientes", label: "Pessoas", icon: <UserCheck size={15} /> },
       { href: "/pessoas/funcionarios", label: "Funcionários", icon: <Briefcase size={15} /> },
@@ -61,10 +66,12 @@ const MENU: Grupo[] = [
   {
     label: "Configurações",
     icon: <Settings size={18} />,
+    areaSlug: "configuracoes",
     itens: [
       { href: "/configuracoes/cargos", label: "Cargos", icon: <Briefcase size={15} /> },
       { href: "/configuracoes/motivos-encerramento", label: "Motivos de encerramento", icon: <AlertTriangle size={15} /> },
       { href: "/configuracoes/origens", label: "Origens", icon: <Compass size={15} /> },
+      { href: "/configuracoes/perfis-acesso", label: "Perfis de acesso", icon: <ShieldCheck size={15} /> },
       { href: "/configuracoes/planos-conta", label: "Planos de conta", icon: <ListTree size={15} /> },
       { href: "/configuracoes/redes-sociais", label: "Redes sociais", icon: <Share2 size={15} /> },
       { href: "/configuracoes/segmentos", label: "Segmentos", icon: <Building2 size={15} /> },
@@ -99,6 +106,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const expandidoVisual = !colapsado || hoverExpandido;
+
+  const [permissoes, setPermissoes] = useState<Record<string, "nenhum" | "visualizar" | "completo"> | null>(null);
+
+  useEffect(() => {
+    async function carregarPermissoes() {
+      const supabase = createClient();
+      const areas = ["financeiro", "contratos", "conteudo", "pessoas", "configuracoes"];
+      const resultados = await Promise.all(areas.map((slug) => supabase.rpc("meu_nivel_acesso", { area_slug: slug })));
+      const mapa: Record<string, "nenhum" | "visualizar" | "completo"> = {};
+      areas.forEach((slug, i) => {
+        mapa[slug] = (resultados[i].data as "nenhum" | "visualizar" | "completo" | null) ?? "completo";
+      });
+      setPermissoes(mapa);
+    }
+    carregarPermissoes();
+  }, []);
+
+  const menuVisivel = MENU.filter((grupo) => !grupo.areaSlug || !permissoes || permissoes[grupo.areaSlug] !== "nenhum");
 
   const [bancos, setBancos] = useState<{ id: string; nome: string; saldo_inicial: number }[]>([]);
   const [lancamentosPagos, setLancamentosPagos] = useState<
@@ -183,7 +208,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
 
         <nav className="flex-1 px-3 space-y-1">
-          {MENU.map((grupo) => {
+          {menuVisivel.map((grupo) => {
             if (grupo.href) {
               const ativo = pathname?.startsWith(grupo.href);
               return (

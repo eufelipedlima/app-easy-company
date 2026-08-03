@@ -48,6 +48,10 @@ interface Funcionario {
   tipo_contrato: "CLT" | "PJ" | null;
   salario: number;
   data_admissao: string | null;
+  tem_acesso_sistema: boolean;
+  email_acesso: string | null;
+  perfil_acesso_id: string | null;
+  auth_user_id: string | null;
   papeis: { pessoas: { nome: string; pix: string | null } | null } | null;
   cargos: { nome: string } | null;
 }
@@ -125,7 +129,7 @@ export default function FuncionariosPage() {
     const { data: func } = await supabase
       .from("funcionarios")
       .select(
-        "id, papel_id, cargo, cargo_id, tipo_contrato, salario, data_admissao, papeis ( pessoas ( nome, pix ) ), cargos ( nome )"
+        "id, papel_id, cargo, cargo_id, tipo_contrato, salario, data_admissao, tem_acesso_sistema, email_acesso, perfil_acesso_id, auth_user_id, papeis ( pessoas ( nome, pix ) ), cargos ( nome )"
       )
       .eq("ativo", true)
       .order("created_at", { ascending: false });
@@ -403,6 +407,84 @@ function DetalheFuncionario({
   const [salvando, setSalvando] = useState(false);
 
   const [salarioAtual, setSalarioAtual] = useState(funcionario.salario);
+  const [perfisAcesso, setPerfisAcesso] = useState<{ id: string; nome: string }[]>([]);
+  const [perfilSelecionado, setPerfilSelecionado] = useState(funcionario.perfil_acesso_id ?? "");
+  const [emailConvite, setEmailConvite] = useState(funcionario.email_acesso ?? "");
+  const [enviandoConvite, setEnviandoConvite] = useState(false);
+  const [vinculandoMinhaConta, setVinculandoMinhaConta] = useState(false);
+  const [erroAcesso, setErroAcesso] = useState<string | null>(null);
+  const [sucessoAcesso, setSucessoAcesso] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function carregarPerfis() {
+      const supabase = createClient();
+      const { data } = await supabase.from("perfis_acesso").select("id, nome").order("ordem");
+      setPerfisAcesso(data ?? []);
+    }
+    carregarPerfis();
+  }, []);
+
+  async function vincularMinhaConta() {
+    setVinculandoMinhaConta(true);
+    setErroAcesso(null);
+    setSucessoAcesso(null);
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setErroAcesso("Não foi possível identificar sua sessão atual.");
+      setVinculandoMinhaConta(false);
+      return;
+    }
+    const { error } = await supabase
+      .from("funcionarios")
+      .update({
+        auth_user_id: user.id,
+        email_acesso: user.email,
+        tem_acesso_sistema: true,
+        perfil_acesso_id: perfilSelecionado || null,
+      })
+      .eq("id", funcionario.id);
+    setVinculandoMinhaConta(false);
+    if (error) {
+      setErroAcesso(error.message);
+    } else {
+      setSucessoAcesso("Sua conta atual foi vinculada a este funcionário!");
+      onChange();
+    }
+  }
+
+  async function enviarConvite() {
+    if (!emailConvite.trim()) {
+      setErroAcesso("Preencha o e-mail.");
+      return;
+    }
+    setEnviandoConvite(true);
+    setErroAcesso(null);
+    setSucessoAcesso(null);
+    try {
+      const res = await fetch("/api/usuarios/convidar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: emailConvite.trim(),
+          funcionarioId: funcionario.id,
+          perfilAcessoId: perfilSelecionado || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErroAcesso(data.error ?? "Não foi possível enviar o convite.");
+      } else {
+        setSucessoAcesso("Convite enviado! A pessoa vai receber um e-mail pra criar a senha.");
+        onChange();
+      }
+    } catch {
+      setErroAcesso("Não foi possível enviar o convite.");
+    }
+    setEnviandoConvite(false);
+  }
   const [historico, setHistorico] = useState<HistoricoSalario[]>([]);
   const [painelReajusteAberto, setPainelReajusteAberto] = useState(false);
   const [tipoReajuste, setTipoReajuste] = useState<"aumento" | "reajuste">("reajuste");
@@ -532,6 +614,66 @@ function DetalheFuncionario({
           <button onClick={onClose} className="text-ink/40 hover:text-ink text-lg leading-none">
             ✕
           </button>
+        </div>
+
+        <div className="rounded-2xl bg-card p-4 mb-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-bold text-ink">Acesso ao sistema</p>
+            {funcionario.auth_user_id ? (
+              <span className="text-xs font-semibold rounded-full px-2.5 py-0.5 bg-mint text-forest">Vinculado</span>
+            ) : (
+              <span className="text-xs font-semibold rounded-full px-2.5 py-0.5 bg-black/5 text-ink/40">
+                Sem acesso ainda
+              </span>
+            )}
+          </div>
+
+          {funcionario.email_acesso && (
+            <p className="text-xs text-ink/50">
+              Login: <span className="font-medium text-ink">{funcionario.email_acesso}</span>
+            </p>
+          )}
+
+          <label className="block">
+            <span className="block text-xs font-medium text-ink/60 mb-1">Perfil de acesso</span>
+            <select value={perfilSelecionado} onChange={(e) => setPerfilSelecionado(e.target.value)} className="input py-1.5 text-sm">
+              <option value="">Sem perfil</option>
+              {perfisAcesso.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {!funcionario.auth_user_id && (
+            <button
+              onClick={vincularMinhaConta}
+              disabled={vinculandoMinhaConta}
+              className="w-full rounded-full border-2 border-forest text-forest px-4 py-2 text-xs font-bold hover:bg-mint transition-colors disabled:opacity-50"
+            >
+              {vinculandoMinhaConta ? "Vinculando..." : "Sou eu — vincular minha conta atual"}
+            </button>
+          )}
+
+          <div className="flex items-center gap-2">
+            <input
+              value={emailConvite}
+              onChange={(e) => setEmailConvite(e.target.value)}
+              placeholder="E-mail da pessoa..."
+              className="input py-1.5 text-sm flex-1"
+            />
+            <button
+              onClick={enviarConvite}
+              disabled={enviandoConvite}
+              className="shrink-0 rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors disabled:opacity-50"
+            >
+              {enviandoConvite ? "Enviando..." : "Convidar"}
+            </button>
+          </div>
+
+          {erroAcesso && <p className="text-xs text-red-600">{erroAcesso}</p>}
+          {sucessoAcesso && <p className="text-xs text-forest font-semibold">{sucessoAcesso}</p>}
         </div>
 
         <p className="text-xs text-ink/50 bg-card rounded-2xl px-3 py-2 mb-4">
