@@ -17,32 +17,22 @@ const ABAS = [
 
 export default function ConfiguracoesLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const naPaginaInicial = pathname === "/configuracoes";
+  const abaAtual = ABAS.find((a) => pathname?.startsWith(a.href));
+
+  if (naPaginaInicial) {
+    return <main className="mx-auto max-w-3xl px-6 py-10">{children}</main>;
+  }
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
-      <div className="mb-8">
-        <h1 className="text-2xl font-extrabold text-ink mb-1">Configurações</h1>
-        <p className="text-sm text-ink/60 mb-4">
-          Campos cadastráveis usados em várias partes do sistema — o que você cadastrar aqui já
-          aparece automaticamente nos formulários que usam esses campos.
-        </p>
-        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
-          {ABAS.map((aba) => {
-            const ativo = pathname?.startsWith(aba.href);
-            return (
-              <Link
-                key={aba.href}
-                href={aba.href}
-                className={`rounded-full px-5 py-2 text-sm font-semibold transition-colors ${
-                  ativo ? "bg-ink text-white" : "text-ink/60 hover:text-ink"
-                }`}
-              >
-                {aba.label}
-              </Link>
-            );
-          })}
-        </div>
-      </div>
+      <Link
+        href="/configuracoes"
+        className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink/50 hover:text-ink mb-5"
+      >
+        ← Configurações
+      </Link>
+      {abaAtual && <h1 className="text-2xl font-extrabold text-ink mb-6">{abaAtual.label}</h1>}
       {children}
     </main>
   );

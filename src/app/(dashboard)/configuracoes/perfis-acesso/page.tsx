@@ -33,6 +33,7 @@ const NIVEL_COR: Record<Nivel, string> = {
 export default function PerfisAcessoPage() {
   const [areas, setAreas] = useState<Area[]>([]);
   const [perfis, setPerfis] = useState<Perfil[]>([]);
+  const [perfilAberto, setPerfilAberto] = useState<string | null>(null);
   const [matriz, setMatriz] = useState<Record<string, Record<string, Nivel>>>({});
   const [loading, setLoading] = useState(true);
   const [novoNome, setNovoNome] = useState("");
@@ -123,40 +124,63 @@ export default function PerfisAcessoPage() {
       ) : perfis.length === 0 ? (
         <p className="text-sm text-ink/50">Nenhum perfil cadastrado ainda.</p>
       ) : (
-        <div className="space-y-6">
-          {perfis.map((perfil) => (
-            <div key={perfil.id} className="rounded-3xl bg-card border border-black/5 overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-3 bg-surface">
-                <p className="font-bold text-ink">{perfil.nome}</p>
-                <button onClick={() => removerPerfil(perfil.id)} className="text-xs font-semibold text-ink/40 hover:text-red-600">
-                  Remover perfil
+        <div className="space-y-3">
+          {perfis.map((perfil) => {
+            const aberto = perfilAberto === perfil.id;
+            const comAcesso = areas.filter((a) => (matriz[perfil.id]?.[a.id] ?? "nenhum") !== "nenhum").length;
+            return (
+              <div key={perfil.id} className="rounded-3xl bg-card border border-black/5 overflow-hidden">
+                <button
+                  onClick={() => setPerfilAberto(aberto ? null : perfil.id)}
+                  className="w-full flex items-center justify-between px-5 py-4 bg-surface text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`text-ink/40 transition-transform ${aberto ? "rotate-90" : ""}`}>▶</span>
+                    <p className="font-bold text-ink">{perfil.nome}</p>
+                  </div>
+                  <span className="text-xs text-ink/50">
+                    {comAcesso === 0 ? "Sem acesso a nada" : `Acesso em ${comAcesso} de ${areas.length} áreas`}
+                  </span>
                 </button>
-              </div>
-              <div className="divide-y divide-black/5">
-                {areas.map((area) => {
-                  const nivelAtual = matriz[perfil.id]?.[area.id] ?? "nenhum";
-                  return (
-                    <div key={area.id} className="flex items-center justify-between px-5 py-3">
-                      <span className="text-sm font-medium text-ink">{area.nome}</span>
-                      <div className="flex items-center gap-1 rounded-full bg-surface p-1">
-                        {(["nenhum", "visualizar", "completo"] as Nivel[]).map((nivel) => (
-                          <button
-                            key={nivel}
-                            onClick={() => mudarNivel(perfil.id, area.id, nivel)}
-                            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                              nivelAtual === nivel ? NIVEL_COR[nivel] : "text-ink/40 hover:text-ink"
-                            }`}
-                          >
-                            {NIVEL_LABEL[nivel]}
-                          </button>
-                        ))}
-                      </div>
+
+                {aberto && (
+                  <div>
+                    <div className="divide-y divide-black/5">
+                      {areas.map((area) => {
+                        const nivelAtual = matriz[perfil.id]?.[area.id] ?? "nenhum";
+                        return (
+                          <div key={area.id} className="flex items-center justify-between px-5 py-3">
+                            <span className="text-sm font-medium text-ink">{area.nome}</span>
+                            <div className="flex items-center gap-1 rounded-full bg-surface p-1">
+                              {(["nenhum", "visualizar", "completo"] as Nivel[]).map((nivel) => (
+                                <button
+                                  key={nivel}
+                                  onClick={() => mudarNivel(perfil.id, area.id, nivel)}
+                                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                    nivelAtual === nivel ? NIVEL_COR[nivel] : "text-ink/40 hover:text-ink"
+                                  }`}
+                                >
+                                  {NIVEL_LABEL[nivel]}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                    <div className="px-5 py-3 border-t border-black/5">
+                      <button
+                        onClick={() => removerPerfil(perfil.id)}
+                        className="text-xs font-semibold text-ink/40 hover:text-red-600"
+                      >
+                        Remover perfil
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
