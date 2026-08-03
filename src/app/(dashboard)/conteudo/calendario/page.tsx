@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
 import {
@@ -42,10 +42,35 @@ interface Post {
   objetivo: "atracao" | "educacao" | "conversao" | null;
   formato: "estatico" | "carrossel" | "video" | null;
   status_id: string;
+  responsavel_id: string | null;
   observacoes_internas: string | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
+  funcionarios: { papeis: { pessoas: { nome: string } | null } | null } | null;
   posts_conteudo_midias: Midia[];
   status_conteudo: { nome: string; cor: string } | null;
+}
+
+interface CamposVisiveis {
+  titulo: boolean;
+  cliente: boolean;
+  formato: boolean;
+  responsavel: boolean;
+}
+
+const CAMPOS_VISIVEIS_PADRAO: CamposVisiveis = { titulo: true, cliente: true, formato: true, responsavel: true };
+
+function carregarCamposVisiveis(): CamposVisiveis {
+  if (typeof window === "undefined") return CAMPOS_VISIVEIS_PADRAO;
+  try {
+    const salvo = localStorage.getItem("conteudo-campos-visiveis");
+    return salvo ? { ...CAMPOS_VISIVEIS_PADRAO, ...JSON.parse(salvo) } : CAMPOS_VISIVEIS_PADRAO;
+  } catch {
+    return CAMPOS_VISIVEIS_PADRAO;
+  }
+}
+
+function nomeResponsavel(p: Post) {
+  return p.funcionarios?.papeis?.pessoas?.nome ?? null;
 }
 
 interface ClienteOpcao {
@@ -126,7 +151,7 @@ function nomeCliente(p: Post) {
   return p.clientes?.papeis?.pessoas?.nome ?? "—";
 }
 
-function CalendarioConteudoConteudo() {
+export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "calendario" | "kanban" }) {
   const hoje = new Date();
   const [mes, setMes] = useState(hoje.getMonth());
   const [ano, setAno] = useState(hoje.getFullYear());
@@ -138,8 +163,22 @@ function CalendarioConteudoConteudo() {
   const [editando, setEditando] = useState<Post | null>(null);
   const [novoEmData, setNovoEmData] = useState<string | null>(null);
   const [linkPublicoAberto, setLinkPublicoAberto] = useState(false);
+  const [camposVisiveis, setCamposVisiveis] = useState<CamposVisiveis>(CAMPOS_VISIVEIS_PADRAO);
+  const [painelCamposAberto, setPainelCamposAberto] = useState(false);
+
+  useEffect(() => {
+    setCamposVisiveis(carregarCamposVisiveis());
+  }, []);
+
+  function alternarCampoVisivel(campo: keyof CamposVisiveis) {
+    setCamposVisiveis((atual) => {
+      const novo = { ...atual, [campo]: !atual[campo] };
+      localStorage.setItem("conteudo-campos-visiveis", JSON.stringify(novo));
+      return novo;
+    });
+  }
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
-  const [visualizacao, setVisualizacao] = useState<"calendario" | "kanban">("calendario");
+  const [visualizacao, setVisualizacao] = useState<"calendario" | "kanban">(viewInicial);
   const [postsKanban, setPostsKanban] = useState<Post[]>([]);
   const [loadingKanban, setLoadingKanban] = useState(false);
   const [mesKanban, setMesKanban] = useState(hoje.getMonth());
@@ -167,8 +206,9 @@ function CalendarioConteudoConteudo() {
     let query = supabase
       .from("posts_conteudo")
       .select(
-        `id, cliente_id, titulo, data_publicacao, hora_publicacao, legenda, objetivo, formato, status_id, observacoes_internas,
+        `id, cliente_id, titulo, data_publicacao, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, observacoes_internas,
          clientes ( papeis ( pessoas ( nome ) ) ),
+         funcionarios ( papeis ( pessoas ( nome ) ) ),
          posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
          status_conteudo ( nome, cor )`
       )
@@ -208,8 +248,9 @@ function CalendarioConteudoConteudo() {
     let query = supabase
       .from("posts_conteudo")
       .select(
-        `id, cliente_id, titulo, data_publicacao, hora_publicacao, legenda, objetivo, formato, status_id, observacoes_internas,
+        `id, cliente_id, titulo, data_publicacao, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, observacoes_internas,
          clientes ( papeis ( pessoas ( nome ) ) ),
+         funcionarios ( papeis ( pessoas ( nome ) ) ),
          posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
          status_conteudo ( nome, cor )`
       )
@@ -227,10 +268,7 @@ function CalendarioConteudoConteudo() {
     setLoading(false);
   }, [mes, ano, clienteFiltroId]);
 
-  const searchParams = useSearchParams();
-  useEffect(() => {
-    setVisualizacao(searchParams.get("view") === "kanban" ? "kanban" : "calendario");
-  }, [searchParams]);
+  const router = useRouter();
 
   useEffect(() => {
     carregarClientes();
@@ -276,7 +314,7 @@ function CalendarioConteudoConteudo() {
 
         <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner shrink-0">
           <button
-            onClick={() => setVisualizacao("calendario")}
+            onClick={() => router.push("/conteudo/calendario")}
             className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
               visualizacao === "calendario" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
             }`}
@@ -284,13 +322,49 @@ function CalendarioConteudoConteudo() {
             Calendário
           </button>
           <button
-            onClick={() => setVisualizacao("kanban")}
+            onClick={() => router.push("/conteudo/calendario/kanban")}
             className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
               visualizacao === "kanban" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
             }`}
           >
             Kanban
           </button>
+        </div>
+
+        <div className="relative shrink-0">
+          <button
+            onClick={() => setPainelCamposAberto((v) => !v)}
+            className="rounded-full h-10 w-10 flex items-center justify-center border-2 border-black/10 text-ink/50 hover:text-ink hover:bg-surface transition-colors"
+            title="Escolher quais campos aparecem nos cards"
+          >
+            ⚙
+          </button>
+          {painelCamposAberto && (
+            <div
+              className="absolute z-20 right-0 mt-1 w-60 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+              onMouseLeave={() => setPainelCamposAberto(false)}
+            >
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2 px-1">Campos visíveis</p>
+              {(
+                [
+                  ["titulo", "Título"],
+                  ["cliente", "Cliente"],
+                  ["formato", "Formato"],
+                  ["responsavel", "Responsável"],
+                ] as [keyof CamposVisiveis, string][]
+              ).map(([campo, label]) => (
+                <label key={campo} className="flex items-center gap-2 px-1 py-1.5 text-sm text-ink cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={camposVisiveis[campo]}
+                    onChange={() => alternarCampoVisivel(campo)}
+                    className="h-4 w-4 rounded accent-forest"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -408,17 +482,34 @@ function CalendarioConteudoConteudo() {
                   )}
                 </div>
                 <div className="space-y-1">
-                  {postsDoDia.slice(0, 3).map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => setEditando(p)}
-                      className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
-                    >
-                      {!clienteFiltroId && <span className="font-semibold">{nomeCliente(p)}</span>}
-                      {!clienteFiltroId && p.hora_publicacao && " · "}
-                      {p.hora_publicacao?.slice(0, 5)}
-                    </button>
-                  ))}
+                  {postsDoDia.slice(0, 3).map((p) => {
+                    const mostrarTitulo = camposVisiveis.titulo && p.titulo;
+                    const mostrarCliente = camposVisiveis.cliente && !clienteFiltroId;
+                    const mostrarFormato = camposVisiveis.formato && p.formato;
+                    const mostrarResponsavel = camposVisiveis.responsavel && nomeResponsavel(p);
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => setEditando(p)}
+                        className={`w-full text-left rounded-lg px-1.5 py-1 leading-tight ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
+                      >
+                        <p className="text-[11px] font-semibold truncate">
+                          {mostrarTitulo ? p.titulo : p.hora_publicacao?.slice(0, 5) || "Post"}
+                        </p>
+                        {(mostrarCliente || mostrarFormato || mostrarResponsavel) && (
+                          <p className="text-[10px] opacity-70 truncate">
+                            {[
+                              mostrarCliente ? nomeCliente(p) : null,
+                              mostrarFormato ? FORMATO_CONFIG[p.formato!]?.label : null,
+                              mostrarResponsavel ? nomeResponsavel(p) : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        )}
+                      </button>
+                    );
+                  })}
                   {postsDoDia.length > 3 && <p className="text-[10px] text-ink/40 px-1.5">+{postsDoDia.length - 3} mais</p>}
                 </div>
               </div>
@@ -492,6 +583,7 @@ function CalendarioConteudoConteudo() {
                 }
                 onMoverCard={moverCardStatus}
                 onAbrirCard={setEditando}
+                camposVisiveis={camposVisiveis}
               />
             )}
           </div>
@@ -523,11 +615,7 @@ function CalendarioConteudoConteudo() {
 }
 
 export default function CalendarioConteudoPage() {
-  return (
-    <Suspense fallback={<main className="mx-auto max-w-6xl px-6 py-10 text-sm text-ink/50">Carregando...</main>}>
-      <CalendarioConteudoConteudo />
-    </Suspense>
-  );
+  return <CalendarioConteudoConteudo viewInicial="calendario" />;
 }
 
 function StatusSelect({
@@ -640,6 +728,9 @@ function PostModal({
 
   const [clientes, setClientes] = useState<ClienteOpcao[]>([]);
   const [clienteId, setClienteId] = useState(post?.cliente_id ?? clienteFixoId ?? "");
+  const [titulo, setTitulo] = useState(post?.titulo ?? "");
+  const [funcionarios, setFuncionarios] = useState<ClienteOpcao[]>([]);
+  const [responsavelId, setResponsavelId] = useState(post?.responsavel_id ?? "");
   const [dataPublicacao, setDataPublicacao] = useState(post?.data_publicacao ?? dataInicial ?? "");
   const [horaPublicacao, setHoraPublicacao] = useState(post?.hora_publicacao?.slice(0, 5) ?? "");
   const [legenda, setLegenda] = useState(post?.legenda ?? "");
@@ -667,6 +758,19 @@ function PostModal({
       setClientes(lista);
     }
     carregarClientes();
+
+    async function carregarFuncionarios() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("funcionarios")
+        .select("id, papeis ( pessoas ( nome ) )")
+        .eq("ativo", true);
+      const lista = ((data ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[])
+        .map((f) => ({ id: f.id, nome: f.papeis?.pessoas?.nome ?? "—" }))
+        .sort((a, b) => a.nome.localeCompare(b.nome));
+      setFuncionarios(lista);
+    }
+    carregarFuncionarios();
 
     if (post) {
       async function carregarComentarios() {
@@ -744,6 +848,8 @@ function PostModal({
       const supabase = createClient();
       const payload = {
         cliente_id: clienteId,
+        titulo: titulo.trim() || null,
+        responsavel_id: responsavelId || null,
         data_publicacao: dataPublicacao,
         hora_publicacao: horaPublicacao || null,
         legenda: legenda || null,
@@ -818,16 +924,39 @@ function PostModal({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="block">
-            <span className="block text-sm font-medium text-ink/70 mb-1">Cliente *</span>
-            <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="input" required>
-              <option value="">Selecione...</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
+            <span className="block text-sm font-medium text-ink/70 mb-1">Título</span>
+            <input
+              value={titulo}
+              onChange={(e) => setTitulo(e.target.value)}
+              className="input"
+              placeholder="Ex: Promoção de aniversário, Bastidores da produção..."
+            />
           </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="block text-sm font-medium text-ink/70 mb-1">Cliente *</span>
+              <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="input" required>
+                <option value="">Selecione...</option>
+                {clientes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-sm font-medium text-ink/70 mb-1">Responsável</span>
+              <select value={responsavelId} onChange={(e) => setResponsavelId(e.target.value)} className="input">
+                <option value="">Sem responsável</option>
+                {funcionarios.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
@@ -1097,11 +1226,13 @@ function KanbanBoard({
   posts,
   onMoverCard,
   onAbrirCard,
+  camposVisiveis,
 }: {
   statusList: StatusItem[];
   posts: Post[];
   onMoverCard: (postId: string, novoStatusId: string) => void;
   onAbrirCard: (post: Post) => void;
+  camposVisiveis: CamposVisiveis;
 }) {
   const [ativoId, setAtivoId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -1128,10 +1259,11 @@ function KanbanBoard({
             coluna={coluna}
             cards={posts.filter((p) => p.status_id === coluna.id)}
             onAbrirCard={onAbrirCard}
+            camposVisiveis={camposVisiveis}
           />
         ))}
       </div>
-      <DragOverlay>{postAtivo && <KanbanCardConteudo post={postAtivo} arrastando />}</DragOverlay>
+      <DragOverlay>{postAtivo && <KanbanCardConteudo post={postAtivo} camposVisiveis={camposVisiveis} arrastando />}</DragOverlay>
     </DndContext>
   );
 }
@@ -1140,10 +1272,12 @@ function KanbanColuna({
   coluna,
   cards,
   onAbrirCard,
+  camposVisiveis,
 }: {
   coluna: StatusItem;
   cards: Post[];
   onAbrirCard: (post: Post) => void;
+  camposVisiveis: CamposVisiveis;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: coluna.id });
   const cor = corDoStatus(coluna.cor);
@@ -1162,7 +1296,7 @@ function KanbanColuna({
       </div>
       <div className="space-y-2 min-h-[80px]">
         {cards.map((p) => (
-          <KanbanCardArrastavel key={p.id} post={p} statusAtual={coluna.id} onAbrirCard={onAbrirCard} />
+          <KanbanCardArrastavel key={p.id} post={p} statusAtual={coluna.id} onAbrirCard={onAbrirCard} camposVisiveis={camposVisiveis} />
         ))}
       </div>
     </div>
@@ -1173,10 +1307,12 @@ function KanbanCardArrastavel({
   post,
   statusAtual,
   onAbrirCard,
+  camposVisiveis,
 }: {
   post: Post;
   statusAtual: string;
   onAbrirCard: (post: Post) => void;
+  camposVisiveis: CamposVisiveis;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: post.id,
@@ -1191,23 +1327,45 @@ function KanbanCardArrastavel({
       onClick={() => !isDragging && onAbrirCard(post)}
       className={`touch-none transition-opacity ${isDragging ? "opacity-30" : "opacity-100"}`}
     >
-      <KanbanCardConteudo post={post} />
+      <KanbanCardConteudo post={post} camposVisiveis={camposVisiveis} />
     </div>
   );
 }
 
-function KanbanCardConteudo({ post, arrastando }: { post: Post; arrastando?: boolean }) {
+function KanbanCardConteudo({
+  post,
+  camposVisiveis,
+  arrastando,
+}: {
+  post: Post;
+  camposVisiveis: CamposVisiveis;
+  arrastando?: boolean;
+}) {
+  const mostrarTitulo = camposVisiveis.titulo && post.titulo;
+  const mostrarCliente = camposVisiveis.cliente;
+  const mostrarFormato = camposVisiveis.formato && post.formato;
+  const mostrarResponsavel = camposVisiveis.responsavel && nomeResponsavel(post);
+
   return (
     <div
       className={`rounded-2xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow w-72 ${
         arrastando ? "shadow-2xl rotate-2 border-2 border-forest/30" : "border border-black/5 shadow-sm hover:shadow-md"
       }`}
     >
-      <p className="text-sm font-semibold text-ink truncate">{post.titulo || nomeCliente(post) || "Sem título"}</p>
-      <p className="text-xs text-ink/50 truncate mt-0.5">
-        {nomeCliente(post)}
-        {post.formato && ` · ${FORMATO_CONFIG[post.formato]?.label}`}
+      <p className="text-sm font-semibold text-ink truncate">
+        {mostrarTitulo ? post.titulo : nomeCliente(post) || "Sem título"}
       </p>
+      {(mostrarCliente || mostrarFormato || mostrarResponsavel) && (
+        <p className="text-xs text-ink/50 truncate mt-0.5">
+          {[
+            mostrarCliente ? nomeCliente(post) : null,
+            mostrarFormato ? FORMATO_CONFIG[post.formato!]?.label : null,
+            mostrarResponsavel ? nomeResponsavel(post) : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      )}
       <p className="text-xs text-ink/40 mt-1">
         {formatarDataChip(post.data_publicacao)}
         {post.hora_publicacao && ` · ${post.hora_publicacao.slice(0, 5)}`}

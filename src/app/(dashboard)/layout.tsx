@@ -25,7 +25,7 @@ const MENU: Grupo[] = [
     icon: <Calendar size={18} />,
     itens: [
       { href: "/conteudo/calendario", label: "Calendário", icon: <CalendarDays size={15} /> },
-      { href: "/conteudo/calendario?view=kanban", label: "Kanban", icon: <ListTree size={15} /> },
+      { href: "/conteudo/calendario/kanban", label: "Kanban", icon: <ListTree size={15} /> },
     ],
   },
   {
@@ -172,7 +172,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {expandido && (
                   <div className="mt-1 ml-3 pl-3 border-l border-white/10 space-y-0.5">
                     {grupo.itens?.map((item) => {
-                      const ativo = pathname?.startsWith(item.href);
+                      const ativo = pathname === item.href;
                       return (
                         <Link
                           key={item.href}
