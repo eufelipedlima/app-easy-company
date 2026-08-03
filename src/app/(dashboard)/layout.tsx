@@ -25,6 +25,7 @@ const MENU: Grupo[] = [
     icon: <Calendar size={18} />,
     itens: [
       { href: "/conteudo/calendario", label: "Calendário", icon: <CalendarDays size={15} /> },
+      { href: "/conteudo/calendario?view=kanban", label: "Kanban", icon: <ListTree size={15} /> },
     ],
   },
   {

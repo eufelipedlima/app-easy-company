@@ -3,6 +3,17 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
+import {
+  DndContext,
+  DragOverlay,
+  useDraggable,
+  useDroppable,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 
 interface Midia {
   id: string;
@@ -130,7 +141,6 @@ export default function CalendarioConteudoPage() {
   const [visualizacao, setVisualizacao] = useState<"calendario" | "kanban">("calendario");
   const [postsKanban, setPostsKanban] = useState<Post[]>([]);
   const [loadingKanban, setLoadingKanban] = useState(false);
-  const [cardArrastando, setCardArrastando] = useState<string | null>(null);
 
   const carregarKanban = useCallback(async () => {
     setLoadingKanban(true);
@@ -199,6 +209,12 @@ export default function CalendarioConteudoPage() {
   }, [mes, ano, clienteFiltroId]);
 
   useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "kanban") {
+      setVisualizacao("kanban");
+    }
+  }, []);
+
+  useEffect(() => {
     carregarClientes();
     carregarStatus();
   }, [carregarClientes, carregarStatus]);
@@ -234,9 +250,30 @@ export default function CalendarioConteudoPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
-      <div className="mb-6">
-        <h1 className="text-2xl font-extrabold text-ink mb-1">Calendário de Conteúdo</h1>
-        <p className="text-sm text-ink/60">Planejamento e produção das postagens dos clientes.</p>
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-extrabold text-ink mb-1">Calendário de Conteúdo</h1>
+          <p className="text-sm text-ink/60">Planejamento e produção das postagens dos clientes.</p>
+        </div>
+
+        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner shrink-0">
+          <button
+            onClick={() => setVisualizacao("calendario")}
+            className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
+              visualizacao === "calendario" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
+            }`}
+          >
+            Calendário
+          </button>
+          <button
+            onClick={() => setVisualizacao("kanban")}
+            className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
+              visualizacao === "kanban" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
+            }`}
+          >
+            Kanban
+          </button>
+        </div>
       </div>
 
       {erroCarregamento && (
@@ -245,25 +282,6 @@ export default function CalendarioConteudoPage() {
           <p className="font-mono text-xs mt-1">{erroCarregamento}</p>
         </div>
       )}
-
-      <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner mb-4">
-        <button
-          onClick={() => setVisualizacao("calendario")}
-          className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
-            visualizacao === "calendario" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
-          }`}
-        >
-          Calendário
-        </button>
-        <button
-          onClick={() => setVisualizacao("kanban")}
-          className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
-            visualizacao === "kanban" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
-          }`}
-        >
-          Kanban
-        </button>
-      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
@@ -407,53 +425,12 @@ export default function CalendarioConteudoPage() {
           {loadingKanban ? (
             <p className="text-sm text-ink/50">Carregando...</p>
           ) : (
-            <div className="flex gap-4 min-w-max">
-              {statusList.map((coluna) => {
-                const cardsDaColuna = postsKanban.filter((p) => p.status_id === coluna.id);
-                return (
-                  <div
-                    key={coluna.id}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      if (cardArrastando) moverCardStatus(cardArrastando, coluna.id);
-                      setCardArrastando(null);
-                    }}
-                    className="w-72 shrink-0 rounded-3xl bg-surface p-3"
-                  >
-                    <div className="flex items-center gap-2 mb-3 px-1">
-                      <span className={`h-2.5 w-2.5 rounded-full ${corDoStatus(coluna.cor).dot}`} />
-                      <p className="text-sm font-bold text-ink">{coluna.nome}</p>
-                      <span className="text-xs text-ink/40 ml-auto">{cardsDaColuna.length}</span>
-                    </div>
-                    <div className="space-y-2 min-h-[60px]">
-                      {cardsDaColuna.map((p) => (
-                        <div
-                          key={p.id}
-                          draggable
-                          onDragStart={() => setCardArrastando(p.id)}
-                          onDragEnd={() => setCardArrastando(null)}
-                          onClick={() => setEditando(p)}
-                          className="rounded-2xl bg-white border border-black/5 p-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow"
-                        >
-                          <p className="text-sm font-semibold text-ink truncate">
-                            {p.titulo || nomeCliente(p) || "Sem título"}
-                          </p>
-                          <p className="text-xs text-ink/50 truncate mt-0.5">
-                            {nomeCliente(p)}
-                            {p.formato && ` · ${FORMATO_CONFIG[p.formato]?.label}`}
-                          </p>
-                          <p className="text-xs text-ink/40 mt-1">
-                            {formatarDataChip(p.data_publicacao)}
-                            {p.hora_publicacao && ` · ${p.hora_publicacao.slice(0, 5)}`}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <KanbanBoard
+              statusList={statusList}
+              posts={postsKanban}
+              onMoverCard={moverCardStatus}
+              onAbrirCard={setEditando}
+            />
           )}
         </div>
       )}
@@ -1040,6 +1017,130 @@ function LinkPublicoModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function KanbanBoard({
+  statusList,
+  posts,
+  onMoverCard,
+  onAbrirCard,
+}: {
+  statusList: StatusItem[];
+  posts: Post[];
+  onMoverCard: (postId: string, novoStatusId: string) => void;
+  onAbrirCard: (post: Post) => void;
+}) {
+  const [ativoId, setAtivoId] = useState<string | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const postAtivo = posts.find((p) => p.id === ativoId) ?? null;
+
+  function handleDragStart(e: DragStartEvent) {
+    setAtivoId(e.active.id as string);
+  }
+
+  function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    setAtivoId(null);
+    if (over && active.data.current?.statusAtual !== over.id) {
+      onMoverCard(active.id as string, over.id as string);
+    }
+  }
+
+  return (
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setAtivoId(null)}>
+      <div className="flex gap-4 min-w-max items-start">
+        {statusList.map((coluna) => (
+          <KanbanColuna
+            key={coluna.id}
+            coluna={coluna}
+            cards={posts.filter((p) => p.status_id === coluna.id)}
+            onAbrirCard={onAbrirCard}
+          />
+        ))}
+      </div>
+      <DragOverlay>{postAtivo && <KanbanCardConteudo post={postAtivo} arrastando />}</DragOverlay>
+    </DndContext>
+  );
+}
+
+function KanbanColuna({
+  coluna,
+  cards,
+  onAbrirCard,
+}: {
+  coluna: StatusItem;
+  cards: Post[];
+  onAbrirCard: (post: Post) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: coluna.id });
+  const cor = corDoStatus(coluna.cor);
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`w-72 shrink-0 rounded-3xl border-2 p-3 transition-all duration-150 ${cor.colBg} ${
+        isOver ? `${cor.colBorder} scale-[1.02] shadow-lg` : "border-transparent"
+      }`}
+    >
+      <div className="flex items-center gap-2 mb-3 px-1">
+        <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${cor.dot}`} />
+        <p className="text-sm font-bold text-ink truncate">{coluna.nome}</p>
+        <span className={`ml-auto text-xs font-bold rounded-full px-2 py-0.5 shrink-0 ${cor.cor}`}>{cards.length}</span>
+      </div>
+      <div className="space-y-2 min-h-[80px]">
+        {cards.map((p) => (
+          <KanbanCardArrastavel key={p.id} post={p} statusAtual={coluna.id} onAbrirCard={onAbrirCard} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function KanbanCardArrastavel({
+  post,
+  statusAtual,
+  onAbrirCard,
+}: {
+  post: Post;
+  statusAtual: string;
+  onAbrirCard: (post: Post) => void;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: post.id,
+    data: { statusAtual },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      onClick={() => !isDragging && onAbrirCard(post)}
+      className={`touch-none transition-opacity ${isDragging ? "opacity-30" : "opacity-100"}`}
+    >
+      <KanbanCardConteudo post={post} />
+    </div>
+  );
+}
+
+function KanbanCardConteudo({ post, arrastando }: { post: Post; arrastando?: boolean }) {
+  return (
+    <div
+      className={`rounded-2xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow w-72 ${
+        arrastando ? "shadow-2xl rotate-2 border-2 border-forest/30" : "border border-black/5 shadow-sm hover:shadow-md"
+      }`}
+    >
+      <p className="text-sm font-semibold text-ink truncate">{post.titulo || nomeCliente(post) || "Sem título"}</p>
+      <p className="text-xs text-ink/50 truncate mt-0.5">
+        {nomeCliente(post)}
+        {post.formato && ` · ${FORMATO_CONFIG[post.formato]?.label}`}
+      </p>
+      <p className="text-xs text-ink/40 mt-1">
+        {formatarDataChip(post.data_publicacao)}
+        {post.hora_publicacao && ` · ${post.hora_publicacao.slice(0, 5)}`}
+      </p>
     </div>
   );
 }
