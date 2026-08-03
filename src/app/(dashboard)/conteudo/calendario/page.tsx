@@ -291,7 +291,7 @@ export default function CalendarioConteudoPage() {
             return (
               <div
                 key={iso}
-                className={`min-h-[110px] border-b border-r border-black/5 p-2 ${doMes ? "bg-white" : "bg-surface/40"}`}
+                className={`min-h-[130px] border-b border-r border-black/5 p-2 ${doMes ? "bg-white" : "bg-surface/40"}`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span
@@ -316,11 +316,18 @@ export default function CalendarioConteudoPage() {
                     <button
                       key={p.id}
                       onClick={() => setEditando(p)}
-                      className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
+                      className={`w-full text-left rounded-lg px-1.5 py-1 leading-tight ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
                     >
-                      {!clienteFiltroId && <span className="font-semibold">{nomeCliente(p)}</span>}
-                      {!clienteFiltroId && (p.titulo || p.hora_publicacao) && " · "}
-                      {p.titulo || p.hora_publicacao?.slice(0, 5)}
+                      <p className="text-[11px] font-semibold truncate">
+                        {p.titulo || p.hora_publicacao?.slice(0, 5) || "Post"}
+                      </p>
+                      {(!clienteFiltroId || p.formato) && (
+                        <p className="text-[10px] opacity-70 truncate">
+                          {!clienteFiltroId && nomeCliente(p)}
+                          {!clienteFiltroId && p.formato && " · "}
+                          {p.formato && FORMATO_CONFIG[p.formato]?.label}
+                        </p>
+                      )}
                     </button>
                   ))}
                   {postsDoDia.length > 3 && <p className="text-[10px] text-ink/40 px-1.5">+{postsDoDia.length - 3} mais</p>}
@@ -411,6 +418,54 @@ function StatusSelect({
               </button>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ObjetivoSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const label = value ? OBJETIVO_CONFIG[value]?.label : "Nenhum";
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        className="inline-flex items-center gap-2 rounded-full bg-surface px-4 py-2 text-sm font-semibold text-ink/80 w-full justify-between"
+      >
+        {label}
+        <span className="text-xs opacity-60">▾</span>
+      </button>
+      {aberto && (
+        <div
+          className="absolute z-20 left-0 mt-1 w-full rounded-2xl bg-white border border-black/10 shadow-lg p-1.5 max-h-72 overflow-y-auto"
+          onMouseLeave={() => setAberto(false)}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              onChange("");
+              setAberto(false);
+            }}
+            className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium hover:bg-surface ${value === "" ? "bg-surface" : ""}`}
+          >
+            Nenhum
+          </button>
+          {Object.entries(OBJETIVO_CONFIG).map(([key, cfg]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => {
+                onChange(key);
+                setAberto(false);
+              }}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium hover:bg-surface ${value === key ? "bg-surface" : ""}`}
+            >
+              {cfg.label}
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -786,25 +841,7 @@ function PostModal({
 
           <div>
             <span className="block text-sm font-medium text-ink/70 mb-1">Objetivo</span>
-            <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
-              <button
-                type="button"
-                onClick={() => setObjetivo("")}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold ${objetivo === "" ? "bg-ink text-white" : "text-ink/60"}`}
-              >
-                Nenhum
-              </button>
-              {Object.entries(OBJETIVO_CONFIG).map(([key, cfg]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setObjetivo(key)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${objetivo === key ? "bg-ink text-white" : "text-ink/60"}`}
-                >
-                  {cfg.label}
-                </button>
-              ))}
-            </div>
+            <ObjetivoSelect value={objetivo} onChange={setObjetivo} />
           </div>
 
           <label className="block">
