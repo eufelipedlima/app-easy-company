@@ -6,6 +6,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { searchParams } = new URL(request.url);
   const mes = searchParams.get("mes");
   const ano = searchParams.get("ano");
+  const modo = searchParams.get("modo"); // "pendentes" pra listar tudo que aguarda aprovação, sem filtro de mês
 
   if (!token) {
     return NextResponse.json({ error: "Link inválido." }, { status: 400 });
@@ -28,10 +29,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const inicio = new Date(anoNum, mesNum, 1).toISOString().slice(0, 10);
   const fim = new Date(anoNum, mesNum + 1, 0).toISOString().slice(0, 10);
 
-  const { data: statusVisiveis } = await supabase.from("status_conteudo").select("id").eq("visivel_cliente", true);
-  const idsStatusVisiveis = (statusVisiveis ?? []).map((s) => s.id);
+  let idsStatusFiltro: string[];
+  if (modo === "pendentes") {
+    const { data: statusPendentes } = await supabase.from("status_conteudo").select("id").ilike("nome", "%aprov%");
+    idsStatusFiltro = (statusPendentes ?? []).map((s) => s.id);
+  } else {
+    const { data: statusVisiveis } = await supabase.from("status_conteudo").select("id").eq("visivel_cliente", true);
+    idsStatusFiltro = (statusVisiveis ?? []).map((s) => s.id);
+  }
 
-  const { data: posts, error: postsError } = await supabase
+  let query = supabase
     .from("posts_conteudo")
     .select(
       `id, data_publicacao, hora_publicacao, legenda, objetivo, formato,
@@ -40,10 +47,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
        posts_conteudo_comentarios ( id, autor, texto, created_at )`
     )
     .eq("cliente_id", cliente.id)
-    .in("status_id", idsStatusVisiveis.length > 0 ? idsStatusVisiveis : ["00000000-0000-0000-0000-000000000000"])
-    .gte("data_publicacao", inicio)
-    .lte("data_publicacao", fim)
+    .in("status_id", idsStatusFiltro.length > 0 ? idsStatusFiltro : ["00000000-0000-0000-0000-000000000000"])
     .order("data_publicacao");
+
+  if (modo !== "pendentes") {
+    query = query.gte("data_publicacao", inicio).lte("data_publicacao", fim);
+  }
+
+  const { data: posts, error: postsError } = await query;
 
   if (postsError) {
     return NextResponse.json({ error: postsError.message }, { status: 500 });
