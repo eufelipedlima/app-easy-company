@@ -19,7 +19,6 @@ interface Midia {
 
 interface Post {
   id: string;
-  titulo: string | null;
   data_publicacao: string;
   hora_publicacao: string | null;
   legenda: string | null;
@@ -36,9 +35,6 @@ const OBJETIVO_LABEL: Record<string, string> = {
   atracao: "Atração",
   educacao: "Educação",
   conversao: "Conversão",
-  conexao: "Conexão",
-  institucional: "Institucional",
-  bastidores: "Bastidores",
 };
 
 const FORMATO_LABEL: Record<string, string> = {
@@ -74,9 +70,6 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
   const [postAberto, setPostAberto] = useState<Post | null>(null);
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState<Date | null>(null);
   const [atualizando, setAtualizando] = useState(false);
-  const [visualizacao, setVisualizacao] = useState<"calendario" | "lista">("calendario");
-  const [postsPendentes, setPostsPendentes] = useState<Post[]>([]);
-  const [loadingLista, setLoadingLista] = useState(false);
 
   const carregar = useCallback(async () => {
     setAtualizando(true);
@@ -100,29 +93,9 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
     setAtualizando(false);
   }, [token, mes, ano]);
 
-  const carregarPendentes = useCallback(async () => {
-    setLoadingLista(true);
-    try {
-      const res = await fetch(`/api/calendario-publico/${token}?modo=pendentes`);
-      const data = await res.json();
-      if (res.ok) {
-        setNomeCliente(data.nomeCliente);
-        setPostsPendentes(data.posts);
-        setUltimaAtualizacao(new Date());
-      }
-    } catch {
-      // silencioso — a lista fica vazia e o usuário pode tentar de novo
-    }
-    setLoadingLista(false);
-  }, [token]);
-
   useEffect(() => {
     carregar();
   }, [carregar]);
-
-  useEffect(() => {
-    if (visualizacao === "lista") carregarPendentes();
-  }, [visualizacao, carregarPendentes]);
 
   const primeiroDiaMes = new Date(ano, mes, 1);
   const ultimoDiaMes = new Date(ano, mes + 1, 0);
@@ -174,7 +147,7 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
                 : ""}
             </p>
             <button
-              onClick={() => (visualizacao === "lista" ? carregarPendentes() : carregar())}
+              onClick={carregar}
               disabled={atualizando}
               className="inline-flex items-center gap-1.5 rounded-full border-2 border-ink/15 text-ink px-3 py-1.5 text-xs font-semibold hover:bg-white transition-colors disabled:opacity-50"
             >
@@ -183,170 +156,90 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
           </div>
         </div>
 
-        <div className="inline-flex items-center gap-1 rounded-full bg-white p-1 shadow-sm mb-6">
+        <div className="flex items-center gap-3 mb-6">
           <button
-            onClick={() => setVisualizacao("calendario")}
-            className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-              visualizacao === "calendario" ? "bg-ink text-white" : "text-ink/60"
-            }`}
+            onClick={() => {
+              const d = new Date(ano, mes - 1, 1);
+              setMes(d.getMonth());
+              setAno(d.getFullYear());
+            }}
+            className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-white text-ink/50"
           >
-            Calendário
+            ←
           </button>
           <button
-            onClick={() => setVisualizacao("lista")}
-            className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-              visualizacao === "lista" ? "bg-ink text-white" : "text-ink/60"
-            }`}
+            onClick={() => {
+              setMes(hoje.getMonth());
+              setAno(hoje.getFullYear());
+            }}
+            className="rounded-full border-2 border-ink/15 px-4 py-1.5 text-sm font-semibold hover:bg-white"
           >
-            Aguardando aprovação{postsPendentes.length > 0 ? ` (${postsPendentes.length})` : ""}
+            Hoje
           </button>
+          <button
+            onClick={() => {
+              const d = new Date(ano, mes + 1, 1);
+              setMes(d.getMonth());
+              setAno(d.getFullYear());
+            }}
+            className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-white text-ink/50"
+          >
+            →
+          </button>
+          <h2 className="text-lg font-bold text-ink ml-2">
+            {MESES[mes]} {ano}
+          </h2>
         </div>
 
-        {visualizacao === "calendario" && (
-          <>
-            <div className="flex items-center gap-3 mb-6">
-              <button
-                onClick={() => {
-                  const d = new Date(ano, mes - 1, 1);
-                  setMes(d.getMonth());
-                  setAno(d.getFullYear());
-                }}
-                className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-white text-ink/50"
-              >
-                ←
-              </button>
-              <button
-                onClick={() => {
-                  setMes(hoje.getMonth());
-                  setAno(hoje.getFullYear());
-                }}
-                className="rounded-full border-2 border-ink/15 px-4 py-1.5 text-sm font-semibold hover:bg-white"
-              >
-                Hoje
-              </button>
-              <button
-                onClick={() => {
-                  const d = new Date(ano, mes + 1, 1);
-                  setMes(d.getMonth());
-                  setAno(d.getFullYear());
-                }}
-                className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-white text-ink/50"
-              >
-                →
-              </button>
-              <h2 className="text-lg font-bold text-ink ml-2">
-                {MESES[mes]} {ano}
-              </h2>
-            </div>
-
-            <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
-              <div className="grid grid-cols-7 bg-white text-xs font-semibold text-ink/50 uppercase tracking-wide">
-                {DIAS_SEMANA.map((d) => (
-                  <div key={d} className="px-3 py-2 text-center">
-                    {d}
-                  </div>
-                ))}
+        <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
+          <div className="grid grid-cols-7 bg-white text-xs font-semibold text-ink/50 uppercase tracking-wide">
+            {DIAS_SEMANA.map((d) => (
+              <div key={d} className="px-3 py-2 text-center">
+                {d}
               </div>
-              <div className="grid grid-cols-7">
-                {dias.map((dia) => {
-                  const iso = toISODate(dia);
-                  const doMes = dia.getMonth() === mes;
-                  const postsDoDia = postsPorDia.get(iso) ?? [];
-                  return (
-                    <div
-                      key={iso}
-                      className={`min-h-[100px] border-b border-r border-black/5 p-2 ${doMes ? "bg-white" : "bg-surface/40"}`}
-                    >
-                      <span
-                        className={`text-xs font-semibold ${
-                          iso === hojeISO
-                            ? "bg-ink text-white rounded-full h-5 w-5 flex items-center justify-center"
-                            : doMes
-                            ? "text-ink/60"
-                            : "text-ink/25"
-                        }`}
-                      >
-                        {dia.getDate()}
-                      </span>
-                      <div className="space-y-1 mt-1">
-                        {postsDoDia.map((p) => (
-                          <button
-                            key={p.id}
-                            onClick={() => setPostAberto(p)}
-                            className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
-                          >
-                            {p.titulo || p.hora_publicacao?.slice(0, 5) || "Post"}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
-
-        {visualizacao === "lista" && (
-          <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
-            {loadingLista ? (
-              <p className="p-6 text-sm text-ink/50">Carregando...</p>
-            ) : postsPendentes.length === 0 ? (
-              <p className="p-6 text-sm text-ink/50">Nenhum conteúdo esperando aprovação no momento. 🎉</p>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-white text-left text-ink/40 text-xs uppercase tracking-wide">
-                    <th className="px-4 py-3 font-semibold">Data</th>
-                    <th className="px-4 py-3 font-semibold">Título</th>
-                    <th className="px-4 py-3 font-semibold">Formato</th>
-                    <th className="px-4 py-3 font-semibold">Legenda</th>
-                    <th className="px-4 py-3 font-semibold">Status</th>
-                    <th className="px-4 py-3 font-semibold"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {postsPendentes.map((p) => (
-                    <tr key={p.id} className="border-t border-black/5 hover:bg-surface/60">
-                      <td className="px-4 py-3 text-ink/70 whitespace-nowrap">
-                        {formatarData(p.data_publicacao)}
-                        {p.hora_publicacao && ` · ${p.hora_publicacao.slice(0, 5)}`}
-                      </td>
-                      <td className="px-4 py-3 text-ink font-semibold">{p.titulo || "—"}</td>
-                      <td className="px-4 py-3 text-ink/70">{p.formato ? FORMATO_LABEL[p.formato] : "—"}</td>
-                      <td className="px-4 py-3 text-ink/70 max-w-xs truncate">{p.legenda ?? "—"}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}>
-                          {p.status_conteudo?.nome ?? "—"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => setPostAberto(p)}
-                          className="rounded-full bg-ink text-white px-4 py-1.5 text-xs font-bold hover:bg-forest transition-colors"
-                        >
-                          Ver e decidir
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+            ))}
           </div>
-        )}
+          <div className="grid grid-cols-7">
+            {dias.map((dia) => {
+              const iso = toISODate(dia);
+              const doMes = dia.getMonth() === mes;
+              const postsDoDia = postsPorDia.get(iso) ?? [];
+              return (
+                <div
+                  key={iso}
+                  className={`min-h-[100px] border-b border-r border-black/5 p-2 ${doMes ? "bg-white" : "bg-surface/40"}`}
+                >
+                  <span
+                    className={`text-xs font-semibold ${
+                      iso === hojeISO
+                        ? "bg-ink text-white rounded-full h-5 w-5 flex items-center justify-center"
+                        : doMes
+                        ? "text-ink/60"
+                        : "text-ink/25"
+                    }`}
+                  >
+                    {dia.getDate()}
+                  </span>
+                  <div className="space-y-1 mt-1">
+                    {postsDoDia.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => setPostAberto(p)}
+                        className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
+                      >
+                        {p.hora_publicacao?.slice(0, 5) ?? "Post"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {postAberto && (
-        <PostPublicoModal
-          post={postAberto}
-          token={token}
-          onClose={() => setPostAberto(null)}
-          onComentado={() => {
-            carregar();
-            if (visualizacao === "lista") carregarPendentes();
-          }}
-        />
+        <PostPublicoModal post={postAberto} token={token} onClose={() => setPostAberto(null)} onComentado={carregar} />
       )}
     </main>
   );
@@ -446,7 +339,7 @@ function PostPublicoModal({
           </div>
 
           <div className="p-6 flex flex-col">
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center justify-between mb-4">
               <p className="text-xs text-ink/40">
                 {formatarData(post.data_publicacao)}
                 {post.hora_publicacao && ` às ${post.hora_publicacao.slice(0, 5)}`}
@@ -455,8 +348,6 @@ function PostPublicoModal({
                 {post.status_conteudo?.nome ?? "—"}
               </span>
             </div>
-
-            {post.titulo && <h3 className="text-lg font-bold text-ink mb-3">{post.titulo}</h3>}
 
             {(post.formato || post.objetivo) && (
               <p className="text-xs text-ink/40 mb-2">

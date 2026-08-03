@@ -45,9 +45,6 @@ const OBJETIVO_CONFIG: Record<string, { label: string }> = {
   atracao: { label: "Atração" },
   educacao: { label: "Educação" },
   conversao: { label: "Conversão" },
-  conexao: { label: "Conexão" },
-  institucional: { label: "Institucional" },
-  bastidores: { label: "Bastidores" },
 };
 
 const FORMATO_CONFIG: Record<string, { label: string }> = {
@@ -72,6 +69,10 @@ const EMOJIS = [
 
 function toISODate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatarDataChip(iso: string) {
+  return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
 // Um cliente só entra no calendário de conteúdo se tiver pelo menos um contrato
@@ -126,6 +127,36 @@ export default function CalendarioConteudoPage() {
   const [novoEmData, setNovoEmData] = useState<string | null>(null);
   const [linkPublicoAberto, setLinkPublicoAberto] = useState(false);
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
+  const [visualizacao, setVisualizacao] = useState<"calendario" | "kanban">("calendario");
+  const [postsKanban, setPostsKanban] = useState<Post[]>([]);
+  const [loadingKanban, setLoadingKanban] = useState(false);
+  const [cardArrastando, setCardArrastando] = useState<string | null>(null);
+
+  const carregarKanban = useCallback(async () => {
+    setLoadingKanban(true);
+    const supabase = createClient();
+    let query = supabase
+      .from("posts_conteudo")
+      .select(
+        `id, cliente_id, titulo, data_publicacao, hora_publicacao, legenda, objetivo, formato, status_id, observacoes_internas,
+         clientes ( papeis ( pessoas ( nome ) ) ),
+         posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
+         status_conteudo ( nome, cor )`
+      )
+      .order("data_publicacao");
+    if (clienteFiltroId) query = query.eq("cliente_id", clienteFiltroId);
+    const { data, error } = await query;
+    if (error) console.error("Erro ao carregar kanban:", error);
+    setPostsKanban((data as unknown as Post[]) ?? []);
+    setLoadingKanban(false);
+  }, [clienteFiltroId]);
+
+  async function moverCardStatus(postId: string, novoStatusId: string) {
+    setPostsKanban((atual) => atual.map((p) => (p.id === postId ? { ...p, status_id: novoStatusId } : p)));
+    const supabase = createClient();
+    await supabase.from("posts_conteudo").update({ status_id: novoStatusId }).eq("id", postId);
+    carregarKanban();
+  }
 
   const carregarClientes = useCallback(async () => {
     const supabase = createClient();
@@ -176,6 +207,10 @@ export default function CalendarioConteudoPage() {
     carregarPosts();
   }, [carregarPosts]);
 
+  useEffect(() => {
+    if (visualizacao === "kanban") carregarKanban();
+  }, [visualizacao, carregarKanban]);
+
   const primeiroDiaMes = new Date(ano, mes, 1);
   const ultimoDiaMes = new Date(ano, mes + 1, 0);
   const inicioGrade = new Date(primeiroDiaMes);
@@ -211,40 +246,63 @@ export default function CalendarioConteudoPage() {
         </div>
       )}
 
+      <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner mb-4">
+        <button
+          onClick={() => setVisualizacao("calendario")}
+          className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
+            visualizacao === "calendario" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
+          }`}
+        >
+          Calendário
+        </button>
+        <button
+          onClick={() => setVisualizacao("kanban")}
+          className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
+            visualizacao === "kanban" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
+          }`}
+        >
+          Kanban
+        </button>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => {
-              const d = new Date(ano, mes - 1, 1);
-              setMes(d.getMonth());
-              setAno(d.getFullYear());
-            }}
-            className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-surface text-ink/50"
-          >
-            ←
-          </button>
-          <button
-            onClick={() => {
-              setMes(hoje.getMonth());
-              setAno(hoje.getFullYear());
-            }}
-            className="rounded-full border-2 border-ink/15 px-4 py-1.5 text-sm font-semibold hover:bg-surface"
-          >
-            Hoje
-          </button>
-          <button
-            onClick={() => {
-              const d = new Date(ano, mes + 1, 1);
-              setMes(d.getMonth());
-              setAno(d.getFullYear());
-            }}
-            className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-surface text-ink/50"
-          >
-            →
-          </button>
-          <h2 className="text-lg font-bold text-ink ml-2">
-            {MESES[mes]} {ano}
-          </h2>
+          {visualizacao === "calendario" && (
+            <>
+              <button
+                onClick={() => {
+                  const d = new Date(ano, mes - 1, 1);
+                  setMes(d.getMonth());
+                  setAno(d.getFullYear());
+                }}
+                className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-surface text-ink/50"
+              >
+                ←
+              </button>
+              <button
+                onClick={() => {
+                  setMes(hoje.getMonth());
+                  setAno(hoje.getFullYear());
+                }}
+                className="rounded-full border-2 border-ink/15 px-4 py-1.5 text-sm font-semibold hover:bg-surface"
+              >
+                Hoje
+              </button>
+              <button
+                onClick={() => {
+                  const d = new Date(ano, mes + 1, 1);
+                  setMes(d.getMonth());
+                  setAno(d.getFullYear());
+                }}
+                className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-surface text-ink/50"
+              >
+                →
+              </button>
+              <h2 className="text-lg font-bold text-ink ml-2">
+                {MESES[mes]} {ano}
+              </h2>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -275,9 +333,11 @@ export default function CalendarioConteudoPage() {
         </div>
       </div>
 
-      <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
-        <div className="grid grid-cols-7 bg-surface text-xs font-semibold text-ink/50 uppercase tracking-wide">
-          {DIAS_SEMANA.map((d) => (
+      {visualizacao === "calendario" && (
+        <>
+          <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
+            <div className="grid grid-cols-7 bg-surface text-xs font-semibold text-ink/50 uppercase tracking-wide">
+              {DIAS_SEMANA.map((d) => (
             <div key={d} className="px-3 py-2 text-center">
               {d}
             </div>
@@ -291,7 +351,7 @@ export default function CalendarioConteudoPage() {
             return (
               <div
                 key={iso}
-                className={`min-h-[130px] border-b border-r border-black/5 p-2 ${doMes ? "bg-white" : "bg-surface/40"}`}
+                className={`min-h-[110px] border-b border-r border-black/5 p-2 ${doMes ? "bg-white" : "bg-surface/40"}`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span
@@ -316,18 +376,11 @@ export default function CalendarioConteudoPage() {
                     <button
                       key={p.id}
                       onClick={() => setEditando(p)}
-                      className={`w-full text-left rounded-lg px-1.5 py-1 leading-tight ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
+                      className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
                     >
-                      <p className="text-[11px] font-semibold truncate">
-                        {p.titulo || p.hora_publicacao?.slice(0, 5) || "Post"}
-                      </p>
-                      {(!clienteFiltroId || p.formato) && (
-                        <p className="text-[10px] opacity-70 truncate">
-                          {!clienteFiltroId && nomeCliente(p)}
-                          {!clienteFiltroId && p.formato && " · "}
-                          {p.formato && FORMATO_CONFIG[p.formato]?.label}
-                        </p>
-                      )}
+                      {!clienteFiltroId && <span className="font-semibold">{nomeCliente(p)}</span>}
+                      {!clienteFiltroId && p.hora_publicacao && " · "}
+                      {p.hora_publicacao?.slice(0, 5)}
                     </button>
                   ))}
                   {postsDoDia.length > 3 && <p className="text-[10px] text-ink/40 px-1.5">+{postsDoDia.length - 3} mais</p>}
@@ -346,6 +399,64 @@ export default function CalendarioConteudoPage() {
           </span>
         ))}
       </div>
+        </>
+      )}
+
+      {visualizacao === "kanban" && (
+        <div className="overflow-x-auto pb-4">
+          {loadingKanban ? (
+            <p className="text-sm text-ink/50">Carregando...</p>
+          ) : (
+            <div className="flex gap-4 min-w-max">
+              {statusList.map((coluna) => {
+                const cardsDaColuna = postsKanban.filter((p) => p.status_id === coluna.id);
+                return (
+                  <div
+                    key={coluna.id}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (cardArrastando) moverCardStatus(cardArrastando, coluna.id);
+                      setCardArrastando(null);
+                    }}
+                    className="w-72 shrink-0 rounded-3xl bg-surface p-3"
+                  >
+                    <div className="flex items-center gap-2 mb-3 px-1">
+                      <span className={`h-2.5 w-2.5 rounded-full ${corDoStatus(coluna.cor).dot}`} />
+                      <p className="text-sm font-bold text-ink">{coluna.nome}</p>
+                      <span className="text-xs text-ink/40 ml-auto">{cardsDaColuna.length}</span>
+                    </div>
+                    <div className="space-y-2 min-h-[60px]">
+                      {cardsDaColuna.map((p) => (
+                        <div
+                          key={p.id}
+                          draggable
+                          onDragStart={() => setCardArrastando(p.id)}
+                          onDragEnd={() => setCardArrastando(null)}
+                          onClick={() => setEditando(p)}
+                          className="rounded-2xl bg-white border border-black/5 p-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+                        >
+                          <p className="text-sm font-semibold text-ink truncate">
+                            {p.titulo || nomeCliente(p) || "Sem título"}
+                          </p>
+                          <p className="text-xs text-ink/50 truncate mt-0.5">
+                            {nomeCliente(p)}
+                            {p.formato && ` · ${FORMATO_CONFIG[p.formato]?.label}`}
+                          </p>
+                          <p className="text-xs text-ink/40 mt-1">
+                            {formatarDataChip(p.data_publicacao)}
+                            {p.hora_publicacao && ` · ${p.hora_publicacao.slice(0, 5)}`}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {linkPublicoAberto && <LinkPublicoModal onClose={() => setLinkPublicoAberto(false)} />}
 
@@ -363,6 +474,7 @@ export default function CalendarioConteudoPage() {
             setEditando(null);
             setNovoEmData(null);
             carregarPosts();
+            if (visualizacao === "kanban") carregarKanban();
           }}
         />
       )}
@@ -418,54 +530,6 @@ function StatusSelect({
               </button>
             );
           })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ObjetivoSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [aberto, setAberto] = useState(false);
-  const label = value ? OBJETIVO_CONFIG[value]?.label : "Nenhum";
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setAberto((v) => !v)}
-        className="inline-flex items-center gap-2 rounded-full bg-surface px-4 py-2 text-sm font-semibold text-ink/80 w-full justify-between"
-      >
-        {label}
-        <span className="text-xs opacity-60">▾</span>
-      </button>
-      {aberto && (
-        <div
-          className="absolute z-20 left-0 mt-1 w-full rounded-2xl bg-white border border-black/10 shadow-lg p-1.5 max-h-72 overflow-y-auto"
-          onMouseLeave={() => setAberto(false)}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              onChange("");
-              setAberto(false);
-            }}
-            className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium hover:bg-surface ${value === "" ? "bg-surface" : ""}`}
-          >
-            Nenhum
-          </button>
-          {Object.entries(OBJETIVO_CONFIG).map(([key, cfg]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => {
-                onChange(key);
-                setAberto(false);
-              }}
-              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium hover:bg-surface ${value === key ? "bg-surface" : ""}`}
-            >
-              {cfg.label}
-            </button>
-          ))}
         </div>
       )}
     </div>
@@ -528,7 +592,6 @@ function PostModal({
 
   const [clientes, setClientes] = useState<ClienteOpcao[]>([]);
   const [clienteId, setClienteId] = useState(post?.cliente_id ?? clienteFixoId ?? "");
-  const [titulo, setTitulo] = useState(post?.titulo ?? "");
   const [dataPublicacao, setDataPublicacao] = useState(post?.data_publicacao ?? dataInicial ?? "");
   const [horaPublicacao, setHoraPublicacao] = useState(post?.hora_publicacao?.slice(0, 5) ?? "");
   const [legenda, setLegenda] = useState(post?.legenda ?? "");
@@ -633,7 +696,6 @@ function PostModal({
       const supabase = createClient();
       const payload = {
         cliente_id: clienteId,
-        titulo: titulo.trim() || null,
         data_publicacao: dataPublicacao,
         hora_publicacao: horaPublicacao || null,
         legenda: legenda || null,
@@ -707,16 +769,6 @@ function PostModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <label className="block">
-            <span className="block text-sm font-medium text-ink/70 mb-1">Título</span>
-            <input
-              value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
-              className="input"
-              placeholder="Ex: Promoção de aniversário, Bastidores da produção..."
-            />
-          </label>
-
           <label className="block">
             <span className="block text-sm font-medium text-ink/70 mb-1">Cliente *</span>
             <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="input" required>
@@ -841,7 +893,25 @@ function PostModal({
 
           <div>
             <span className="block text-sm font-medium text-ink/70 mb-1">Objetivo</span>
-            <ObjetivoSelect value={objetivo} onChange={setObjetivo} />
+            <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
+              <button
+                type="button"
+                onClick={() => setObjetivo("")}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold ${objetivo === "" ? "bg-ink text-white" : "text-ink/60"}`}
+              >
+                Nenhum
+              </button>
+              {Object.entries(OBJETIVO_CONFIG).map(([key, cfg]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setObjetivo(key)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${objetivo === key ? "bg-ink text-white" : "text-ink/60"}`}
+                >
+                  {cfg.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <label className="block">
