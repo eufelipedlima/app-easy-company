@@ -476,7 +476,7 @@ function CalendarioConteudoConteudo() {
             </label>
           </div>
 
-          <div ref={kanbanScrollRef} className="overflow-x-auto pb-4">
+          <div ref={kanbanScrollRef} className="overflow-x-auto pb-4 min-h-[65vh]">
             {loadingKanban ? (
               <p className="text-sm text-ink/50">Carregando...</p>
             ) : (
@@ -1151,7 +1151,7 @@ function KanbanColuna({
   return (
     <div
       ref={setNodeRef}
-      className={`w-72 shrink-0 rounded-3xl border-2 p-3 transition-all duration-150 ${cor.colBg} ${
+      className={`w-72 shrink-0 rounded-3xl border-2 p-3 min-h-[60vh] transition-all duration-150 ${cor.colBg} ${
         isOver ? `${cor.colBorder} scale-[1.02] shadow-lg` : "border-transparent"
       }`}
     >
