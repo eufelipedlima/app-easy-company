@@ -64,6 +64,11 @@ export default function BancosPage() {
   const [painelAjuste, setPainelAjuste] = useState<Banco | null>(null);
   const [saldoEditado, setSaldoEditado] = useState("");
 
+  const [painelEditar, setPainelEditar] = useState<Banco | null>(null);
+  const [nomeEditadoBanco, setNomeEditadoBanco] = useState("");
+  const [saldoInicialEditado, setSaldoInicialEditado] = useState("");
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
   const [painelTransferencia, setPainelTransferencia] = useState(false);
   const [origemId, setOrigemId] = useState("");
   const [destinoId, setDestinoId] = useState("");
@@ -139,6 +144,22 @@ export default function BancosPage() {
     const supabase = createClient();
     await supabase.from("bancos").update({ ativo }).eq("id", id);
     setMenuAbertoId(null);
+    carregar();
+  }
+
+  async function salvarEdicaoBanco() {
+    if (!painelEditar || !nomeEditadoBanco.trim()) return;
+    setSalvandoEdicao(true);
+    const supabase = createClient();
+    await supabase
+      .from("bancos")
+      .update({
+        nome: nomeEditadoBanco.trim(),
+        saldo_inicial: saldoInicialEditado ? Number(saldoInicialEditado) : 0,
+      })
+      .eq("id", painelEditar.id);
+    setSalvandoEdicao(false);
+    setPainelEditar(null);
     carregar();
   }
 
@@ -319,6 +340,17 @@ export default function BancosPage() {
               >
                 <button
                   onClick={() => {
+                    setPainelEditar(banco);
+                    setNomeEditadoBanco(banco.nome);
+                    setSaldoInicialEditado(String(banco.saldo_inicial));
+                    setMenuAbertoId(null);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => {
                     setPainelAjuste(banco);
                     setSaldoEditado(String(saldoAte(banco, hojeISO())));
                     setMenuAbertoId(null);
@@ -431,6 +463,56 @@ export default function BancosPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {painelEditar && (
+        <div
+          className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6"
+          onClick={() => setPainelEditar(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold text-ink mb-5">Editar banco</h2>
+            <label className="block mb-4">
+              <span className="block text-sm font-medium text-ink/70 mb-1">Nome do banco</span>
+              <input
+                autoFocus
+                value={nomeEditadoBanco}
+                onChange={(e) => setNomeEditadoBanco(e.target.value)}
+                className="input"
+              />
+            </label>
+            <label className="block mb-5">
+              <span className="block text-sm font-medium text-ink/70 mb-1">Saldo inicial (R$)</span>
+              <input
+                type="number"
+                step="0.01"
+                value={saldoInicialEditado}
+                onChange={(e) => setSaldoInicialEditado(e.target.value)}
+                className="input"
+              />
+              <span className="block text-xs text-ink/40 mt-1">
+                Esse é o ponto de partida do cálculo — o saldo atual continua sendo saldo inicial +
+                pagamentos. Pra corrigir um saldo errado sem mexer no histórico de pagamentos, prefira
+                usar &ldquo;Ajustar saldo&rdquo; em vez disso.
+              </span>
+            </label>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={salvarEdicaoBanco}
+                disabled={salvandoEdicao}
+                className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+              >
+                {salvandoEdicao ? "Salvando..." : "Salvar"}
+              </button>
+              <button onClick={() => setPainelEditar(null)} className="text-sm font-semibold text-ink/60 hover:text-ink">
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}
