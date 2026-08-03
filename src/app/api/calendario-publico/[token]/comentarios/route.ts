@@ -33,7 +33,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const { data: post } = await supabase
     .from("posts_conteudo")
-    .select("id, cliente_id")
+    .select("id, cliente_id, titulo, responsavel_id")
     .eq("id", postId)
     .maybeSingle();
 
@@ -64,6 +64,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .maybeSingle();
   if (statusAlvo) {
     await supabase.from("posts_conteudo").update({ status_id: statusAlvo.id }).eq("id", postId);
+  }
+
+  if (post.responsavel_id) {
+    const { data: responsavel } = await supabase
+      .from("funcionarios")
+      .select("auth_user_id")
+      .eq("id", post.responsavel_id)
+      .maybeSingle();
+    if (responsavel?.auth_user_id) {
+      await supabase.from("notificacoes").insert({
+        destinatario_id: responsavel.auth_user_id,
+        tipo: "comentario_cliente",
+        titulo: acao === "aprovar" ? "Cliente aprovou um conteúdo" : "Cliente pediu ajuste",
+        descricao: post.titulo || (texto?.trim() ? texto.trim().slice(0, 120) : null),
+        link: "/conteudo/calendario",
+      });
+    }
   }
 
   return NextResponse.json({ ok: true });

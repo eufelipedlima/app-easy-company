@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Users, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, ListTree, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle, UserCircle } from "lucide-react";
+import { Users, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, ListTree, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle, UserCircle, Inbox } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -21,6 +21,11 @@ interface Grupo {
 }
 
 const MENU: Grupo[] = [
+  {
+    label: "Caixa de Entrada",
+    icon: <Inbox size={18} />,
+    href: "/caixa-de-entrada",
+  },
   {
     label: "Chat",
     icon: <MessageCircle size={18} />,
@@ -177,6 +182,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
   }, [recalcularChatNaoLidas]);
 
+  const [caixaEntradaNaoLidas, setCaixaEntradaNaoLidas] = useState(0);
+
+  const recalcularCaixaEntrada = useCallback(async () => {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+    const { count } = await supabase
+      .from("notificacoes")
+      .select("id", { count: "exact", head: true })
+      .eq("destinatario_id", user.id)
+      .eq("lida", false);
+    setCaixaEntradaNaoLidas(count ?? 0);
+  }, []);
+
+  useEffect(() => {
+    recalcularCaixaEntrada();
+  }, [recalcularCaixaEntrada, pathname]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const canal = supabase
+      .channel("layout-notificacoes")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notificacoes" }, () => {
+        recalcularCaixaEntrada();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [recalcularCaixaEntrada]);
+
   const [bancos, setBancos] = useState<{ id: string; nome: string; saldo_inicial: number }[]>([]);
   const [lancamentosPagos, setLancamentosPagos] = useState<
     { tipo: string; valor: number; banco_id: string | null; banco_destino_id: string | null }[]
@@ -263,7 +301,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {menuVisivel.map((grupo) => {
             if (grupo.href) {
               const ativo = pathname?.startsWith(grupo.href);
-              const badge = grupo.label === "Chat" && chatNaoLidas > 0 ? chatNaoLidas : null;
+              const badge =
+                grupo.label === "Chat" && chatNaoLidas > 0
+                  ? chatNaoLidas
+                  : grupo.label === "Caixa de Entrada" && caixaEntradaNaoLidas > 0
+                  ? caixaEntradaNaoLidas
+                  : null;
               return (
                 <Link
                   key={grupo.label}

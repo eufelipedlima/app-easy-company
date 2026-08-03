@@ -404,15 +404,30 @@ export default function ChatPage() {
     if (!texto.trim() || !canalAtivoId || !meuId) return;
     setEnviando(true);
     const supabase = createClient();
+    const textoEnviado = texto.trim();
     const { error } = await supabase.from("chat_mensagens").insert({
       canal_id: canalAtivoId,
       autor_id: meuId,
-      texto: texto.trim(),
+      texto: textoEnviado,
       resposta_a_id: respondendoA?.id ?? null,
     });
     if (!error) {
       setTexto("");
       setRespondendoA(null);
+
+      // Notifica quem foi @mencionado na mensagem
+      const mencionados = colegas.filter((c) => textoEnviado.includes(`@${c.nome}`));
+      if (mencionados.length > 0) {
+        await supabase.from("notificacoes").insert(
+          mencionados.map((c) => ({
+            destinatario_id: c.authUserId,
+            tipo: "mencao_chat",
+            titulo: `${meuNome} te mencionou`,
+            descricao: textoEnviado.slice(0, 120),
+            link: "/chat",
+          }))
+        );
+      }
     }
     setEnviando(false);
   }
@@ -1053,8 +1068,11 @@ function ConfigCanalModal({
         </div>
 
         <div className="flex items-center gap-3 pt-3 border-t border-black/5">
-          <button onClick={arquivar} className="text-sm font-semibold text-ink/60 hover:text-ink">
-            Arquivar conversa
+          <button
+            onClick={arquivar}
+            className="inline-flex items-center gap-1.5 rounded-full bg-red-50 text-red-600 px-4 py-2 text-sm font-bold hover:bg-red-100 transition-colors"
+          >
+            🗄 Arquivar conversa
           </button>
           {!temMensagens && (
             <button onClick={excluir} className="text-sm font-semibold text-red-500 hover:text-red-700 ml-auto">
