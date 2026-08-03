@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Users, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, ListTree, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck } from "lucide-react";
+import { Users, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, ListTree, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -21,6 +21,11 @@ interface Grupo {
 }
 
 const MENU: Grupo[] = [
+  {
+    label: "Chat",
+    icon: <MessageCircle size={18} />,
+    href: "/chat",
+  },
   {
     label: "Conteúdo",
     icon: <Calendar size={18} />,
@@ -125,6 +130,53 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const menuVisivel = MENU.filter((grupo) => !grupo.areaSlug || !permissoes || permissoes[grupo.areaSlug] !== "nenhum");
 
+  const [chatNaoLidas, setChatNaoLidas] = useState(0);
+
+  const recalcularChatNaoLidas = useCallback(async () => {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: participacoes } = await supabase
+      .from("chat_participantes")
+      .select("canal_id, ultima_leitura")
+      .eq("auth_user_id", user.id);
+    if (!participacoes || participacoes.length === 0) {
+      setChatNaoLidas(0);
+      return;
+    }
+    const contagens = await Promise.all(
+      participacoes.map(async (p) => {
+        const { count } = await supabase
+          .from("chat_mensagens")
+          .select("id", { count: "exact", head: true })
+          .eq("canal_id", p.canal_id)
+          .gt("created_at", p.ultima_leitura)
+          .neq("autor_id", user.id);
+        return count ?? 0;
+      })
+    );
+    setChatNaoLidas(contagens.reduce((s, c) => s + c, 0));
+  }, []);
+
+  useEffect(() => {
+    recalcularChatNaoLidas();
+  }, [recalcularChatNaoLidas, pathname]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const canal = supabase
+      .channel("layout-chat-mensagens")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_mensagens" }, () => {
+        recalcularChatNaoLidas();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [recalcularChatNaoLidas]);
+
   const [bancos, setBancos] = useState<{ id: string; nome: string; saldo_inicial: number }[]>([]);
   const [lancamentosPagos, setLancamentosPagos] = useState<
     { tipo: string; valor: number; banco_id: string | null; banco_destino_id: string | null }[]
@@ -211,6 +263,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {menuVisivel.map((grupo) => {
             if (grupo.href) {
               const ativo = pathname?.startsWith(grupo.href);
+              const badge = grupo.label === "Chat" && chatNaoLidas > 0 ? chatNaoLidas : null;
               return (
                 <Link
                   key={grupo.label}
@@ -220,8 +273,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     !expandidoVisual ? "justify-center px-0" : ""
                   } ${ativo ? "bg-forest text-white" : "text-white/60 hover:bg-forest/50 hover:text-white"}`}
                 >
-                  {grupo.icon}
-                  {expandidoVisual && grupo.label}
+                  <span className="relative">
+                    {grupo.icon}
+                    {badge && !expandidoVisual && (
+                      <span className="absolute -top-1.5 -right-1.5 h-2 w-2 rounded-full bg-red-500" />
+                    )}
+                  </span>
+                  {expandidoVisual && <span className="flex-1">{grupo.label}</span>}
+                  {badge && expandidoVisual && (
+                    <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">
+                      {badge}
+                    </span>
+                  )}
                 </Link>
               );
             }
