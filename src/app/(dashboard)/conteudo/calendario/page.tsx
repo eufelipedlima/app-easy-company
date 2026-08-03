@@ -23,6 +23,7 @@ interface StatusItem {
 interface Post {
   id: string;
   cliente_id: string;
+  titulo: string | null;
   data_publicacao: string;
   hora_publicacao: string | null;
   legenda: string | null;
@@ -44,6 +45,9 @@ const OBJETIVO_CONFIG: Record<string, { label: string }> = {
   atracao: { label: "Atração" },
   educacao: { label: "Educação" },
   conversao: { label: "Conversão" },
+  conexao: { label: "Conexão" },
+  institucional: { label: "Institucional" },
+  bastidores: { label: "Bastidores" },
 };
 
 const FORMATO_CONFIG: Record<string, { label: string }> = {
@@ -144,7 +148,7 @@ export default function CalendarioConteudoPage() {
     let query = supabase
       .from("posts_conteudo")
       .select(
-        `id, cliente_id, data_publicacao, hora_publicacao, legenda, objetivo, formato, status_id, observacoes_internas,
+        `id, cliente_id, titulo, data_publicacao, hora_publicacao, legenda, objetivo, formato, status_id, observacoes_internas,
          clientes ( papeis ( pessoas ( nome ) ) ),
          posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
          status_conteudo ( nome, cor )`
@@ -315,8 +319,8 @@ export default function CalendarioConteudoPage() {
                       className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
                     >
                       {!clienteFiltroId && <span className="font-semibold">{nomeCliente(p)}</span>}
-                      {!clienteFiltroId && p.hora_publicacao && " · "}
-                      {p.hora_publicacao?.slice(0, 5)}
+                      {!clienteFiltroId && (p.titulo || p.hora_publicacao) && " · "}
+                      {p.titulo || p.hora_publicacao?.slice(0, 5)}
                     </button>
                   ))}
                   {postsDoDia.length > 3 && <p className="text-[10px] text-ink/40 px-1.5">+{postsDoDia.length - 3} mais</p>}
@@ -469,6 +473,7 @@ function PostModal({
 
   const [clientes, setClientes] = useState<ClienteOpcao[]>([]);
   const [clienteId, setClienteId] = useState(post?.cliente_id ?? clienteFixoId ?? "");
+  const [titulo, setTitulo] = useState(post?.titulo ?? "");
   const [dataPublicacao, setDataPublicacao] = useState(post?.data_publicacao ?? dataInicial ?? "");
   const [horaPublicacao, setHoraPublicacao] = useState(post?.hora_publicacao?.slice(0, 5) ?? "");
   const [legenda, setLegenda] = useState(post?.legenda ?? "");
@@ -573,6 +578,7 @@ function PostModal({
       const supabase = createClient();
       const payload = {
         cliente_id: clienteId,
+        titulo: titulo.trim() || null,
         data_publicacao: dataPublicacao,
         hora_publicacao: horaPublicacao || null,
         legenda: legenda || null,
@@ -646,6 +652,16 @@ function PostModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <label className="block">
+            <span className="block text-sm font-medium text-ink/70 mb-1">Título</span>
+            <input
+              value={titulo}
+              onChange={(e) => setTitulo(e.target.value)}
+              className="input"
+              placeholder="Ex: Promoção de aniversário, Bastidores da produção..."
+            />
+          </label>
+
           <label className="block">
             <span className="block text-sm font-medium text-ink/70 mb-1">Cliente *</span>
             <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="input" required>

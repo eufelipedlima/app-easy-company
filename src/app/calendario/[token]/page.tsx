@@ -19,6 +19,7 @@ interface Midia {
 
 interface Post {
   id: string;
+  titulo: string | null;
   data_publicacao: string;
   hora_publicacao: string | null;
   legenda: string | null;
@@ -35,6 +36,9 @@ const OBJETIVO_LABEL: Record<string, string> = {
   atracao: "Atração",
   educacao: "Educação",
   conversao: "Conversão",
+  conexao: "Conexão",
+  institucional: "Institucional",
+  bastidores: "Bastidores",
 };
 
 const FORMATO_LABEL: Record<string, string> = {
@@ -271,7 +275,7 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
                             onClick={() => setPostAberto(p)}
                             className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
                           >
-                            {p.hora_publicacao?.slice(0, 5) ?? "Post"}
+                            {p.titulo || p.hora_publicacao?.slice(0, 5) || "Post"}
                           </button>
                         ))}
                       </div>
@@ -294,6 +298,7 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
                 <thead>
                   <tr className="bg-white text-left text-ink/40 text-xs uppercase tracking-wide">
                     <th className="px-4 py-3 font-semibold">Data</th>
+                    <th className="px-4 py-3 font-semibold">Título</th>
                     <th className="px-4 py-3 font-semibold">Formato</th>
                     <th className="px-4 py-3 font-semibold">Legenda</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
@@ -307,6 +312,7 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
                         {formatarData(p.data_publicacao)}
                         {p.hora_publicacao && ` · ${p.hora_publicacao.slice(0, 5)}`}
                       </td>
+                      <td className="px-4 py-3 text-ink font-semibold">{p.titulo || "—"}</td>
                       <td className="px-4 py-3 text-ink/70">{p.formato ? FORMATO_LABEL[p.formato] : "—"}</td>
                       <td className="px-4 py-3 text-ink/70 max-w-xs truncate">{p.legenda ?? "—"}</td>
                       <td className="px-4 py-3">
@@ -440,7 +446,7 @@ function PostPublicoModal({
           </div>
 
           <div className="p-6 flex flex-col">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-1">
               <p className="text-xs text-ink/40">
                 {formatarData(post.data_publicacao)}
                 {post.hora_publicacao && ` às ${post.hora_publicacao.slice(0, 5)}`}
@@ -449,6 +455,8 @@ function PostPublicoModal({
                 {post.status_conteudo?.nome ?? "—"}
               </span>
             </div>
+
+            {post.titulo && <h3 className="text-lg font-bold text-ink mb-3">{post.titulo}</h3>}
 
             {(post.formato || post.objetivo) && (
               <p className="text-xs text-ink/40 mb-2">

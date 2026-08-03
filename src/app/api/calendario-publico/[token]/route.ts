@@ -41,7 +41,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   let query = supabase
     .from("posts_conteudo")
     .select(
-      `id, data_publicacao, hora_publicacao, legenda, objetivo, formato,
+      `id, titulo, data_publicacao, hora_publicacao, legenda, objetivo, formato,
        status_conteudo ( nome, cor ),
        posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
        posts_conteudo_comentarios ( id, autor, texto, created_at )`
