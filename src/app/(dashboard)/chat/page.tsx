@@ -8,6 +8,7 @@ interface Canal {
   id: string;
   tipo: "dm" | "grupo" | "cliente";
   nome: string | null;
+  descricao: string | null;
   cliente_id: string | null;
   criado_por: string;
 }
@@ -147,6 +148,7 @@ export default function ChatPage() {
   const [enviando, setEnviando] = useState(false);
   const [novaConversaAberta, setNovaConversaAberta] = useState(false);
   const [adicionarParticipanteAberto, setAdicionarParticipanteAberto] = useState(false);
+  const [configCanalAberto, setConfigCanalAberto] = useState(false);
   const [mostrarEmoji, setMostrarEmoji] = useState(false);
   const [mencaoBusca, setMencaoBusca] = useState<string | null>(null);
   const [buscaConversa, setBuscaConversa] = useState("");
@@ -186,8 +188,9 @@ export default function ChatPage() {
 
     const { data: participacoes } = await supabase
       .from("chat_participantes")
-      .select("canal_id, ultima_leitura, chat_canais ( id, tipo, nome, cliente_id, criado_por )")
-      .eq("auth_user_id", user.id);
+      .select("canal_id, ultima_leitura, chat_canais ( id, tipo, nome, descricao, cliente_id, criado_por )")
+      .eq("auth_user_id", user.id)
+      .eq("arquivado", false);
 
     const lista = (participacoes ?? []).map((p) => p.chat_canais).filter(Boolean) as unknown as Canal[];
     const leituraPorCanal = new Map((participacoes ?? []).map((p) => [p.canal_id, p.ultima_leitura as string]));
@@ -265,6 +268,9 @@ export default function ChatPage() {
           subtitulo = colega?.cargo ?? null;
         } else if (c.tipo === "cliente") {
           nomeExibicao = (c.cliente_id && nomesClientes.get(c.cliente_id)) || c.nome || "Cliente";
+          subtitulo = c.descricao ?? null;
+        } else {
+          subtitulo = c.descricao ?? null;
         }
 
         return {
@@ -546,7 +552,10 @@ export default function ChatPage() {
         ) : (
           <>
             <div className="px-6 py-4 border-b border-black/5 bg-card/80 backdrop-blur-sm flex items-center justify-between shadow-sm">
-              <div className="flex items-center gap-3">
+              <button
+                onClick={() => canalAtivo.tipo !== "dm" && setConfigCanalAberto(true)}
+                className="flex items-center gap-3 text-left"
+              >
                 {canalAtivo.tipo === "dm" ? (
                   <Avatar nome={canalAtivo.nomeExibicao} tamanho={34} />
                 ) : (
@@ -556,17 +565,28 @@ export default function ChatPage() {
                 )}
                 <div>
                   <p className="font-bold text-ink leading-tight">{canalAtivo.nomeExibicao}</p>
-                  {canalAtivo.subtitulo && <p className="text-xs text-ink/40">{canalAtivo.subtitulo}</p>}
+                  {canalAtivo.subtitulo && <p className="text-xs text-ink/40 truncate max-w-md">{canalAtivo.subtitulo}</p>}
                 </div>
+              </button>
+              <div className="flex items-center gap-2">
+                {canalAtivo.tipo !== "dm" && (
+                  <button
+                    onClick={() => setAdicionarParticipanteAberto(true)}
+                    className="text-xs font-semibold text-ink/50 hover:text-ink rounded-full border border-black/10 px-3 py-1.5"
+                  >
+                    + Adicionar participante
+                  </button>
+                )}
+                {canalAtivo.tipo !== "dm" && (
+                  <button
+                    onClick={() => setConfigCanalAberto(true)}
+                    className="h-8 w-8 rounded-full hover:bg-surface flex items-center justify-center text-ink/50"
+                    title="Configurações do canal"
+                  >
+                    ⋯
+                  </button>
+                )}
               </div>
-              {canalAtivo.tipo !== "dm" && (
-                <button
-                  onClick={() => setAdicionarParticipanteAberto(true)}
-                  className="text-xs font-semibold text-ink/50 hover:text-ink rounded-full border border-black/10 px-3 py-1.5"
-                >
-                  + Adicionar participante
-                </button>
-              )}
             </div>
 
             <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
@@ -798,6 +818,29 @@ export default function ChatPage() {
           }}
         />
       )}
+
+      {configCanalAberto && canalAtivo && (
+        <ConfigCanalModal
+          canal={canalAtivo}
+          colegas={colegas}
+          meuId={meuId}
+          temMensagens={mensagens.length > 0}
+          onClose={() => setConfigCanalAberto(false)}
+          onAtualizado={() => {
+            carregarCanais();
+          }}
+          onArquivado={() => {
+            setConfigCanalAberto(false);
+            setCanalAtivoId(null);
+            carregarCanais();
+          }}
+          onExcluido={() => {
+            setConfigCanalAberto(false);
+            setCanalAtivoId(null);
+            carregarCanais();
+          }}
+        />
+      )}
     </main>
   );
 }
@@ -866,6 +909,173 @@ function AdicionarParticipanteModal({
   );
 }
 
+function ConfigCanalModal({
+  canal,
+  colegas,
+  meuId,
+  temMensagens,
+  onClose,
+  onAtualizado,
+  onArquivado,
+  onExcluido,
+}: {
+  canal: CanalComInfo;
+  colegas: Colega[];
+  meuId: string | null;
+  temMensagens: boolean;
+  onClose: () => void;
+  onAtualizado: () => void;
+  onArquivado: () => void;
+  onExcluido: () => void;
+}) {
+  const [nome, setNome] = useState(canal.nome ?? "");
+  const [descricao, setDescricao] = useState(canal.descricao ?? "");
+  const [membros, setMembros] = useState<{ authUserId: string; nome: string; cargo: string | null }[]>([]);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [sucesso, setSucesso] = useState(false);
+
+  const carregarMembros = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase.from("chat_participantes").select("auth_user_id").eq("canal_id", canal.id);
+    const ids = (data ?? []).map((p) => p.auth_user_id);
+    setMembros(
+      ids.map((id) => {
+        if (id === meuId) return { authUserId: id, nome: "Você", cargo: null };
+        const colega = colegas.find((c) => c.authUserId === id);
+        return { authUserId: id, nome: colega?.nome ?? "Alguém", cargo: colega?.cargo ?? null };
+      })
+    );
+  }, [canal.id, colegas, meuId]);
+
+  useEffect(() => {
+    carregarMembros();
+  }, [carregarMembros]);
+
+  async function salvar() {
+    setSalvando(true);
+    setErro(null);
+    setSucesso(false);
+    const supabase = createClient();
+    const payload: Record<string, string | null> = { descricao: descricao.trim() || null };
+    if (canal.tipo === "grupo") payload.nome = nome.trim() || null;
+    const { error } = await supabase.from("chat_canais").update(payload).eq("id", canal.id);
+    setSalvando(false);
+    if (error) {
+      setErro(error.message);
+    } else {
+      setSucesso(true);
+      onAtualizado();
+    }
+  }
+
+  async function removerMembro(authUserId: string) {
+    if (!window.confirm("Remover essa pessoa do canal?")) return;
+    const supabase = createClient();
+    await supabase.from("chat_participantes").delete().eq("canal_id", canal.id).eq("auth_user_id", authUserId);
+    carregarMembros();
+    onAtualizado();
+  }
+
+  async function arquivar() {
+    if (!meuId) return;
+    if (!window.confirm("Arquivar essa conversa? Ela some da sua lista, mas o histórico continua guardado.")) return;
+    const supabase = createClient();
+    await supabase
+      .from("chat_participantes")
+      .update({ arquivado: true })
+      .eq("canal_id", canal.id)
+      .eq("auth_user_id", meuId);
+    onArquivado();
+  }
+
+  async function excluir() {
+    if (!window.confirm("Excluir esse canal de vez? Essa ação não pode ser desfeita.")) return;
+    const supabase = createClient();
+    await supabase.from("chat_canais").delete().eq("id", canal.id);
+    onExcluido();
+  }
+
+  return (
+    <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-ink mb-4">Configurações do canal</h2>
+
+        {canal.tipo === "grupo" && (
+          <label className="block mb-3">
+            <span className="block text-sm font-medium text-ink/70 mb-1">Nome do grupo</span>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} className="input" />
+          </label>
+        )}
+
+        <label className="block mb-4">
+          <span className="block text-sm font-medium text-ink/70 mb-1">Descrição</span>
+          <textarea
+            value={descricao}
+            onChange={(e) => setDescricao(e.target.value)}
+            className="input"
+            rows={2}
+            placeholder="Do que é esse canal..."
+          />
+        </label>
+
+        {erro && <p className="text-sm text-red-600 mb-2">{erro}</p>}
+        {sucesso && <p className="text-sm text-forest font-semibold mb-2">Salvo!</p>}
+
+        <button
+          onClick={salvar}
+          disabled={salvando}
+          className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50 mb-6"
+        >
+          {salvando ? "Salvando..." : "Salvar alterações"}
+        </button>
+
+        <div className="mb-6">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Membros ({membros.length})</p>
+          <div className="rounded-2xl border border-black/5 overflow-hidden">
+            {membros.map((m) => (
+              <div key={m.authUserId} className="flex items-center justify-between px-4 py-2.5 border-b border-black/5 last:border-0">
+                <div className="flex items-center gap-2">
+                  <Avatar nome={m.nome} tamanho={28} />
+                  <div>
+                    <p className="text-sm font-semibold text-ink">{m.nome}</p>
+                    {m.cargo && <p className="text-xs text-ink/40">{m.cargo}</p>}
+                  </div>
+                </div>
+                {m.authUserId !== meuId && (
+                  <button onClick={() => removerMembro(m.authUserId)} className="text-xs font-semibold text-ink/40 hover:text-red-600">
+                    Remover
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 pt-3 border-t border-black/5">
+          <button onClick={arquivar} className="text-sm font-semibold text-ink/60 hover:text-ink">
+            Arquivar conversa
+          </button>
+          {!temMensagens && (
+            <button onClick={excluir} className="text-sm font-semibold text-red-500 hover:text-red-700 ml-auto">
+              Excluir canal
+            </button>
+          )}
+        </div>
+        {temMensagens && (
+          <p className="text-xs text-ink/40 mt-2">
+            Esse canal já tem mensagens, então só é possível arquivar (o histórico fica guardado).
+          </p>
+        )}
+
+        <button onClick={onClose} className="mt-4 text-sm font-semibold text-ink/60 hover:text-ink">
+          Fechar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function NovaConversaModal({
   colegas,
   onClose,
@@ -878,6 +1088,7 @@ function NovaConversaModal({
   const [tipo, setTipo] = useState<"dm" | "grupo" | "cliente">("dm");
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [nomeGrupo, setNomeGrupo] = useState("");
+  const [descricaoGrupo, setDescricaoGrupo] = useState("");
   const [clientes, setClientes] = useState<{ id: string; nome: string }[]>([]);
   const [clienteId, setClienteId] = useState("");
   const [busca, setBusca] = useState("");
@@ -957,6 +1168,7 @@ function NovaConversaModal({
       .insert({
         tipo,
         nome: tipo === "grupo" ? nomeGrupo.trim() : null,
+        descricao: tipo === "grupo" ? descricaoGrupo.trim() || null : null,
         cliente_id: tipo === "cliente" ? clienteId : null,
         criado_por: user.id,
       })
@@ -1000,10 +1212,22 @@ function NovaConversaModal({
         </div>
 
         {tipo === "grupo" && (
-          <label className="block mb-4">
-            <span className="block text-sm font-medium text-ink/70 mb-1">Nome do grupo</span>
-            <input value={nomeGrupo} onChange={(e) => setNomeGrupo(e.target.value)} className="input" placeholder="Ex: Time de Criação" />
-          </label>
+          <>
+            <label className="block mb-4">
+              <span className="block text-sm font-medium text-ink/70 mb-1">Nome do grupo</span>
+              <input value={nomeGrupo} onChange={(e) => setNomeGrupo(e.target.value)} className="input" placeholder="Ex: Time de Criação" />
+            </label>
+            <label className="block mb-4">
+              <span className="block text-sm font-medium text-ink/70 mb-1">Descrição (opcional)</span>
+              <textarea
+                value={descricaoGrupo}
+                onChange={(e) => setDescricaoGrupo(e.target.value)}
+                className="input"
+                rows={2}
+                placeholder="Do que é esse grupo..."
+              />
+            </label>
+          </>
         )}
 
         {tipo === "cliente" && (
