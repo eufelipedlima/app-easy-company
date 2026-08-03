@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
 import {
@@ -125,7 +126,7 @@ function nomeCliente(p: Post) {
   return p.clientes?.papeis?.pessoas?.nome ?? "—";
 }
 
-export default function CalendarioConteudoPage() {
+function CalendarioConteudoConteudo() {
   const hoje = new Date();
   const [mes, setMes] = useState(hoje.getMonth());
   const [ano, setAno] = useState(hoje.getFullYear());
@@ -141,6 +142,24 @@ export default function CalendarioConteudoPage() {
   const [visualizacao, setVisualizacao] = useState<"calendario" | "kanban">("calendario");
   const [postsKanban, setPostsKanban] = useState<Post[]>([]);
   const [loadingKanban, setLoadingKanban] = useState(false);
+  const [mesKanban, setMesKanban] = useState(hoje.getMonth());
+  const [anoKanban, setAnoKanban] = useState(hoje.getFullYear());
+  const [todosOsMesesKanban, setTodosOsMesesKanban] = useState(false);
+  const kanbanScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = kanbanScrollRef.current;
+    if (!el) return;
+    function onWheel(e: WheelEvent) {
+      if (!el) return;
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
+      }
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [visualizacao]);
 
   const carregarKanban = useCallback(async () => {
     setLoadingKanban(true);
@@ -208,11 +227,10 @@ export default function CalendarioConteudoPage() {
     setLoading(false);
   }, [mes, ano, clienteFiltroId]);
 
+  const searchParams = useSearchParams();
   useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "kanban") {
-      setVisualizacao("kanban");
-    }
-  }, []);
+    setVisualizacao(searchParams.get("view") === "kanban" ? "kanban" : "calendario");
+  }, [searchParams]);
 
   useEffect(() => {
     carregarClientes();
@@ -421,18 +439,63 @@ export default function CalendarioConteudoPage() {
       )}
 
       {visualizacao === "kanban" && (
-        <div className="overflow-x-auto pb-4">
-          {loadingKanban ? (
-            <p className="text-sm text-ink/50">Carregando...</p>
-          ) : (
-            <KanbanBoard
-              statusList={statusList}
-              posts={postsKanban}
-              onMoverCard={moverCardStatus}
-              onAbrirCard={setEditando}
-            />
-          )}
-        </div>
+        <>
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <select
+              value={mesKanban}
+              onChange={(e) => setMesKanban(Number(e.target.value))}
+              disabled={todosOsMesesKanban}
+              className="input py-1.5 !w-auto disabled:opacity-40"
+            >
+              {MESES.map((m, i) => (
+                <option key={m} value={i}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <select
+              value={anoKanban}
+              onChange={(e) => setAnoKanban(Number(e.target.value))}
+              disabled={todosOsMesesKanban}
+              className="input py-1.5 !w-auto disabled:opacity-40"
+            >
+              {Array.from({ length: 4 }, (_, i) => hoje.getFullYear() - 1 + i).map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+            <label className="flex items-center gap-2 text-sm text-ink/60 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={todosOsMesesKanban}
+                onChange={(e) => setTodosOsMesesKanban(e.target.checked)}
+                className="h-4 w-4 rounded accent-forest"
+              />
+              Todos os meses
+            </label>
+          </div>
+
+          <div ref={kanbanScrollRef} className="overflow-x-auto pb-4">
+            {loadingKanban ? (
+              <p className="text-sm text-ink/50">Carregando...</p>
+            ) : (
+              <KanbanBoard
+                statusList={statusList}
+                posts={
+                  todosOsMesesKanban
+                    ? postsKanban
+                    : postsKanban.filter((p) => {
+                        const d = new Date(p.data_publicacao + "T00:00:00");
+                        return d.getMonth() === mesKanban && d.getFullYear() === anoKanban;
+                      })
+                }
+                onMoverCard={moverCardStatus}
+                onAbrirCard={setEditando}
+              />
+            )}
+          </div>
+        </>
       )}
 
       {linkPublicoAberto && <LinkPublicoModal onClose={() => setLinkPublicoAberto(false)} />}
@@ -456,6 +519,14 @@ export default function CalendarioConteudoPage() {
         />
       )}
     </main>
+  );
+}
+
+export default function CalendarioConteudoPage() {
+  return (
+    <Suspense fallback={<main className="mx-auto max-w-6xl px-6 py-10 text-sm text-ink/50">Carregando...</main>}>
+      <CalendarioConteudoConteudo />
+    </Suspense>
   );
 }
 
