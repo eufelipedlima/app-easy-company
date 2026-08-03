@@ -72,8 +72,62 @@ function formatarDiaSeparador(iso: string) {
   return data.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
 }
 
+const CORES_AVATAR = [
+  "bg-red-400", "bg-orange-400", "bg-amber-500", "bg-lime-500", "bg-emerald-500",
+  "bg-teal-500", "bg-sky-500", "bg-indigo-500", "bg-violet-500", "bg-pink-500",
+];
+
+function corAvatar(nome: string) {
+  let hash = 0;
+  for (let i = 0; i < nome.length; i++) hash = (hash * 31 + nome.charCodeAt(i)) % CORES_AVATAR.length;
+  return CORES_AVATAR[Math.abs(hash) % CORES_AVATAR.length];
+}
+
+function iniciais(nome: string) {
+  const partes = nome.trim().split(/\s+/);
+  return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
+}
+
+function Avatar({ nome, tamanho = 9 }: { nome: string; tamanho?: number }) {
+  return (
+    <div
+      className={`h-${tamanho} w-${tamanho} rounded-full ${corAvatar(nome)} text-white flex items-center justify-center text-xs font-bold shrink-0`}
+      style={{ height: tamanho * 4, width: tamanho * 4 }}
+    >
+      {iniciais(nome)}
+    </div>
+  );
+}
+
+// Suporta **negrito** e @Menções (reconhece só nomes de pessoas que
+// realmente têm acesso ao chat, pra não grifar um "@" qualquer à toa)
+function renderizarMensagem(texto: string, todosOsNomes: string[]) {
+  const partesBold = texto.split(/(\*\*[^*]+\*\*)/g);
+  return partesBold.map((parte, i) => {
+    if (parte.startsWith("**") && parte.endsWith("**") && parte.length > 4) {
+      return <strong key={i}>{parte.slice(2, -2)}</strong>;
+    }
+    if (todosOsNomes.length === 0) return parte;
+    const nomesEscapados = [...todosOsNomes]
+      .sort((a, b) => b.length - a.length)
+      .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const regexMencao = new RegExp(`@(${nomesEscapados.join("|")})`, "g");
+    const subPartes = parte.split(regexMencao);
+    return subPartes.map((sub, j) =>
+      todosOsNomes.includes(sub) ? (
+        <span key={`${i}-${j}`} className="text-forest font-semibold bg-mint rounded px-1">
+          @{sub}
+        </span>
+      ) : (
+        <span key={`${i}-${j}`}>{sub}</span>
+      )
+    );
+  });
+}
+
 export default function ChatPage() {
   const [meuId, setMeuId] = useState<string | null>(null);
+  const [meuNome, setMeuNome] = useState<string>("Você");
   const [canais, setCanais] = useState<CanalComInfo[]>([]);
   const [canalAtivoId, setCanalAtivoId] = useState<string | null>(null);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
@@ -81,7 +135,28 @@ export default function ChatPage() {
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [novaConversaAberta, setNovaConversaAberta] = useState(false);
+  const [adicionarParticipanteAberto, setAdicionarParticipanteAberto] = useState(false);
   const [mostrarEmoji, setMostrarEmoji] = useState(false);
+  const [mencaoBusca, setMencaoBusca] = useState<string | null>(null);
+
+  const colegasParaMencao = colegas.filter((c) => mencaoBusca !== null && normalizar(c.nome).includes(normalizar(mencaoBusca)));
+
+  function selecionarMencao(nome: string) {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const posicaoCursor = textarea.selectionStart ?? texto.length;
+    const antesDoCursor = texto.slice(0, posicaoCursor);
+    const depoisDoCursor = texto.slice(posicaoCursor);
+    const novoAntes = antesDoCursor.replace(/@([a-zA-ZÀ-ÿ]*)$/, `@${nome} `);
+    const novoTexto = novoAntes + depoisDoCursor;
+    setTexto(novoTexto);
+    setMencaoBusca(null);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      const novaPosicao = novoAntes.length;
+      textarea.selectionStart = textarea.selectionEnd = novaPosicao;
+    });
+  }
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -93,8 +168,8 @@ export default function ChatPage() {
   }, [canalAtivoId]);
 
   const nomeDoParticipante = useCallback(
-    (authUserId: string) => colegas.find((c) => c.authUserId === authUserId)?.nome ?? "Alguém",
-    [colegas]
+    (authUserId: string) => (authUserId === meuId ? meuNome : colegas.find((c) => c.authUserId === authUserId)?.nome ?? "Alguém"),
+    [colegas, meuId, meuNome]
   );
 
   const carregarCanais = useCallback(async () => {
@@ -152,10 +227,12 @@ export default function ChatPage() {
       .from("funcionarios")
       .select("auth_user_id, papeis ( pessoas ( nome ) )")
       .not("auth_user_id", "is", null);
-    const listaColegas = ((func ?? []) as unknown as { auth_user_id: string; papeis: { pessoas: { nome: string } | null } | null }[])
-      .map((f) => ({ authUserId: f.auth_user_id, nome: f.papeis?.pessoas?.nome ?? "Colega" }))
-      .filter((c) => c.authUserId !== user.id);
+    const todosComNome = ((func ?? []) as unknown as { auth_user_id: string; papeis: { pessoas: { nome: string } | null } | null }[]).map(
+      (f) => ({ authUserId: f.auth_user_id, nome: f.papeis?.pessoas?.nome ?? "Colega" })
+    );
+    const listaColegas = todosComNome.filter((c) => c.authUserId !== user.id);
     setColegas(listaColegas);
+    setMeuNome(todosComNome.find((c) => c.authUserId === user.id)?.nome ?? "Você");
 
     // Última mensagem + contagem de não lidas por canal
     const canaisComInfo: CanalComInfo[] = await Promise.all(
@@ -385,42 +462,50 @@ export default function ChatPage() {
           </div>
         ) : (
           <>
-            <div className="px-6 py-4 border-b border-black/5 bg-card">
+            <div className="px-6 py-4 border-b border-black/5 bg-card flex items-center justify-between">
               <p className="font-bold text-ink flex items-center gap-1.5">
                 {canalAtivo.tipo === "grupo" && "# "}
                 {canalAtivo.tipo === "cliente" && "🏢 "}
                 {canalAtivo.nomeExibicao}
               </p>
+              {canalAtivo.tipo !== "dm" && (
+                <button
+                  onClick={() => setAdicionarParticipanteAberto(true)}
+                  className="text-xs font-semibold text-ink/50 hover:text-ink rounded-full border border-black/10 px-3 py-1.5"
+                >
+                  + Adicionar participante
+                </button>
+              )}
             </div>
 
-            <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-1">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
               {mensagens.map((m, i) => {
-                const éMinha = m.autor_id === meuId;
                 const anterior = mensagens[i - 1];
                 const novoDia = !anterior || formatarDiaSeparador(anterior.created_at) !== formatarDiaSeparador(m.created_at);
                 const mesmoAutorSeguido = anterior && anterior.autor_id === m.autor_id && !novoDia;
+                const nomeAutor = nomeDoParticipante(m.autor_id);
+                const todosOsNomes = [meuNome, ...colegas.map((c) => c.nome)];
                 return (
                   <div key={m.id}>
                     {novoDia && (
-                      <div className="flex items-center justify-center my-3">
-                        <span className="text-xs text-ink/40 bg-surface rounded-full px-3 py-1">
+                      <div className="flex items-center justify-center my-4">
+                        <span className="text-xs font-semibold text-ink/40 bg-surface rounded-full px-3 py-1">
                           {formatarDiaSeparador(m.created_at)}
                         </span>
                       </div>
                     )}
-                    <div className={`flex ${éMinha ? "justify-end" : "justify-start"} ${mesmoAutorSeguido ? "mt-0.5" : "mt-2"}`}>
-                      <div className={`max-w-[70%] ${éMinha ? "items-end" : "items-start"} flex flex-col`}>
-                        {!éMinha && !mesmoAutorSeguido && canalAtivo.tipo !== "dm" && (
-                          <span className="text-xs font-semibold text-ink/50 mb-0.5 px-1">{nomeDoParticipante(m.autor_id)}</span>
+                    <div className={`flex items-start gap-3 px-2 py-1 rounded-xl hover:bg-white/60 ${mesmoAutorSeguido ? "" : "mt-3"}`}>
+                      <div className="w-9 shrink-0">{!mesmoAutorSeguido && <Avatar nome={nomeAutor} />}</div>
+                      <div className="flex-1 min-w-0">
+                        {!mesmoAutorSeguido && (
+                          <div className="flex items-baseline gap-2 mb-0.5">
+                            <span className="text-sm font-bold text-ink">{nomeAutor}</span>
+                            <span className="text-[11px] text-ink/40">{formatarHora(m.created_at)}</span>
+                          </div>
                         )}
-                        <div
-                          className={`rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap break-words ${
-                            éMinha ? "bg-ink text-white rounded-br-md" : "bg-white text-ink rounded-bl-md shadow-sm"
-                          }`}
-                        >
-                          {m.texto}
-                        </div>
-                        <span className="text-[10px] text-ink/30 mt-0.5 px-1">{formatarHora(m.created_at)}</span>
+                        <p className="text-sm text-ink whitespace-pre-wrap break-words leading-relaxed">
+                          {renderizarMensagem(m.texto, todosOsNomes)}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -455,20 +540,44 @@ export default function ChatPage() {
                   </div>
                 )}
               </div>
-              <textarea
-                ref={textareaRef}
-                value={texto}
-                onChange={(e) => setTexto(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    enviarMensagem(e);
-                  }
-                }}
-                rows={1}
-                placeholder="Escreva uma mensagem..."
-                className="input flex-1 resize-none"
-              />
+              <div className="relative flex-1">
+                <textarea
+                  ref={textareaRef}
+                  value={texto}
+                  onChange={(e) => {
+                    const valor = e.target.value;
+                    setTexto(valor);
+                    const posicaoCursor = e.target.selectionStart ?? valor.length;
+                    const antesDoCursor = valor.slice(0, posicaoCursor);
+                    const match = antesDoCursor.match(/@([a-zA-ZÀ-ÿ]*)$/);
+                    setMencaoBusca(match ? match[1] : null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey && mencaoBusca === null) {
+                      e.preventDefault();
+                      enviarMensagem(e);
+                    }
+                    if (e.key === "Escape") setMencaoBusca(null);
+                  }}
+                  rows={1}
+                  placeholder="Escreva uma mensagem... (** pra negrito, @ pra mencionar)"
+                  className="input resize-none w-full"
+                />
+                {mencaoBusca !== null && colegasParaMencao.length > 0 && (
+                  <div className="absolute z-20 bottom-14 left-0 w-64 rounded-2xl bg-white border border-black/10 shadow-lg py-1 max-h-48 overflow-y-auto">
+                    {colegasParaMencao.map((c) => (
+                      <button
+                        key={c.authUserId}
+                        type="button"
+                        onClick={() => selecionarMencao(c.nome)}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-surface"
+                      >
+                        {c.nome}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 type="submit"
                 disabled={enviando || !texto.trim()}
@@ -491,7 +600,82 @@ export default function ChatPage() {
           }}
         />
       )}
+
+      {adicionarParticipanteAberto && canalAtivo && (
+        <AdicionarParticipanteModal
+          canalId={canalAtivo.id}
+          colegas={colegas}
+          onClose={() => setAdicionarParticipanteAberto(false)}
+          onAdicionado={() => {
+            setAdicionarParticipanteAberto(false);
+          }}
+        />
+      )}
     </main>
+  );
+}
+
+function AdicionarParticipanteModal({
+  canalId,
+  colegas,
+  onClose,
+  onAdicionado,
+}: {
+  canalId: string;
+  colegas: Colega[];
+  onClose: () => void;
+  onAdicionado: () => void;
+}) {
+  const [jaParticipam, setJaParticipam] = useState<string[]>([]);
+  const [busca, setBusca] = useState("");
+  const [adicionando, setAdicionando] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function carregar() {
+      const supabase = createClient();
+      const { data } = await supabase.from("chat_participantes").select("auth_user_id").eq("canal_id", canalId);
+      setJaParticipam((data ?? []).map((p) => p.auth_user_id));
+    }
+    carregar();
+  }, [canalId]);
+
+  const disponiveis = colegas.filter((c) => !jaParticipam.includes(c.authUserId) && normalizar(c.nome).includes(normalizar(busca)));
+
+  async function adicionar(authUserId: string) {
+    setAdicionando(authUserId);
+    const supabase = createClient();
+    await supabase.from("chat_participantes").insert({ canal_id: canalId, auth_user_id: authUserId });
+    setJaParticipam((atual) => [...atual, authUserId]);
+    setAdicionando(null);
+    onAdicionado();
+  }
+
+  return (
+    <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-ink mb-4">Adicionar participante</h2>
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} className="input mb-3" placeholder="Buscar colega..." />
+        <div className="rounded-2xl border border-black/5 overflow-hidden">
+          {disponiveis.length === 0 ? (
+            <p className="p-4 text-sm text-ink/50">Ninguém disponível pra adicionar.</p>
+          ) : (
+            disponiveis.map((c) => (
+              <button
+                key={c.authUserId}
+                onClick={() => adicionar(c.authUserId)}
+                disabled={adicionando === c.authUserId}
+                className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface border-b border-black/5 last:border-0 disabled:opacity-50"
+              >
+                {adicionando === c.authUserId ? "Adicionando..." : c.nome}
+              </button>
+            ))
+          )}
+        </div>
+        <button onClick={onClose} className="mt-4 text-sm font-semibold text-ink/60 hover:text-ink">
+          Fechar
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -538,8 +722,8 @@ function NovaConversaModal({
       setErro("Escolha exatamente uma pessoa.");
       return;
     }
-    if (tipo === "grupo" && (!nomeGrupo.trim() || selecionados.length === 0)) {
-      setErro("Dê um nome ao grupo e escolha ao menos uma pessoa.");
+    if (tipo === "grupo" && !nomeGrupo.trim()) {
+      setErro("Dê um nome ao grupo.");
       return;
     }
     if (tipo === "cliente" && !clienteId) {
@@ -655,7 +839,7 @@ function NovaConversaModal({
         {(tipo === "dm" || tipo === "grupo") && (
           <div className="mb-4">
             <span className="block text-sm font-medium text-ink/70 mb-1">
-              {tipo === "dm" ? "Com quem?" : "Participantes"}
+              {tipo === "dm" ? "Com quem?" : "Participantes (opcional — dá pra adicionar depois)"}
             </span>
             <input
               value={busca}
