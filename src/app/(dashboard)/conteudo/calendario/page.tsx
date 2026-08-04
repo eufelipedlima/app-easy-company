@@ -211,7 +211,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
       .select(
         `id, cliente_id, titulo, data_publicacao, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, observacoes_internas,
          clientes ( papeis ( pessoas ( nome ) ) ),
-         funcionarios ( papeis ( pessoas ( nome ) ) ),
+         funcionarios!responsavel_id ( papeis ( pessoas ( nome ) ) ),
          posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
          status_conteudo ( nome, cor )`
       )
@@ -253,7 +253,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
       .select(
         `id, cliente_id, titulo, data_publicacao, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, observacoes_internas,
          clientes ( papeis ( pessoas ( nome ) ) ),
-         funcionarios ( papeis ( pessoas ( nome ) ) ),
+         funcionarios!responsavel_id ( papeis ( pessoas ( nome ) ) ),
          posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
          status_conteudo ( nome, cor )`
       )
