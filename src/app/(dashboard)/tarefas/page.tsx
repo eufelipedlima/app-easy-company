@@ -37,6 +37,7 @@ interface Tarefa {
   responsavel_id: string | null;
   status_id: string;
   prioridade: "baixa" | "media" | "alta" | null;
+  data_inicio: string | null;
   prazo: string | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
   funcionarios: { papeis: { pessoas: { nome: string } | null } | null } | null;
@@ -46,9 +47,10 @@ interface CamposVisiveisTarefa {
   cliente: boolean;
   responsavel: boolean;
   indicadores: boolean;
+  mostrarFinsDeSemana: boolean;
 }
 
-const CAMPOS_PADRAO: CamposVisiveisTarefa = { cliente: true, responsavel: true, indicadores: true };
+const CAMPOS_PADRAO: CamposVisiveisTarefa = { cliente: true, responsavel: true, indicadores: true, mostrarFinsDeSemana: true };
 
 function carregarCamposVisiveis(): CamposVisiveisTarefa {
   if (typeof window === "undefined") return CAMPOS_PADRAO;
@@ -119,7 +121,7 @@ export default function TarefasPage() {
   const [painelCamposAberto, setPainelCamposAberto] = useState(false);
   const [painelFiltroAberto, setPainelFiltroAberto] = useState(false);
   const [funcionarios, setFuncionarios] = useState<Opcao[]>([]);
-  const [visualizacao, setVisualizacao] = useState<"kanban" | "semana">("kanban");
+  const [visualizacao, setVisualizacao] = useState<"kanban" | "semana" | "mes">("kanban");
   const [filtroStatusIds, setFiltroStatusIds] = useState<string[]>([]);
   const [filtroResponsavelId, setFiltroResponsavelId] = useState("");
   const [filtroPrioridade, setFiltroPrioridade] = useState("");
@@ -143,13 +145,14 @@ export default function TarefasPage() {
   }
 
   const filtrosAtivos =
-    filtroStatusIds.length > 0 || !!filtroResponsavelId || !!filtroPrioridade || filtroSoAtrasadas;
+    filtroStatusIds.length > 0 || !!filtroResponsavelId || !!filtroPrioridade || filtroSoAtrasadas || !!clienteFiltroId;
 
   function limparFiltros() {
     setFiltroStatusIds([]);
     setFiltroResponsavelId("");
     setFiltroPrioridade("");
     setFiltroSoAtrasadas(false);
+    setClienteFiltroId("");
   }
 
   const tarefasFiltradas = tarefas.filter((t) => {
@@ -204,7 +207,7 @@ export default function TarefasPage() {
     let query = supabase
       .from("tarefas")
       .select(
-        `id, titulo, descricao, cliente_id, responsavel_id, status_id, prioridade, prazo,
+        `id, titulo, descricao, cliente_id, responsavel_id, status_id, prioridade, data_inicio, prazo,
          clientes ( papeis ( pessoas ( nome ) ) ),
          funcionarios ( papeis ( pessoas ( nome ) ) )`
       )
@@ -278,6 +281,7 @@ export default function TarefasPage() {
                 className="absolute z-20 right-0 mt-1 w-72 rounded-2xl bg-white border border-black/10 shadow-lg p-4 space-y-4"
                 onMouseLeave={() => setPainelFiltroAberto(false)}
               >
+                <FiltroCliente clientes={clientes} valorId={clienteFiltroId} onMudar={setClienteFiltroId} />
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Status</p>
                   <div className="flex flex-wrap gap-1.5">
@@ -351,6 +355,7 @@ export default function TarefasPage() {
                   ["cliente", "Cliente / Interna"],
                   ["responsavel", "Responsável"],
                   ["indicadores", "Descrição, comentários e subtarefas"],
+                  ["mostrarFinsDeSemana", "Mostrar sábado e domingo (visão Semana)"],
                 ] as [keyof CamposVisiveisTarefa, string][]
               ).map(([campo, label]) => (
                 <label key={campo} className="flex items-center gap-2 px-1 py-1.5 text-sm text-ink cursor-pointer">
@@ -366,15 +371,6 @@ export default function TarefasPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
-          <select value={clienteFiltroId} onChange={(e) => setClienteFiltroId(e.target.value)} className="input py-2 !w-auto">
-            <option value="">Todos os clientes</option>
-            <option value="internas">Internas (sem cliente)</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
-            ))}
-          </select>
           <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
             <button
               onClick={() => setVisualizacao("kanban")}
@@ -392,6 +388,14 @@ export default function TarefasPage() {
             >
               Semana
             </button>
+            <button
+              onClick={() => setVisualizacao("mes")}
+              className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
+                visualizacao === "mes" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Mês
+            </button>
           </div>
         </div>
         <button
@@ -402,7 +406,7 @@ export default function TarefasPage() {
         </button>
       </div>
 
-      <div ref={scrollRef} className="overflow-x-auto pb-4">
+      <div ref={scrollRef} className="overflow-x-auto pb-4 min-h-[65vh]">
         {loading ? (
           <p className="text-sm text-ink/50">Carregando...</p>
         ) : visualizacao === "kanban" ? (
@@ -415,8 +419,16 @@ export default function TarefasPage() {
             onMoverTarefa={moverTarefaStatus}
             onAbrirTarefa={(t) => router.push(`/tarefas/${t.id}`)}
           />
-        ) : (
+        ) : visualizacao === "semana" ? (
           <TarefasSemana
+            tarefas={tarefasFiltradas}
+            contagemSubtarefas={contagemSubtarefas}
+            contagemComentarios={contagemComentarios}
+            camposVisiveis={camposVisiveis}
+            onAbrirTarefa={(t) => router.push(`/tarefas/${t.id}`)}
+          />
+        ) : (
+          <TarefasMes
             tarefas={tarefasFiltradas}
             contagemSubtarefas={contagemSubtarefas}
             contagemComentarios={contagemComentarios}
@@ -530,7 +542,7 @@ function TarefasColuna({
         <p className="text-sm font-bold text-ink truncate">{coluna.nome}</p>
         <span className={`ml-auto text-xs font-bold rounded-full px-2 py-0.5 shrink-0 ${cor.cor}`}>{cards.length}</span>
       </div>
-      <div className="space-y-2 min-h-[80px]">
+      <div className="space-y-2 min-h-[80px] max-h-[65vh] overflow-y-auto pr-1">
         {cards.map((t) => (
           <TarefaCardArrastavel
             key={t.id}
@@ -608,12 +620,13 @@ function TarefaCardConteudo({
             {PRIORIDADE_CONFIG[tarefa.prioridade].label}
           </span>
         )}
+        {tarefa.data_inicio && <span className="text-[10px] text-ink/40">Início: {formatarPrazo(tarefa.data_inicio)}</span>}
         {tarefa.prazo &&
           (() => {
             const atraso = diasAtraso(tarefa.prazo);
             return (
               <span className={`text-[10px] ${atraso ? "text-red-600 font-bold" : "text-ink/40"}`}>
-                📅 {formatarPrazo(tarefa.prazo)}
+                Fim: {formatarPrazo(tarefa.prazo)}
                 {atraso && ` · ${atraso}d atrasado`}
               </span>
             );
@@ -677,7 +690,7 @@ function TarefasSemana({
     const d = new Date(inicioSemana);
     d.setDate(d.getDate() + i);
     return d;
-  });
+  }).filter((d) => camposVisiveis.mostrarFinsDeSemana || (d.getDay() !== 0 && d.getDay() !== 6));
 
   const semPrazo = tarefas.filter((t) => !t.prazo);
   const hojeISO = toISODateLocal(hoje);
@@ -717,7 +730,7 @@ function TarefasSemana({
           →
         </button>
         <h2 className="text-lg font-bold text-ink ml-2">
-          {dias[0].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – {dias[6].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+          {dias[0].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – {dias[dias.length - 1].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
         </h2>
       </div>
 
@@ -765,6 +778,202 @@ function TarefasSemana({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+const MESES = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
+function TarefasMes({
+  tarefas,
+  contagemSubtarefas,
+  contagemComentarios,
+  camposVisiveis,
+  onAbrirTarefa,
+}: {
+  tarefas: Tarefa[];
+  contagemSubtarefas: Record<string, number>;
+  contagemComentarios: Record<string, number>;
+  camposVisiveis: CamposVisiveisTarefa;
+  onAbrirTarefa: (t: Tarefa) => void;
+}) {
+  const hoje = new Date();
+  const [mes, setMes] = useState(hoje.getMonth());
+  const [ano, setAno] = useState(hoje.getFullYear());
+
+  const primeiroDiaMes = new Date(ano, mes, 1);
+  const ultimoDiaMes = new Date(ano, mes + 1, 0);
+  const dias: Date[] = [];
+  const inicioGrade = new Date(primeiroDiaMes);
+  inicioGrade.setDate(inicioGrade.getDate() - inicioGrade.getDay());
+  const fimGrade = new Date(ultimoDiaMes);
+  fimGrade.setDate(fimGrade.getDate() + (6 - fimGrade.getDay()));
+  for (let d = new Date(inicioGrade); d <= fimGrade; d.setDate(d.getDate() + 1)) {
+    dias.push(new Date(d));
+  }
+
+  const hojeISO = toISODateLocal(hoje);
+  const tarefasPorDia = new Map<string, Tarefa[]>();
+  for (const t of tarefas) {
+    if (!t.prazo) continue;
+    if (!tarefasPorDia.has(t.prazo)) tarefasPorDia.set(t.prazo, []);
+    tarefasPorDia.get(t.prazo)!.push(t);
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <button
+          onClick={() => {
+            const d = new Date(ano, mes - 1, 1);
+            setMes(d.getMonth());
+            setAno(d.getFullYear());
+          }}
+          className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-surface text-ink/50"
+        >
+          ←
+        </button>
+        <button
+          onClick={() => {
+            setMes(hoje.getMonth());
+            setAno(hoje.getFullYear());
+          }}
+          className="rounded-full border-2 border-ink/15 px-4 py-1.5 text-sm font-semibold hover:bg-surface"
+        >
+          Hoje
+        </button>
+        <button
+          onClick={() => {
+            const d = new Date(ano, mes + 1, 1);
+            setMes(d.getMonth());
+            setAno(d.getFullYear());
+          }}
+          className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-surface text-ink/50"
+        >
+          →
+        </button>
+        <h2 className="text-lg font-bold text-ink ml-2">
+          {MESES[mes]} {ano}
+        </h2>
+      </div>
+
+      <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
+        <div className="grid grid-cols-7 bg-surface text-xs font-semibold text-ink/50 uppercase tracking-wide">
+          {DIAS_SEMANA.map((d) => (
+            <div key={d} className="px-3 py-2 text-center">
+              {d}
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7">
+          {dias.map((dia) => {
+            const iso = toISODateLocal(dia);
+            const doMes = dia.getMonth() === mes;
+            const tarefasDoDia = tarefasPorDia.get(iso) ?? [];
+            return (
+              <div
+                key={iso}
+                className={`min-h-[110px] border-b border-r border-black/5 p-2 ${doMes ? "bg-white" : "bg-surface/40"} ${
+                  iso === hojeISO ? "bg-mint/30" : ""
+                }`}
+              >
+                <p className={`text-xs font-semibold mb-1 ${doMes ? "text-ink/60" : "text-ink/30"} ${iso === hojeISO ? "text-forest" : ""}`}>
+                  {dia.getDate()}
+                </p>
+                <div className="space-y-1">
+                  {tarefasDoDia.slice(0, 3).map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => onAbrirTarefa(t)}
+                      className="w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate bg-surface hover:bg-surface/70"
+                    >
+                      {t.titulo}
+                    </button>
+                  ))}
+                  {tarefasDoDia.length > 3 && <p className="text-[10px] text-ink/40 px-1.5">+{tarefasDoDia.length - 3} mais</p>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FiltroCliente({
+  clientes,
+  valorId,
+  onMudar,
+}: {
+  clientes: Opcao[];
+  valorId: string;
+  onMudar: (id: string) => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const [aberto, setAberto] = useState(false);
+  const selecionado = valorId === "internas" ? { id: "internas", nome: "Internas (sem cliente)" } : clientes.find((c) => c.id === valorId);
+  const sugestoes = clientes.filter((c) => normalizar(c.nome).includes(normalizar(busca)));
+
+  return (
+    <div>
+      <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Cliente</p>
+      {selecionado ? (
+        <div className="flex items-center justify-between rounded-xl bg-mint px-3 py-2">
+          <span className="text-sm font-semibold text-forest">{selecionado.nome}</span>
+          <button onClick={() => onMudar("")} className="text-forest hover:text-ink text-xs font-bold">
+            ✕
+          </button>
+        </div>
+      ) : (
+        <div className="relative">
+          <input
+            value={busca}
+            onChange={(e) => {
+              setBusca(e.target.value);
+              setAberto(true);
+            }}
+            onFocus={() => setAberto(true)}
+            className="input py-1.5 text-sm"
+            placeholder="Digite pra buscar..."
+          />
+          {aberto && (
+            <div className="absolute z-30 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-48 overflow-auto">
+              <button
+                onClick={() => {
+                  onMudar("internas");
+                  setAberto(false);
+                  setBusca("");
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-surface text-ink/60 border-b border-black/5"
+              >
+                Internas (sem cliente)
+              </button>
+              {busca &&
+                (sugestoes.length > 0 ? (
+                  sugestoes.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        onMudar(c.id);
+                        setAberto(false);
+                        setBusca("");
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-surface"
+                    >
+                      {c.nome}
+                    </button>
+                  ))
+                ) : (
+                  <p className="px-3 py-2 text-sm text-ink/40">Nenhum cliente encontrado.</p>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

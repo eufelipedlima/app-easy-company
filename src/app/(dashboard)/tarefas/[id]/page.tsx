@@ -496,27 +496,44 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
           <div className="rounded-2xl bg-white p-4 shadow-sm">
             <span className="block text-sm font-bold text-ink mb-2">Subtarefas</span>
+            {subtarefas.length > 0 && (
+              <div className="grid grid-cols-[1fr_140px_150px_110px] gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/40">
+                <span>Nome</span>
+                <span>Responsável</span>
+                <span>Prazo</span>
+                <span>Status</span>
+              </div>
+            )}
             <div className="space-y-1.5 mb-2">
               {subtarefas.map((s) => {
                 const statusSub = statusList.find((st) => st.id === s.status_id);
                 const atraso = diasAtraso(s.prazo);
+                const nomeResponsavelSub = funcionarios.find((f) => f.id === s.responsavel_id)?.nome ?? null;
                 return (
                   <button
                     key={s.id}
                     onClick={() => router.push(`/tarefas/${s.id}`)}
-                    className="w-full flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors text-left"
+                    className="w-full grid grid-cols-[1fr_140px_150px_110px] items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors text-left"
                   >
-                    <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
-                    <span className="flex-1 text-sm text-ink truncate">{s.titulo}</span>
-                    {(s.data_inicio || s.prazo) && (
-                      <span className={`text-[11px] shrink-0 ${atraso ? "text-red-600 font-bold" : "text-ink/40"}`}>
-                        {s.data_inicio && `Início ${formatarDataCurta(s.data_inicio)}`}
-                        {s.data_inicio && s.prazo && " · "}
-                        {s.prazo && `Prazo ${formatarDataCurta(s.prazo)}`}
-                        {atraso && ` · Atrasado ${atraso} dia${atraso > 1 ? "s" : ""}`}
-                      </span>
-                    )}
-                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
+                      <span className="text-sm text-ink truncate">{s.titulo}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      {nomeResponsavelSub ? (
+                        <>
+                          <Avatar nome={nomeResponsavelSub} tamanho={20} />
+                          <span className="text-xs text-ink/60 truncate">{nomeResponsavelSub}</span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-ink/30">—</span>
+                      )}
+                    </span>
+                    <span className={`text-xs ${atraso ? "text-red-600 font-bold" : "text-ink/50"}`}>
+                      {s.prazo ? formatarDataCurta(s.prazo) : "—"}
+                      {atraso && ` · ${atraso}d`}
+                    </span>
+                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
                       {statusSub?.nome ?? "—"}
                     </span>
                   </button>
