@@ -83,17 +83,7 @@ const MENU: Grupo[] = [
     label: "Configurações",
     icon: <Settings size={18} />,
     areaSlug: "configuracoes",
-    itens: [
-      { href: "/configuracoes/cargos", label: "Cargos", icon: <Briefcase size={15} /> },
-      { href: "/configuracoes/motivos-encerramento", label: "Motivos de encerramento", icon: <AlertTriangle size={15} /> },
-      { href: "/configuracoes/origens", label: "Origens", icon: <Compass size={15} /> },
-      { href: "/configuracoes/perfis-acesso", label: "Perfis de acesso", icon: <ShieldCheck size={15} /> },
-      { href: "/configuracoes/planos-conta", label: "Planos de conta", icon: <ListTree size={15} /> },
-      { href: "/configuracoes/redes-sociais", label: "Redes sociais", icon: <Share2 size={15} /> },
-      { href: "/configuracoes/segmentos", label: "Segmentos", icon: <Building2 size={15} /> },
-      { href: "/configuracoes/servicos", label: "Serviços", icon: <Wrench size={15} /> },
-      { href: "/configuracoes/status-conteudo", label: "Status de conteúdo", icon: <Calendar size={15} /> },
-    ],
+    href: "/configuracoes",
   },
 ];
 
