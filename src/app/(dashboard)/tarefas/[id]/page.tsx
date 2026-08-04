@@ -338,7 +338,10 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     <main className="h-screen flex flex-col bg-surface/30">
       <div className="px-8 py-4 flex items-center justify-between shrink-0 bg-white">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push("/tarefas")} className="text-sm font-semibold text-ink/50 hover:text-ink">
+          <button
+            onClick={() => router.push("/tarefas")}
+            className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors"
+          >
             ← Tarefas
           </button>
           {tituloTarefaMae && tarefa.tarefa_pai_id && (

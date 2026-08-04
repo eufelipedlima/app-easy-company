@@ -1,7 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+
+const CORES_AVATAR = [
+  "bg-red-400", "bg-orange-400", "bg-amber-500", "bg-lime-500", "bg-emerald-500",
+  "bg-teal-500", "bg-sky-500", "bg-indigo-500", "bg-violet-500", "bg-pink-500",
+];
+function corAvatar(nome: string) {
+  let hash = 0;
+  for (let i = 0; i < nome.length; i++) hash = (hash * 31 + nome.charCodeAt(i)) % CORES_AVATAR.length;
+  return CORES_AVATAR[Math.abs(hash) % CORES_AVATAR.length];
+}
+function iniciais(nome: string) {
+  const partes = nome.trim().split(/\s+/);
+  return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
+}
 
 export default function MeuPerfilPage() {
   const [loading, setLoading] = useState(true);
@@ -10,9 +24,20 @@ export default function MeuPerfilPage() {
   const [apelido, setApelido] = useState("");
   const [cargo, setCargo] = useState<string | null>(null);
   const [email, setEmail] = useState("");
+  const [whatsapp, setWhatsapp] = useState<string | null>(null);
+  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [sucesso, setSucesso] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const inputFotoRef = useRef<HTMLInputElement>(null);
+
+  const [senhaAberta, setSenhaAberta] = useState(false);
+  const [novaSenha, setNovaSenha] = useState("");
+  const [confirmarSenha, setConfirmarSenha] = useState("");
+  const [salvandoSenha, setSalvandoSenha] = useState(false);
+  const [erroSenha, setErroSenha] = useState<string | null>(null);
+  const [sucessoSenha, setSucessoSenha] = useState(false);
 
   useEffect(() => {
     async function carregar() {
@@ -28,24 +53,49 @@ export default function MeuPerfilPage() {
 
       const { data: funcionario } = await supabase
         .from("funcionarios")
-        .select("cargo, cargo_id, cargos ( nome ), papeis ( pessoa_id, pessoas ( id, nome, apelido ) )")
+        .select("cargo, cargo_id, cargos ( nome ), papeis ( pessoa_id, pessoas ( id, nome, apelido, whatsapp, foto_url ) )")
         .eq("auth_user_id", user.id)
         .maybeSingle();
 
       const f = funcionario as unknown as {
         cargo: string | null;
         cargos: { nome: string } | null;
-        papeis: { pessoa_id: string; pessoas: { id: string; nome: string; apelido: string | null } | null } | null;
+        papeis: {
+          pessoa_id: string;
+          pessoas: { id: string; nome: string; apelido: string | null; whatsapp: string | null; foto_url: string | null } | null;
+        } | null;
       } | null;
 
       setCargo(f?.cargos?.nome ?? f?.cargo ?? null);
       setPessoaId(f?.papeis?.pessoas?.id ?? null);
       setNome(f?.papeis?.pessoas?.nome ?? "");
       setApelido(f?.papeis?.pessoas?.apelido ?? "");
+      setWhatsapp(f?.papeis?.pessoas?.whatsapp ?? null);
+      setFotoUrl(f?.papeis?.pessoas?.foto_url ?? null);
       setLoading(false);
     }
     carregar();
   }, []);
+
+  async function enviarFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    if (!arquivo || !pessoaId) return;
+    setEnviandoFoto(true);
+    setErro(null);
+    const supabase = createClient();
+    const extensao = arquivo.name.split(".").pop();
+    const caminho = `${pessoaId}-${Date.now()}.${extensao}`;
+    const { error: erroUpload } = await supabase.storage.from("perfis").upload(caminho, arquivo, { upsert: true });
+    if (erroUpload) {
+      setErro(erroUpload.message);
+      setEnviandoFoto(false);
+      return;
+    }
+    const { data } = supabase.storage.from("perfis").getPublicUrl(caminho);
+    await supabase.from("pessoas").update({ foto_url: data.publicUrl }).eq("id", pessoaId);
+    setFotoUrl(data.publicUrl);
+    setEnviandoFoto(false);
+  }
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
@@ -62,6 +112,33 @@ export default function MeuPerfilPage() {
       setSucesso(true);
     }
   }
+
+  async function alterarSenha(e: React.FormEvent) {
+    e.preventDefault();
+    setErroSenha(null);
+    setSucessoSenha(false);
+    if (novaSenha.length < 6) {
+      setErroSenha("A senha precisa ter pelo menos 6 caracteres.");
+      return;
+    }
+    if (novaSenha !== confirmarSenha) {
+      setErroSenha("As senhas não coincidem.");
+      return;
+    }
+    setSalvandoSenha(true);
+    const supabase = createClient();
+    const { error } = await supabase.auth.updateUser({ password: novaSenha });
+    setSalvandoSenha(false);
+    if (error) {
+      setErroSenha(error.message);
+    } else {
+      setSucessoSenha(true);
+      setNovaSenha("");
+      setConfirmarSenha("");
+    }
+  }
+
+  const nomeExibicao = apelido || nome;
 
   if (loading) {
     return (
@@ -88,6 +165,29 @@ export default function MeuPerfilPage() {
       <h1 className="text-2xl font-extrabold text-ink mb-1">Meu perfil</h1>
       <p className="text-sm text-ink/60 mb-8">Como você aparece pro resto da equipe no Chat e nas tarefas.</p>
 
+      <div className="flex items-center gap-4 mb-8">
+        <div className="relative">
+          {fotoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={fotoUrl} alt={nomeExibicao} className="h-20 w-20 rounded-full object-cover" />
+          ) : (
+            <div className={`h-20 w-20 rounded-full ${corAvatar(nomeExibicao || "?")} text-white flex items-center justify-center text-xl font-bold`}>
+              {iniciais(nomeExibicao || "?")}
+            </div>
+          )}
+        </div>
+        <div>
+          <input ref={inputFotoRef} type="file" accept="image/*" onChange={enviarFoto} className="hidden" />
+          <button
+            onClick={() => inputFotoRef.current?.click()}
+            disabled={enviandoFoto}
+            className="rounded-full border-2 border-black/10 px-4 py-2 text-sm font-semibold text-ink hover:bg-surface transition-colors disabled:opacity-50"
+          >
+            {enviandoFoto ? "Enviando..." : "Trocar foto"}
+          </button>
+        </div>
+      </div>
+
       <form onSubmit={salvar} className="space-y-4">
         <div className="rounded-2xl bg-card border border-black/5 p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -104,8 +204,14 @@ export default function MeuPerfilPage() {
             <span className="text-xs text-ink/50">E-mail de login</span>
             <span className="text-sm font-semibold text-ink">{email}</span>
           </div>
+          {whatsapp && (
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-ink/50">Telefone</span>
+              <span className="text-sm font-semibold text-ink">{whatsapp}</span>
+            </div>
+          )}
           <p className="text-xs text-ink/40 pt-1 border-t border-black/5">
-            Nome, cargo e e-mail são editados em Pessoas → Funcionários.
+            Nome, cargo, e-mail e telefone são editados em Pessoas → Funcionários.
           </p>
         </div>
 
@@ -133,6 +239,46 @@ export default function MeuPerfilPage() {
           {salvando ? "Salvando..." : "Salvar"}
         </button>
       </form>
+
+      <div className="mt-8 pt-6 border-t border-black/5">
+        {!senhaAberta ? (
+          <button onClick={() => setSenhaAberta(true)} className="text-sm font-semibold text-ink/60 hover:text-ink">
+            Alterar senha
+          </button>
+        ) : (
+          <form onSubmit={alterarSenha} className="space-y-3">
+            <p className="text-sm font-bold text-ink">Alterar senha</p>
+            <input
+              type="password"
+              value={novaSenha}
+              onChange={(e) => setNovaSenha(e.target.value)}
+              className="input"
+              placeholder="Nova senha (mín. 6 caracteres)"
+            />
+            <input
+              type="password"
+              value={confirmarSenha}
+              onChange={(e) => setConfirmarSenha(e.target.value)}
+              className="input"
+              placeholder="Confirmar nova senha"
+            />
+            {erroSenha && <p className="text-sm text-red-600">{erroSenha}</p>}
+            {sucessoSenha && <p className="text-sm text-forest font-semibold">Senha alterada!</p>}
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={salvandoSenha}
+                className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+              >
+                {salvandoSenha ? "Salvando..." : "Salvar nova senha"}
+              </button>
+              <button type="button" onClick={() => setSenhaAberta(false)} className="text-sm font-semibold text-ink/60 hover:text-ink">
+                Cancelar
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </main>
   );
 }

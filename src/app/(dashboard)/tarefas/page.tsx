@@ -62,6 +62,18 @@ function carregarCamposVisiveis(): CamposVisiveisTarefa {
   }
 }
 
+interface AcoesCard {
+  statusList: StatusItem[];
+  funcionarios: Opcao[];
+  onRenomear: (t: Tarefa) => void;
+  onMover: (tarefaId: string, novoStatusId: string) => void;
+  onDuplicar: (t: Tarefa) => void;
+  onExcluir: (t: Tarefa) => void;
+  onArquivar: (t: Tarefa) => void;
+  onAtribuir: (t: Tarefa, responsavelId: string) => void;
+  onCopiarLink: (t: Tarefa) => void;
+}
+
 const PRIORIDADE_CONFIG: Record<string, { label: string; cor: string }> = {
   baixa: { label: "Baixa", cor: "bg-sky-100 text-sky-700" },
   media: { label: "Média", cor: "bg-amber-100 text-amber-700" },
@@ -212,6 +224,7 @@ export default function TarefasPage() {
          funcionarios ( papeis ( pessoas ( nome ) ) )`
       )
       .is("tarefa_pai_id", null)
+      .eq("arquivada", false)
       .order("created_at", { ascending: false });
     if (clienteFiltroId === "internas") query = query.is("cliente_id", null);
     else if (clienteFiltroId) query = query.eq("cliente_id", clienteFiltroId);
@@ -258,6 +271,62 @@ export default function TarefasPage() {
     const supabase = createClient();
     await supabase.from("tarefas").update({ status_id: novoStatusId }).eq("id", tarefaId);
   }
+
+  async function renomearTarefa(t: Tarefa) {
+    const novoTitulo = window.prompt("Novo título:", t.titulo);
+    if (!novoTitulo || !novoTitulo.trim() || novoTitulo.trim() === t.titulo) return;
+    const supabase = createClient();
+    await supabase.from("tarefas").update({ titulo: novoTitulo.trim() }).eq("id", t.id);
+    carregarTarefas();
+  }
+
+  async function duplicarTarefa(t: Tarefa) {
+    const supabase = createClient();
+    await supabase.from("tarefas").insert({
+      titulo: `${t.titulo} (cópia)`,
+      descricao: t.descricao,
+      cliente_id: t.cliente_id,
+      responsavel_id: t.responsavel_id,
+      status_id: t.status_id,
+      prioridade: t.prioridade,
+    });
+    carregarTarefas();
+  }
+
+  async function excluirTarefaMenu(t: Tarefa) {
+    if (!window.confirm(`Excluir "${t.titulo}"? Isso também exclui as subtarefas dela.`)) return;
+    const supabase = createClient();
+    await supabase.from("tarefas").delete().eq("id", t.id);
+    carregarTarefas();
+  }
+
+  async function arquivarTarefaMenu(t: Tarefa) {
+    const supabase = createClient();
+    await supabase.from("tarefas").update({ arquivada: true }).eq("id", t.id);
+    carregarTarefas();
+  }
+
+  async function atribuirTarefaMenu(t: Tarefa, responsavelId: string) {
+    const supabase = createClient();
+    await supabase.from("tarefas").update({ responsavel_id: responsavelId || null }).eq("id", t.id);
+    carregarTarefas();
+  }
+
+  function copiarLinkTarefa(t: Tarefa) {
+    navigator.clipboard.writeText(`${window.location.origin}/tarefas/${t.id}`);
+  }
+
+  const acoesCard: AcoesCard = {
+    statusList,
+    funcionarios,
+    onRenomear: renomearTarefa,
+    onMover: moverTarefaStatus,
+    onDuplicar: duplicarTarefa,
+    onExcluir: excluirTarefaMenu,
+    onArquivar: arquivarTarefaMenu,
+    onAtribuir: atribuirTarefaMenu,
+    onCopiarLink: copiarLinkTarefa,
+  };
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
@@ -416,6 +485,7 @@ export default function TarefasPage() {
             contagemSubtarefas={contagemSubtarefas}
             contagemComentarios={contagemComentarios}
             camposVisiveis={camposVisiveis}
+            acoes={acoesCard}
             onMoverTarefa={moverTarefaStatus}
             onAbrirTarefa={(t) => router.push(`/tarefas/${t.id}`)}
           />
@@ -425,6 +495,7 @@ export default function TarefasPage() {
             contagemSubtarefas={contagemSubtarefas}
             contagemComentarios={contagemComentarios}
             camposVisiveis={camposVisiveis}
+            acoes={acoesCard}
             onAbrirTarefa={(t) => router.push(`/tarefas/${t.id}`)}
           />
         ) : (
@@ -433,6 +504,7 @@ export default function TarefasPage() {
             contagemSubtarefas={contagemSubtarefas}
             contagemComentarios={contagemComentarios}
             camposVisiveis={camposVisiveis}
+            acoes={acoesCard}
             onAbrirTarefa={(t) => router.push(`/tarefas/${t.id}`)}
           />
         )}
@@ -457,6 +529,7 @@ function TarefasBoard({
   contagemSubtarefas,
   contagemComentarios,
   camposVisiveis,
+  acoes,
   onMoverTarefa,
   onAbrirTarefa,
 }: {
@@ -465,6 +538,7 @@ function TarefasBoard({
   contagemSubtarefas: Record<string, number>;
   contagemComentarios: Record<string, number>;
   camposVisiveis: CamposVisiveisTarefa;
+  acoes: AcoesCard;
   onMoverTarefa: (tarefaId: string, novoStatusId: string) => void;
   onAbrirTarefa: (t: Tarefa) => void;
 }) {
@@ -494,6 +568,7 @@ function TarefasBoard({
             contagemSubtarefas={contagemSubtarefas}
             contagemComentarios={contagemComentarios}
             camposVisiveis={camposVisiveis}
+            acoes={acoes}
             onAbrirTarefa={onAbrirTarefa}
           />
         ))}
@@ -519,6 +594,7 @@ function TarefasColuna({
   contagemSubtarefas,
   contagemComentarios,
   camposVisiveis,
+  acoes,
   onAbrirTarefa,
 }: {
   coluna: StatusItem;
@@ -526,6 +602,7 @@ function TarefasColuna({
   contagemSubtarefas: Record<string, number>;
   contagemComentarios: Record<string, number>;
   camposVisiveis: CamposVisiveisTarefa;
+  acoes: AcoesCard;
   onAbrirTarefa: (t: Tarefa) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: coluna.id });
@@ -551,6 +628,7 @@ function TarefasColuna({
             qtdSubtarefas={contagemSubtarefas[t.id] ?? 0}
             qtdComentarios={contagemComentarios[t.id] ?? 0}
             camposVisiveis={camposVisiveis}
+            acoes={acoes}
             onAbrirTarefa={onAbrirTarefa}
           />
         ))}
@@ -565,6 +643,7 @@ function TarefaCardArrastavel({
   qtdSubtarefas,
   qtdComentarios,
   camposVisiveis,
+  acoes,
   onAbrirTarefa,
 }: {
   tarefa: Tarefa;
@@ -572,6 +651,7 @@ function TarefaCardArrastavel({
   qtdSubtarefas: number;
   qtdComentarios: number;
   camposVisiveis: CamposVisiveisTarefa;
+  acoes: AcoesCard;
   onAbrirTarefa: (t: Tarefa) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: tarefa.id, data: { statusAtual } });
@@ -583,7 +663,141 @@ function TarefaCardArrastavel({
       onClick={() => !isDragging && onAbrirTarefa(tarefa)}
       className={`touch-none transition-opacity ${isDragging ? "opacity-30" : "opacity-100"}`}
     >
-      <TarefaCardConteudo tarefa={tarefa} qtdSubtarefas={qtdSubtarefas} qtdComentarios={qtdComentarios} camposVisiveis={camposVisiveis} />
+      <TarefaCardConteudo
+        tarefa={tarefa}
+        qtdSubtarefas={qtdSubtarefas}
+        qtdComentarios={qtdComentarios}
+        camposVisiveis={camposVisiveis}
+        acoes={acoes}
+      />
+    </div>
+  );
+}
+
+function MenuAcoesTarefa({ tarefa, acoes }: { tarefa: Tarefa; acoes: AcoesCard }) {
+  const [aberto, setAberto] = useState(false);
+  const [submenu, setSubmenu] = useState<"mover" | "atribuir" | null>(null);
+
+  function fechar() {
+    setAberto(false);
+    setSubmenu(null);
+  }
+
+  return (
+    <div className="relative" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setAberto((v) => !v)}
+        className="h-6 w-6 rounded-full bg-white/90 hover:bg-surface flex items-center justify-center text-ink/50 shadow-sm text-xs font-bold"
+      >
+        ⋯
+      </button>
+      {aberto && (
+        <div className="absolute z-30 top-7 right-0 w-52 rounded-2xl bg-white border border-black/10 shadow-lg py-1.5" onMouseLeave={fechar}>
+          {submenu === null && (
+            <>
+              <button
+                onClick={() => {
+                  acoes.onRenomear(tarefa);
+                  fechar();
+                }}
+                className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface"
+              >
+                ✏️ Renomear
+              </button>
+              <button onClick={() => setSubmenu("mover")} className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface">
+                ➡️ Mover para etapa
+              </button>
+              <button onClick={() => setSubmenu("atribuir")} className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface">
+                👤 Atribuir a
+              </button>
+              <button
+                onClick={() => {
+                  acoes.onDuplicar(tarefa);
+                  fechar();
+                }}
+                className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface"
+              >
+                📄 Duplicar
+              </button>
+              <button
+                onClick={() => {
+                  acoes.onCopiarLink(tarefa);
+                  fechar();
+                }}
+                className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface"
+              >
+                🔗 Copiar link
+              </button>
+              <button
+                onClick={() => {
+                  acoes.onArquivar(tarefa);
+                  fechar();
+                }}
+                className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface text-ink/70"
+              >
+                🗄 Arquivar
+              </button>
+              <button
+                onClick={() => {
+                  acoes.onExcluir(tarefa);
+                  fechar();
+                }}
+                className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface text-red-600"
+              >
+                🗑 Excluir
+              </button>
+            </>
+          )}
+          {submenu === "mover" && (
+            <>
+              <button onClick={() => setSubmenu(null)} className="w-full text-left px-3.5 py-2 text-xs font-bold text-ink/40 hover:bg-surface">
+                ← Voltar
+              </button>
+              {acoes.statusList.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => {
+                    acoes.onMover(tarefa.id, s.id);
+                    fechar();
+                  }}
+                  className="w-full flex items-center gap-2 text-left px-3.5 py-2 text-sm hover:bg-surface"
+                >
+                  <span className={`h-2 w-2 rounded-full ${corDoStatus(s.cor).dot}`} />
+                  {s.nome}
+                </button>
+              ))}
+            </>
+          )}
+          {submenu === "atribuir" && (
+            <>
+              <button onClick={() => setSubmenu(null)} className="w-full text-left px-3.5 py-2 text-xs font-bold text-ink/40 hover:bg-surface">
+                ← Voltar
+              </button>
+              <button
+                onClick={() => {
+                  acoes.onAtribuir(tarefa, "");
+                  fechar();
+                }}
+                className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface text-ink/50"
+              >
+                Sem responsável
+              </button>
+              {acoes.funcionarios.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => {
+                    acoes.onAtribuir(tarefa, f.id);
+                    fechar();
+                  }}
+                  className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface"
+                >
+                  {f.nome}
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -593,12 +807,14 @@ function TarefaCardConteudo({
   qtdSubtarefas = 0,
   qtdComentarios = 0,
   camposVisiveis,
+  acoes,
   arrastando,
 }: {
   tarefa: Tarefa;
   qtdSubtarefas?: number;
   qtdComentarios?: number;
   camposVisiveis: CamposVisiveisTarefa;
+  acoes?: AcoesCard;
   arrastando?: boolean;
 }) {
   const cliente = nomeCliente(tarefa);
@@ -607,11 +823,16 @@ function TarefaCardConteudo({
 
   return (
     <div
-      className={`rounded-2xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow ${arrastando ? "w-72" : "w-full"} ${
+      className={`relative group/card rounded-2xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow ${arrastando ? "w-72" : "w-full"} ${
         arrastando ? "shadow-2xl rotate-2 border-2 border-forest/30" : "border border-black/5 shadow-sm hover:shadow-md"
       }`}
     >
-      <p className="text-sm font-semibold text-ink truncate">{tarefa.titulo}</p>
+      {acoes && !arrastando && (
+        <div className="absolute top-1.5 right-1.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
+          <MenuAcoesTarefa tarefa={tarefa} acoes={acoes} />
+        </div>
+      )}
+      <p className="text-sm font-semibold text-ink truncate pr-5">{tarefa.titulo}</p>
       {camposVisiveis.cliente && <p className="text-xs text-ink/50 truncate mt-0.5">{cliente ?? "Interna"}</p>}
 
       <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -670,12 +891,14 @@ function TarefasSemana({
   contagemSubtarefas,
   contagemComentarios,
   camposVisiveis,
+  acoes,
   onAbrirTarefa,
 }: {
   tarefas: Tarefa[];
   contagemSubtarefas: Record<string, number>;
   contagemComentarios: Record<string, number>;
   camposVisiveis: CamposVisiveisTarefa;
+  acoes: AcoesCard;
   onAbrirTarefa: (t: Tarefa) => void;
 }) {
   const hoje = new Date();
@@ -745,6 +968,7 @@ function TarefasSemana({
                   qtdSubtarefas={contagemSubtarefas[t.id] ?? 0}
                   qtdComentarios={contagemComentarios[t.id] ?? 0}
                   camposVisiveis={camposVisiveis}
+                  acoes={acoes}
                 />
               </div>
             ))}
@@ -770,6 +994,7 @@ function TarefasSemana({
                       qtdSubtarefas={contagemSubtarefas[t.id] ?? 0}
                       qtdComentarios={contagemComentarios[t.id] ?? 0}
                       camposVisiveis={camposVisiveis}
+                      acoes={acoes}
                     />
                   </div>
                 ))}
@@ -789,15 +1014,13 @@ const MESES = [
 
 function TarefasMes({
   tarefas,
-  contagemSubtarefas,
-  contagemComentarios,
-  camposVisiveis,
   onAbrirTarefa,
 }: {
   tarefas: Tarefa[];
   contagemSubtarefas: Record<string, number>;
   contagemComentarios: Record<string, number>;
   camposVisiveis: CamposVisiveisTarefa;
+  acoes: AcoesCard;
   onAbrirTarefa: (t: Tarefa) => void;
 }) {
   const hoje = new Date();
