@@ -82,6 +82,9 @@ const OBJETIVO_CONFIG: Record<string, { label: string }> = {
   atracao: { label: "Atração" },
   educacao: { label: "Educação" },
   conversao: { label: "Conversão" },
+  conexao: { label: "Conexão" },
+  institucional: { label: "Institucional" },
+  bastidores: { label: "Bastidores" },
 };
 
 const FORMATO_CONFIG: Record<string, { label: string }> = {
@@ -724,6 +727,7 @@ function PostModal({
   onSaved: () => void;
 }) {
   const editando = !!post;
+  const router = useRouter();
   const legendaRef = useRef<HTMLTextAreaElement>(null);
 
   const [clientes, setClientes] = useState<ClienteOpcao[]>([]);
@@ -917,10 +921,19 @@ function PostModal({
         className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto overflow-x-visible"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3 mb-5">
+        <div className="flex items-center justify-between gap-3 mb-2">
           <h2 className="text-lg font-bold text-ink shrink-0">{editando ? "Editar post" : "Novo post"}</h2>
           <StatusSelect value={statusId} statusList={statusList} onChange={setStatusId} />
         </div>
+        {editando && post && (
+          <button
+            type="button"
+            onClick={() => router.push(`/conteudo/calendario/post/${post.id}`)}
+            className="text-xs font-semibold text-forest hover:text-ink mb-4"
+          >
+            Abrir página completa (comentários internos, histórico, responsáveis) →
+          </button>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="block">

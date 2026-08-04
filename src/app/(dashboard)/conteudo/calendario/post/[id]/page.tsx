@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
-import { BuscaCliente } from "../page";
 import { RichTextEditor } from "@/components/rich-text-editor";
 
 interface StatusItem {
@@ -14,44 +13,50 @@ interface StatusItem {
   cor: string;
   ordem: number;
 }
-
 interface Opcao {
   id: string;
   nome: string;
 }
-
 interface Responsavel {
   id: string;
   nome: string;
   fotoUrl: string | null;
   authUserId: string | null;
 }
-
 interface Comentario {
   id: string;
   autor_id: string;
   texto: string;
   created_at: string;
 }
-
-interface Tarefa {
+interface HistoricoItem {
   id: string;
-  titulo: string;
-  descricao: string | null;
-  cliente_id: string | null;
+  autor_id: string | null;
+  descricao: string;
+  created_at: string;
+}
+interface Post {
+  id: string;
+  titulo: string | null;
+  legenda: string | null;
+  observacoes_internas: string | null;
+  cliente_id: string;
+  objetivo: string | null;
+  formato: string | null;
   status_id: string;
-  prioridade: "baixa" | "media" | "alta" | null;
-  data_inicio: string | null;
-  prazo: string | null;
-  tarefa_pai_id: string | null;
+  data_publicacao: string;
+  hora_publicacao: string | null;
 }
 
-interface Subtarefa {
-  id: string;
-  titulo: string;
-  status_id: string;
-  prazo: string | null;
-}
+const OBJETIVO_CONFIG: Record<string, string> = {
+  atracao: "Atração",
+  educacao: "Educação",
+  conversao: "Conversão",
+  conexao: "Conexão",
+  institucional: "Institucional",
+  bastidores: "Bastidores",
+};
+const FORMATO_CONFIG: Record<string, string> = { estatico: "Estático", carrossel: "Carrossel", video: "Vídeo" };
 
 const CORES_AVATAR = [
   "bg-red-400", "bg-orange-400", "bg-amber-500", "bg-lime-500", "bg-emerald-500",
@@ -69,14 +74,7 @@ function iniciais(nome: string) {
 function Avatar({ nome, fotoUrl, tamanho = 32 }: { nome: string; fotoUrl?: string | null; tamanho?: number }) {
   if (fotoUrl) {
     // eslint-disable-next-line @next/next/no-img-element
-    return (
-      <img
-        src={fotoUrl}
-        alt={nome}
-        className="rounded-full object-cover shrink-0 ring-2 ring-white"
-        style={{ height: tamanho, width: tamanho }}
-      />
-    );
+    return <img src={fotoUrl} alt={nome} className="rounded-full object-cover shrink-0 ring-2 ring-white" style={{ height: tamanho, width: tamanho }} />;
   }
   return (
     <div
@@ -111,7 +109,6 @@ function AvatarStack({ pessoas, tamanho = 22 }: { pessoas: Responsavel[]; tamanh
 function formatarQuando(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
-
 function renderizarTexto(texto: string, todosOsNomes: string[]) {
   if (todosOsNomes.length === 0) return texto;
   const nomesEscapados = [...todosOsNomes].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
@@ -128,58 +125,34 @@ function renderizarTexto(texto: string, todosOsNomes: string[]) {
   );
 }
 
-interface HistoricoItem {
-  id: string;
-  autor_id: string | null;
-  descricao: string;
-  created_at: string;
-}
-
-function formatarDataCurta(iso: string) {
-  return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-}
-
-function diasAtraso(prazo: string | null): number | null {
-  if (!prazo) return null;
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  const dataPrazo = new Date(prazo + "T00:00:00");
-  const diffDias = Math.floor((hoje.getTime() - dataPrazo.getTime()) / (1000 * 60 * 60 * 24));
-  return diffDias > 0 ? diffDias : null;
-}
-
-export default function TarefaDetalhePage({ params }: { params: Promise<{ id: string }> }) {
+export default function PostDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
 
-  const [tarefa, setTarefa] = useState<Tarefa | null>(null);
-  const [tituloTarefaMae, setTituloTarefaMae] = useState<string | null>(null);
+  const [post, setPost] = useState<Post | null>(null);
   const [statusList, setStatusList] = useState<StatusItem[]>([]);
   const [clientes, setClientes] = useState<Opcao[]>([]);
   const [funcionariosComAcesso, setFuncionariosComAcesso] = useState<Responsavel[]>([]);
   const [colegas, setColegas] = useState<Opcao[]>([]);
   const [meuId, setMeuId] = useState<string | null>(null);
   const [meuNome, setMeuNome] = useState("Você");
-  const [subtarefas, setSubtarefas] = useState<Subtarefa[]>([]);
-  const [responsaveisPorSubtarefa, setResponsaveisPorSubtarefa] = useState<Record<string, Responsavel[]>>({});
   const [responsaveis, setResponsaveis] = useState<Responsavel[]>([]);
   const [seletorResponsavelAberto, setSeletorResponsavelAberto] = useState(false);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusAberto, setStatusAberto] = useState(false);
-  const [abaLateral, setAbaLateral] = useState<"ajustes" | "comentarios" | "historico">("comentarios");
+  const [abaLateral, setAbaLateral] = useState<"comentarios" | "historico">("comentarios");
   const [painelRecolhido, setPainelRecolhido] = useState(false);
 
   const [titulo, setTitulo] = useState("");
-  const [descricao, setDescricao] = useState("");
-  const [clienteSelecionado, setClienteSelecionado] = useState<Opcao | null>(null);
-  const [prioridade, setPrioridade] = useState("");
-  const [dataInicio, setDataInicio] = useState("");
-  const [prazo, setPrazo] = useState("");
+  const [observacoes, setObservacoes] = useState("");
+  const [clienteId, setClienteId] = useState("");
+  const [objetivo, setObjetivo] = useState("");
+  const [formato, setFormato] = useState("");
+  const [dataPublicacao, setDataPublicacao] = useState("");
+  const [horaPublicacao, setHoraPublicacao] = useState("");
 
-  const [novaSubtarefa, setNovaSubtarefa] = useState("");
-  const [criandoSubtarefa, setCriandoSubtarefa] = useState(false);
   const [novoComentario, setNovoComentario] = useState("");
   const [mencaoBusca, setMencaoBusca] = useState<string | null>(null);
   const [enviandoComentario, setEnviandoComentario] = useState(false);
@@ -192,8 +165,8 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       data: { user },
     } = await supabase.auth.getUser();
 
-    const [{ data: t }, { data: statusData }, { data: clientesData }, { data: funcData }] = await Promise.all([
-      supabase.from("tarefas").select("*").eq("id", id).maybeSingle(),
+    const [{ data: p }, { data: statusData }, { data: clientesData }, { data: funcData }] = await Promise.all([
+      supabase.from("posts_conteudo").select("*").eq("id", id).maybeSingle(),
       supabase.from("status_conteudo").select("id, nome, cor, ordem").order("ordem"),
       supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )"),
       supabase.from("funcionarios").select("id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )"),
@@ -224,21 +197,15 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       setMeuNome(eu?.nome ?? "Você");
     }
 
-    if (t) {
-      setTarefa(t);
-      setTitulo(t.titulo);
-      setDescricao(t.descricao ?? "");
-      setClienteSelecionado(t.cliente_id ? listaClientes.find((c) => c.id === t.cliente_id) ?? null : null);
-      setPrioridade(t.prioridade ?? "");
-      setDataInicio(t.data_inicio ?? "");
-      setPrazo(t.prazo ?? "");
-
-      if (t.tarefa_pai_id) {
-        const { data: pai } = await supabase.from("tarefas").select("titulo").eq("id", t.tarefa_pai_id).maybeSingle();
-        setTituloTarefaMae(pai?.titulo ?? null);
-      } else {
-        setTituloTarefaMae(null);
-      }
+    if (p) {
+      setPost(p);
+      setTitulo(p.titulo ?? "");
+      setObservacoes(p.observacoes_internas ?? "");
+      setClienteId(p.cliente_id ?? "");
+      setObjetivo(p.objetivo ?? "");
+      setFormato(p.formato ?? "");
+      setDataPublicacao(p.data_publicacao ?? "");
+      setHoraPublicacao(p.hora_publicacao ?? "");
     }
     setLoading(false);
   }, [id]);
@@ -250,9 +217,9 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   const carregarResponsaveis = useCallback(async () => {
     const supabase = createClient();
     const { data } = await supabase
-      .from("tarefas_responsaveis")
+      .from("posts_conteudo_responsaveis")
       .select("funcionarios ( id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) ) )")
-      .eq("tarefa_id", id);
+      .eq("post_id", id);
     const lista = ((data ?? []) as unknown as {
       funcionarios: { id: string; auth_user_id: string | null; papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null } | null;
     }[])
@@ -267,69 +234,40 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     setResponsaveis(lista);
   }, [id]);
 
-  const carregarSubtarefas = useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase.from("tarefas").select("id, titulo, status_id, prazo").eq("tarefa_pai_id", id).order("created_at");
-    const lista = data ?? [];
-    setSubtarefas(lista);
-
-    const ids = lista.map((s) => s.id);
-    if (ids.length > 0) {
-      const { data: respData } = await supabase
-        .from("tarefas_responsaveis")
-        .select("tarefa_id, funcionarios ( id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) ) )")
-        .in("tarefa_id", ids);
-      const mapa: Record<string, Responsavel[]> = {};
-      for (const r of (respData ?? []) as unknown as {
-        tarefa_id: string;
-        funcionarios: { id: string; auth_user_id: string | null; papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null } | null;
-      }[]) {
-        if (!r.funcionarios) continue;
-        const pessoa = r.funcionarios.papeis?.pessoas;
-        const resp: Responsavel = {
-          id: r.funcionarios.id,
-          nome: pessoa?.apelido || pessoa?.nome || "Colega",
-          fotoUrl: pessoa?.foto_url ?? null,
-          authUserId: r.funcionarios.auth_user_id,
-        };
-        if (!mapa[r.tarefa_id]) mapa[r.tarefa_id] = [];
-        mapa[r.tarefa_id].push(resp);
-      }
-      setResponsaveisPorSubtarefa(mapa);
-    } else {
-      setResponsaveisPorSubtarefa({});
-    }
-  }, [id]);
-
   const carregarComentarios = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from("tarefas_comentarios").select("id, autor_id, texto, created_at").eq("tarefa_id", id).order("created_at");
+    const { data } = await supabase
+      .from("posts_conteudo_comentarios_internos")
+      .select("id, autor_id, texto, created_at")
+      .eq("post_id", id)
+      .order("created_at");
     setComentarios(data ?? []);
   }, [id]);
 
   const carregarHistorico = useCallback(async () => {
     const supabase = createClient();
     const { data } = await supabase
-      .from("tarefas_historico")
+      .from("posts_conteudo_historico")
       .select("id, autor_id, descricao, created_at")
-      .eq("tarefa_id", id)
+      .eq("post_id", id)
       .order("created_at", { ascending: false });
     setHistorico(data ?? []);
   }, [id]);
 
   useEffect(() => {
     carregarResponsaveis();
-    carregarSubtarefas();
     carregarComentarios();
     carregarHistorico();
-  }, [carregarResponsaveis, carregarSubtarefas, carregarComentarios, carregarHistorico]);
+  }, [carregarResponsaveis, carregarComentarios, carregarHistorico]);
 
   useEffect(() => {
     const supabase = createClient();
     const canal = supabase
-      .channel(`tarefa-${id}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "tarefas_comentarios", filter: `tarefa_id=eq.${id}` }, () =>
-        carregarComentarios()
+      .channel(`post-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "posts_conteudo_comentarios_internos", filter: `post_id=eq.${id}` },
+        () => carregarComentarios()
       )
       .subscribe();
     return () => {
@@ -339,7 +277,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
   async function registrarHistorico(descricaoEvento: string) {
     const supabase = createClient();
-    await supabase.from("tarefas_historico").insert({ tarefa_id: id, autor_id: meuId, descricao: descricaoEvento });
+    await supabase.from("posts_conteudo_historico").insert({ post_id: id, autor_id: meuId, descricao: descricaoEvento });
     setHistorico((atual) => [
       { id: `temp-${Date.now()}`, autor_id: meuId, descricao: descricaoEvento, created_at: new Date().toISOString() },
       ...atual,
@@ -348,12 +286,8 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
   async function salvarCampo(campo: Record<string, string | null>, eventoHistorico?: string) {
     const supabase = createClient();
-    await supabase.from("tarefas").update(campo).eq("id", id);
+    await supabase.from("posts_conteudo").update(campo).eq("id", id);
     if (eventoHistorico) registrarHistorico(eventoHistorico);
-  }
-
-  async function salvarCampoDireto(nomeCampo: string, valor: string | null, eventoHistorico?: string) {
-    await salvarCampo({ [nomeCampo]: valor }, eventoHistorico);
   }
 
   async function toggleResponsavel(funcionarioId: string) {
@@ -362,11 +296,11 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     const jaTem = responsaveis.some((r) => r.id === funcionarioId);
     if (jaTem) {
       setResponsaveis((atual) => atual.filter((r) => r.id !== funcionarioId));
-      await supabase.from("tarefas_responsaveis").delete().eq("tarefa_id", id).eq("funcionario_id", funcionarioId);
+      await supabase.from("posts_conteudo_responsaveis").delete().eq("post_id", id).eq("funcionario_id", funcionarioId);
       if (pessoa) registrarHistorico(`removeu ${pessoa.nome} dos responsáveis`);
     } else {
       if (pessoa) setResponsaveis((atual) => [...atual, pessoa]);
-      await supabase.from("tarefas_responsaveis").insert({ tarefa_id: id, funcionario_id: funcionarioId });
+      await supabase.from("posts_conteudo_responsaveis").insert({ post_id: id, funcionario_id: funcionarioId });
       if (pessoa) registrarHistorico(`atribuiu ${pessoa.nome} como responsável`);
     }
   }
@@ -375,43 +309,28 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     return authUserId === meuId ? meuNome : colegas.find((c) => c.id === authUserId)?.nome ?? "Alguém";
   }
 
-  async function adicionarSubtarefa() {
-    if (!novaSubtarefa.trim() || !tarefa) return;
-    setCriandoSubtarefa(true);
-    const supabase = createClient();
-    await supabase.from("tarefas").insert({
-      titulo: novaSubtarefa.trim(),
-      tarefa_pai_id: id,
-      cliente_id: tarefa.cliente_id,
-      status_id: statusList[0]?.id,
-    });
-    setNovaSubtarefa("");
-    setCriandoSubtarefa(false);
-    carregarSubtarefas();
-  }
-
   async function enviarComentario() {
     if (!novoComentario.trim() || !meuId) return;
     setEnviandoComentario(true);
     const supabase = createClient();
     const texto = novoComentario.trim();
-    const { error } = await supabase.from("tarefas_comentarios").insert({ tarefa_id: id, autor_id: meuId, texto });
+    const { error } = await supabase.from("posts_conteudo_comentarios_internos").insert({ post_id: id, autor_id: meuId, texto });
     if (!error) {
       setNovoComentario("");
-      const nomesColegas = colegas.map((c) => c.nome);
       const mencionados = colegas.filter((c) => texto.includes(`@${c.nome}`));
       if (mencionados.length > 0) {
         await supabase.from("notificacoes").insert(
-          mencionados.map((c) => ({
-            destinatario_id: funcionariosComAcesso.find((f) => f.id === c.id)?.authUserId ?? null,
-            tipo: "mencao_tarefa",
-            titulo: `${meuNome} te mencionou numa tarefa`,
-            descricao: tarefa?.titulo ?? texto.slice(0, 120),
-            link: `/tarefas/${id}`,
-          })).filter((n) => n.destinatario_id)
+          mencionados
+            .map((c) => ({
+              destinatario_id: funcionariosComAcesso.find((f) => f.id === c.id)?.authUserId ?? null,
+              tipo: "mencao_conteudo",
+              titulo: `${meuNome} te mencionou num conteúdo`,
+              descricao: post?.titulo || texto.slice(0, 120),
+              link: `/conteudo/calendario/post/${id}`,
+            }))
+            .filter((n) => n.destinatario_id)
         );
       }
-      void nomesColegas;
       carregarComentarios();
     }
     setEnviandoComentario(false);
@@ -432,16 +351,9 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     });
   }
 
-  async function excluirTarefa() {
-    if (!window.confirm("Excluir essa tarefa de vez? Se ela tiver subtarefas, elas também serão excluídas.")) return;
-    const supabase = createClient();
-    await supabase.from("tarefas").delete().eq("id", id);
-    router.push(tarefa?.tarefa_pai_id ? `/tarefas/${tarefa.tarefa_pai_id}` : "/tarefas");
-  }
-
   const colegasParaMencao = colegas.filter((c) => mencaoBusca !== null && normalizar(c.nome).includes(normalizar(mencaoBusca)));
   const todosOsNomes = [meuNome, ...colegas.map((c) => c.nome)];
-  const statusAtual = statusList.find((s) => s.id === tarefa?.status_id);
+  const statusAtual = statusList.find((s) => s.id === post?.status_id);
 
   if (loading) {
     return (
@@ -451,10 +363,10 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     );
   }
 
-  if (!tarefa) {
+  if (!post) {
     return (
       <main className="mx-auto max-w-6xl px-6 py-10">
-        <p className="text-sm text-ink/50">Tarefa não encontrada.</p>
+        <p className="text-sm text-ink/50">Conteúdo não encontrado.</p>
       </main>
     );
   }
@@ -462,24 +374,11 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   return (
     <main className="h-screen flex flex-col bg-surface/30">
       <div className="px-8 py-4 flex items-center justify-between shrink-0 bg-white">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.push("/tarefas")}
-            className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors"
-          >
-            ← Tarefas
-          </button>
-          {tituloTarefaMae && tarefa.tarefa_pai_id && (
-            <>
-              <span className="text-ink/20">/</span>
-              <button onClick={() => router.push(`/tarefas/${tarefa.tarefa_pai_id}`)} className="text-sm font-semibold text-forest hover:text-ink truncate max-w-xs">
-                {tituloTarefaMae}
-              </button>
-            </>
-          )}
-        </div>
-        <button onClick={excluirTarefa} className="text-sm font-semibold text-red-500 hover:text-red-700">
-          Excluir tarefa
+        <button
+          onClick={() => router.push("/conteudo/calendario")}
+          className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors"
+        >
+          ← Calendário de Conteúdo
         </button>
       </div>
 
@@ -489,10 +388,9 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             value={titulo}
             onChange={(e) => setTitulo(e.target.value)}
             onBlur={() => {
-              if (titulo.trim() && titulo.trim() !== tarefa.titulo) {
-                salvarCampo({ titulo: titulo.trim() }, `renomeou para "${titulo.trim()}"`);
-              }
+              if (titulo.trim() !== (post.titulo ?? "")) salvarCampo({ titulo: titulo.trim() || null }, `renomeou para "${titulo.trim()}"`);
             }}
+            placeholder="Título do post..."
             className="text-2xl font-extrabold text-ink w-full mb-5 outline-none focus:bg-white rounded-lg px-1 -mx-1 bg-transparent"
           />
 
@@ -515,7 +413,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                         key={s.id}
                         onClick={() => {
                           salvarCampo({ status_id: s.id }, `mudou o status para "${s.nome}"`);
-                          setTarefa((t) => (t ? { ...t, status_id: s.id } : t));
+                          setPost((p) => (p ? { ...p, status_id: s.id } : p));
                           setStatusAberto(false);
                         }}
                         className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-xl text-sm font-medium hover:bg-surface"
@@ -531,14 +429,21 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
             <div>
               <span className="block text-xs text-ink/50 mb-1">Cliente</span>
-              <BuscaCliente
-                clientes={clientes}
-                valor={clienteSelecionado}
-                onSelecionar={(c) => {
-                  setClienteSelecionado(c);
-                  salvarCampo({ cliente_id: c?.id ?? null }, c ? `mudou o cliente para ${c.nome}` : "removeu o cliente");
+              <select
+                value={clienteId}
+                onChange={(e) => {
+                  setClienteId(e.target.value);
+                  const nome = clientes.find((c) => c.id === e.target.value)?.nome;
+                  salvarCampo({ cliente_id: e.target.value }, `mudou o cliente para ${nome}`);
                 }}
-              />
+                className="input"
+              >
+                {clientes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
@@ -581,117 +486,82 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             </div>
 
             <div>
-              <span className="block text-xs text-ink/50 mb-1">Prioridade</span>
+              <span className="block text-xs text-ink/50 mb-1">Formato</span>
               <select
-                value={prioridade}
+                value={formato}
                 onChange={(e) => {
-                  setPrioridade(e.target.value);
-                  salvarCampo({ prioridade: e.target.value || null }, `mudou a prioridade para "${e.target.value || "nenhuma"}"`);
+                  setFormato(e.target.value);
+                  salvarCampo({ formato: e.target.value || null }, `mudou o formato para "${FORMATO_CONFIG[e.target.value] ?? "nenhum"}"`);
                 }}
                 className="input"
               >
-                <option value="">Nenhuma</option>
-                <option value="baixa">Baixa</option>
-                <option value="media">Média</option>
-                <option value="alta">Alta</option>
+                <option value="">Nenhum</option>
+                {Object.entries(FORMATO_CONFIG).map(([k, label]) => (
+                  <option key={k} value={k}>
+                    {label}
+                  </option>
+                ))}
               </select>
             </div>
 
             <div>
-              <span className="block text-xs text-ink/50 mb-1">Início</span>
-              <input
-                type="date"
-                value={dataInicio}
+              <span className="block text-xs text-ink/50 mb-1">Objetivo</span>
+              <select
+                value={objetivo}
                 onChange={(e) => {
-                  setDataInicio(e.target.value);
-                  salvarCampo({ data_inicio: e.target.value || null }, "mudou a data de início");
+                  setObjetivo(e.target.value);
+                  salvarCampo({ objetivo: e.target.value || null }, `mudou o objetivo para "${OBJETIVO_CONFIG[e.target.value] ?? "nenhum"}"`);
                 }}
                 className="input"
-              />
+              >
+                <option value="">Nenhum</option>
+                {Object.entries(OBJETIVO_CONFIG).map(([k, label]) => (
+                  <option key={k} value={k}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div>
-              <span className="block text-xs text-ink/50 mb-1">Prazo</span>
-              <input
-                type="date"
-                value={prazo}
-                onChange={(e) => {
-                  setPrazo(e.target.value);
-                  salvarCampo({ prazo: e.target.value || null }, "mudou o prazo");
-                }}
-                className="input"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <span className="block text-xs text-ink/50 mb-1">Data</span>
+                <input
+                  type="date"
+                  value={dataPublicacao}
+                  onChange={(e) => {
+                    setDataPublicacao(e.target.value);
+                    salvarCampo({ data_publicacao: e.target.value }, "mudou a data de publicação");
+                  }}
+                  className="input"
+                />
+              </div>
+              <div>
+                <span className="block text-xs text-ink/50 mb-1">Hora</span>
+                <input
+                  type="time"
+                  value={horaPublicacao}
+                  onChange={(e) => {
+                    setHoraPublicacao(e.target.value);
+                    salvarCampo({ hora_publicacao: e.target.value || null }, "mudou o horário de publicação");
+                  }}
+                  className="input"
+                />
+              </div>
             </div>
           </div>
 
           <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
-            <span className="block text-sm font-bold text-ink mb-2">Descrição</span>
+            <span className="block text-sm font-bold text-ink mb-2">Observações internas</span>
             <RichTextEditor
-              valorHtml={descricao}
-              onChange={setDescricao}
-              onSalvar={() => salvarCampoDireto("descricao", descricao || null, "atualizou a descrição")}
-              placeholder="Detalhes da tarefa..."
+              valorHtml={observacoes}
+              onChange={setObservacoes}
+              onSalvar={() => salvarCampo({ observacoes_internas: observacoes || null }, "atualizou as observações internas")}
+              placeholder="Anotações da equipe sobre esse conteúdo..."
             />
-          </div>
-
-          <div className="rounded-2xl bg-white p-4 shadow-sm">
-            <span className="block text-sm font-bold text-ink mb-2">Subtarefas</span>
-            {subtarefas.length > 0 && (
-              <div className="grid grid-cols-[1fr_110px_150px_110px] gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/40">
-                <span>Nome</span>
-                <span>Responsáveis</span>
-                <span>Prazo</span>
-                <span>Status</span>
-              </div>
-            )}
-            <div className="space-y-1.5 mb-2">
-              {subtarefas.map((s) => {
-                const statusSub = statusList.find((st) => st.id === s.status_id);
-                const atraso = diasAtraso(s.prazo);
-                const respSub = responsaveisPorSubtarefa[s.id] ?? [];
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => router.push(`/tarefas/${s.id}`)}
-                    className="w-full grid grid-cols-[1fr_110px_150px_110px] items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors text-left"
-                  >
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
-                      <span className="text-sm text-ink truncate">{s.titulo}</span>
-                    </span>
-                    <span>{respSub.length > 0 ? <AvatarStack pessoas={respSub} tamanho={20} /> : <span className="text-xs text-ink/30">—</span>}</span>
-                    <span className={`text-xs ${atraso ? "text-red-600 font-bold" : "text-ink/50"}`}>
-                      {s.prazo ? formatarDataCurta(s.prazo) : "—"}
-                      {atraso && ` · ${atraso}d`}
-                    </span>
-                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
-                      {statusSub?.nome ?? "—"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                value={novaSubtarefa}
-                onChange={(e) => setNovaSubtarefa(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    adicionarSubtarefa();
-                  }
-                }}
-                className="input text-sm"
-                placeholder="Nome da subtarefa... (vira uma tarefa própria)"
-              />
-              <button
-                onClick={adicionarSubtarefa}
-                disabled={criandoSubtarefa}
-                className="shrink-0 text-sm font-semibold text-forest hover:text-ink disabled:opacity-50"
-              >
-                Adicionar
-              </button>
-            </div>
+            <p className="text-xs text-ink/40 mt-2">
+              A legenda que o cliente vê continua sendo editada no formulário rápido do calendário.
+            </p>
           </div>
         </div>
 

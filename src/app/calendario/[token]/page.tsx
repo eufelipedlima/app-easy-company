@@ -35,6 +35,9 @@ const OBJETIVO_LABEL: Record<string, string> = {
   atracao: "Atração",
   educacao: "Educação",
   conversao: "Conversão",
+  conexao: "Conexão",
+  institucional: "Institucional",
+  bastidores: "Bastidores",
 };
 
 const FORMATO_LABEL: Record<string, string> = {
