@@ -19,6 +19,13 @@ interface Opcao {
   nome: string;
 }
 
+interface Responsavel {
+  id: string;
+  nome: string;
+  fotoUrl: string | null;
+  authUserId: string | null;
+}
+
 interface Comentario {
   id: string;
   autor_id: string;
@@ -31,7 +38,6 @@ interface Tarefa {
   titulo: string;
   descricao: string | null;
   cliente_id: string | null;
-  responsavel_id: string | null;
   status_id: string;
   prioridade: "baixa" | "media" | "alta" | null;
   data_inicio: string | null;
@@ -43,8 +49,6 @@ interface Subtarefa {
   id: string;
   titulo: string;
   status_id: string;
-  responsavel_id: string | null;
-  data_inicio: string | null;
   prazo: string | null;
 }
 
@@ -61,13 +65,44 @@ function iniciais(nome: string) {
   const partes = nome.trim().split(/\s+/);
   return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
 }
-function Avatar({ nome, tamanho = 32 }: { nome: string; tamanho?: number }) {
+function Avatar({ nome, fotoUrl, tamanho = 32 }: { nome: string; fotoUrl?: string | null; tamanho?: number }) {
+  if (fotoUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return (
+      <img
+        src={fotoUrl}
+        alt={nome}
+        className="rounded-full object-cover shrink-0 ring-2 ring-white"
+        style={{ height: tamanho, width: tamanho }}
+      />
+    );
+  }
   return (
     <div
-      className={`rounded-full ${corAvatar(nome)} text-white flex items-center justify-center text-xs font-bold shrink-0`}
-      style={{ height: tamanho, width: tamanho }}
+      className={`rounded-full ${corAvatar(nome)} text-white flex items-center justify-center font-bold shrink-0 ring-2 ring-white`}
+      style={{ height: tamanho, width: tamanho, fontSize: Math.max(9, tamanho * 0.36) }}
     >
       {iniciais(nome)}
+    </div>
+  );
+}
+function AvatarStack({ pessoas, tamanho = 22 }: { pessoas: Responsavel[]; tamanho?: number }) {
+  if (pessoas.length === 0) return null;
+  const visiveis = pessoas.slice(0, 4);
+  const resto = pessoas.length - visiveis.length;
+  return (
+    <div className="flex items-center -space-x-1.5">
+      {visiveis.map((p) => (
+        <Avatar key={p.id} nome={p.nome} fotoUrl={p.fotoUrl} tamanho={tamanho} />
+      ))}
+      {resto > 0 && (
+        <div
+          className="rounded-full bg-surface ring-2 ring-white text-ink/60 font-bold flex items-center justify-center shrink-0"
+          style={{ height: tamanho, width: tamanho, fontSize: Math.max(8, tamanho * 0.32) }}
+        >
+          +{resto}
+        </div>
+      )}
     </div>
   );
 }
@@ -115,11 +150,14 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   const [tituloTarefaMae, setTituloTarefaMae] = useState<string | null>(null);
   const [statusList, setStatusList] = useState<StatusItem[]>([]);
   const [clientes, setClientes] = useState<Opcao[]>([]);
-  const [funcionarios, setFuncionarios] = useState<Opcao[]>([]);
+  const [funcionariosComAcesso, setFuncionariosComAcesso] = useState<Responsavel[]>([]);
   const [colegas, setColegas] = useState<Opcao[]>([]);
   const [meuId, setMeuId] = useState<string | null>(null);
   const [meuNome, setMeuNome] = useState("Você");
   const [subtarefas, setSubtarefas] = useState<Subtarefa[]>([]);
+  const [responsaveisPorSubtarefa, setResponsaveisPorSubtarefa] = useState<Record<string, Responsavel[]>>({});
+  const [responsaveis, setResponsaveis] = useState<Responsavel[]>([]);
+  const [seletorResponsavelAberto, setSeletorResponsavelAberto] = useState(false);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusAberto, setStatusAberto] = useState(false);
@@ -130,7 +168,6 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   const [descricaoTransborda, setDescricaoTransborda] = useState(false);
   const descricaoRef = useRef<HTMLTextAreaElement>(null);
   const [clienteSelecionado, setClienteSelecionado] = useState<Opcao | null>(null);
-  const [responsavelId, setResponsavelId] = useState("");
   const [prioridade, setPrioridade] = useState("");
   const [dataInicio, setDataInicio] = useState("");
   const [prazo, setPrazo] = useState("");
@@ -166,7 +203,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       supabase.from("tarefas").select("*").eq("id", id).maybeSingle(),
       supabase.from("status_conteudo").select("id, nome, cor, ordem").order("ordem"),
       supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )"),
-      supabase.from("funcionarios").select("id, auth_user_id, papeis ( pessoas ( nome, apelido ) )"),
+      supabase.from("funcionarios").select("id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )"),
     ]);
 
     setStatusList(statusData ?? []);
@@ -178,15 +215,20 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     const listaFunc = ((funcData ?? []) as unknown as {
       id: string;
       auth_user_id: string | null;
-      papeis: { pessoas: { nome: string; apelido: string | null } | null } | null;
-    }[]).map((f) => ({ id: f.id, nome: f.papeis?.pessoas?.apelido || f.papeis?.pessoas?.nome || "Colega", authUserId: f.auth_user_id }));
-    setFuncionarios(listaFunc.map((f) => ({ id: f.id, nome: f.nome })));
+      papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null;
+    }[]).map((f) => ({
+      id: f.id,
+      nome: f.papeis?.pessoas?.apelido || f.papeis?.pessoas?.nome || "Colega",
+      fotoUrl: f.papeis?.pessoas?.foto_url ?? null,
+      authUserId: f.auth_user_id,
+    }));
+    setFuncionariosComAcesso(listaFunc.filter((f) => f.authUserId).sort((a, b) => a.nome.localeCompare(b.nome)));
+    setColegas(listaFunc.filter((f) => f.authUserId).map((f) => ({ id: f.id, nome: f.nome })));
 
     if (user) {
       setMeuId(user.id);
       const eu = listaFunc.find((f) => f.authUserId === user.id);
       setMeuNome(eu?.nome ?? "Você");
-      setColegas(listaFunc.filter((f) => f.authUserId && f.authUserId !== user.id).map((f) => ({ id: f.authUserId!, nome: f.nome })));
     }
 
     if (t) {
@@ -194,7 +236,6 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       setTitulo(t.titulo);
       setDescricao(t.descricao ?? "");
       setClienteSelecionado(t.cliente_id ? listaClientes.find((c) => c.id === t.cliente_id) ?? null : null);
-      setResponsavelId(t.responsavel_id ?? "");
       setPrioridade(t.prioridade ?? "");
       setDataInicio(t.data_inicio ?? "");
       setPrazo(t.prazo ?? "");
@@ -213,10 +254,58 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     carregarTudo();
   }, [carregarTudo]);
 
+  const carregarResponsaveis = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("tarefas_responsaveis")
+      .select("funcionarios ( id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) ) )")
+      .eq("tarefa_id", id);
+    const lista = ((data ?? []) as unknown as {
+      funcionarios: { id: string; auth_user_id: string | null; papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null } | null;
+    }[])
+      .map((r) => r.funcionarios)
+      .filter(Boolean)
+      .map((f) => ({
+        id: f!.id,
+        nome: f!.papeis?.pessoas?.apelido || f!.papeis?.pessoas?.nome || "Colega",
+        fotoUrl: f!.papeis?.pessoas?.foto_url ?? null,
+        authUserId: f!.auth_user_id,
+      }));
+    setResponsaveis(lista);
+  }, [id]);
+
   const carregarSubtarefas = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from("tarefas").select("id, titulo, status_id, responsavel_id, data_inicio, prazo").eq("tarefa_pai_id", id).order("created_at");
-    setSubtarefas(data ?? []);
+    const { data } = await supabase.from("tarefas").select("id, titulo, status_id, prazo").eq("tarefa_pai_id", id).order("created_at");
+    const lista = data ?? [];
+    setSubtarefas(lista);
+
+    const ids = lista.map((s) => s.id);
+    if (ids.length > 0) {
+      const { data: respData } = await supabase
+        .from("tarefas_responsaveis")
+        .select("tarefa_id, funcionarios ( id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) ) )")
+        .in("tarefa_id", ids);
+      const mapa: Record<string, Responsavel[]> = {};
+      for (const r of (respData ?? []) as unknown as {
+        tarefa_id: string;
+        funcionarios: { id: string; auth_user_id: string | null; papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null } | null;
+      }[]) {
+        if (!r.funcionarios) continue;
+        const pessoa = r.funcionarios.papeis?.pessoas;
+        const resp: Responsavel = {
+          id: r.funcionarios.id,
+          nome: pessoa?.apelido || pessoa?.nome || "Colega",
+          fotoUrl: pessoa?.foto_url ?? null,
+          authUserId: r.funcionarios.auth_user_id,
+        };
+        if (!mapa[r.tarefa_id]) mapa[r.tarefa_id] = [];
+        mapa[r.tarefa_id].push(resp);
+      }
+      setResponsaveisPorSubtarefa(mapa);
+    } else {
+      setResponsaveisPorSubtarefa({});
+    }
   }, [id]);
 
   const carregarComentarios = useCallback(async () => {
@@ -226,9 +315,10 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   }, [id]);
 
   useEffect(() => {
+    carregarResponsaveis();
     carregarSubtarefas();
     carregarComentarios();
-  }, [carregarSubtarefas, carregarComentarios]);
+  }, [carregarResponsaveis, carregarSubtarefas, carregarComentarios]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -246,6 +336,19 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   async function salvarCampo(campo: Record<string, string | null>) {
     const supabase = createClient();
     await supabase.from("tarefas").update(campo).eq("id", id);
+  }
+
+  async function toggleResponsavel(funcionarioId: string) {
+    const supabase = createClient();
+    const jaTem = responsaveis.some((r) => r.id === funcionarioId);
+    if (jaTem) {
+      setResponsaveis((atual) => atual.filter((r) => r.id !== funcionarioId));
+      await supabase.from("tarefas_responsaveis").delete().eq("tarefa_id", id).eq("funcionario_id", funcionarioId);
+    } else {
+      const pessoa = funcionariosComAcesso.find((f) => f.id === funcionarioId);
+      if (pessoa) setResponsaveis((atual) => [...atual, pessoa]);
+      await supabase.from("tarefas_responsaveis").insert({ tarefa_id: id, funcionario_id: funcionarioId });
+    }
   }
 
   function nomeDoAutor(authUserId: string) {
@@ -275,18 +378,20 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     const { error } = await supabase.from("tarefas_comentarios").insert({ tarefa_id: id, autor_id: meuId, texto });
     if (!error) {
       setNovoComentario("");
+      const nomesColegas = colegas.map((c) => c.nome);
       const mencionados = colegas.filter((c) => texto.includes(`@${c.nome}`));
       if (mencionados.length > 0) {
         await supabase.from("notificacoes").insert(
           mencionados.map((c) => ({
-            destinatario_id: c.id,
+            destinatario_id: funcionariosComAcesso.find((f) => f.id === c.id)?.authUserId ?? null,
             tipo: "mencao_tarefa",
             titulo: `${meuNome} te mencionou numa tarefa`,
             descricao: tarefa?.titulo ?? texto.slice(0, 120),
             link: `/tarefas/${id}`,
-          }))
+          })).filter((n) => n.destinatario_id)
         );
       }
+      void nomesColegas;
       carregarComentarios();
     }
     setEnviandoComentario(false);
@@ -413,22 +518,42 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             </div>
 
             <div>
-              <span className="block text-xs text-ink/50 mb-1">Responsável</span>
-              <select
-                value={responsavelId}
-                onChange={(e) => {
-                  setResponsavelId(e.target.value);
-                  salvarCampo({ responsavel_id: e.target.value || null });
-                }}
-                className="input"
-              >
-                <option value="">Sem responsável</option>
-                {funcionarios.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.nome}
-                  </option>
-                ))}
-              </select>
+              <span className="block text-xs text-ink/50 mb-1">Responsáveis</span>
+              <div className="relative">
+                <button
+                  onClick={() => setSeletorResponsavelAberto((v) => !v)}
+                  className="flex items-center gap-2 rounded-full border border-black/10 pl-1 pr-3 py-1 hover:bg-surface"
+                >
+                  {responsaveis.length > 0 ? (
+                    <AvatarStack pessoas={responsaveis} tamanho={26} />
+                  ) : (
+                    <span className="h-6 w-6 rounded-full bg-surface flex items-center justify-center text-ink/30 text-xs">+</span>
+                  )}
+                  <span className="text-xs text-ink/50">{responsaveis.length > 0 ? "Editar" : "Adicionar"}</span>
+                </button>
+                {seletorResponsavelAberto && (
+                  <div
+                    className="absolute z-20 mt-1 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+                    onMouseLeave={() => setSeletorResponsavelAberto(false)}
+                  >
+                    <div className="grid grid-cols-5 gap-2.5">
+                      {funcionariosComAcesso.map((f) => {
+                        const marcado = responsaveis.some((r) => r.id === f.id);
+                        return (
+                          <button key={f.id} onClick={() => toggleResponsavel(f.id)} className="relative" title={f.nome}>
+                            <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={34} />
+                            {marcado && (
+                              <span className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-forest text-white text-[9px] flex items-center justify-center ring-2 ring-white">
+                                ✓
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
@@ -500,9 +625,9 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
           <div className="rounded-2xl bg-white p-4 shadow-sm">
             <span className="block text-sm font-bold text-ink mb-2">Subtarefas</span>
             {subtarefas.length > 0 && (
-              <div className="grid grid-cols-[1fr_140px_150px_110px] gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/40">
+              <div className="grid grid-cols-[1fr_110px_150px_110px] gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/40">
                 <span>Nome</span>
-                <span>Responsável</span>
+                <span>Responsáveis</span>
                 <span>Prazo</span>
                 <span>Status</span>
               </div>
@@ -511,27 +636,18 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
               {subtarefas.map((s) => {
                 const statusSub = statusList.find((st) => st.id === s.status_id);
                 const atraso = diasAtraso(s.prazo);
-                const nomeResponsavelSub = funcionarios.find((f) => f.id === s.responsavel_id)?.nome ?? null;
+                const respSub = responsaveisPorSubtarefa[s.id] ?? [];
                 return (
                   <button
                     key={s.id}
                     onClick={() => router.push(`/tarefas/${s.id}`)}
-                    className="w-full grid grid-cols-[1fr_140px_150px_110px] items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors text-left"
+                    className="w-full grid grid-cols-[1fr_110px_150px_110px] items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors text-left"
                   >
                     <span className="flex items-center gap-2 min-w-0">
                       <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
                       <span className="text-sm text-ink truncate">{s.titulo}</span>
                     </span>
-                    <span className="flex items-center gap-1.5 min-w-0">
-                      {nomeResponsavelSub ? (
-                        <>
-                          <Avatar nome={nomeResponsavelSub} tamanho={20} />
-                          <span className="text-xs text-ink/60 truncate">{nomeResponsavelSub}</span>
-                        </>
-                      ) : (
-                        <span className="text-xs text-ink/30">—</span>
-                      )}
-                    </span>
+                    <span>{respSub.length > 0 ? <AvatarStack pessoas={respSub} tamanho={20} /> : <span className="text-xs text-ink/30">—</span>}</span>
                     <span className={`text-xs ${atraso ? "text-red-600 font-bold" : "text-ink/50"}`}>
                       {s.prazo ? formatarDataCurta(s.prazo) : "—"}
                       {atraso && ` · ${atraso}d`}
@@ -575,18 +691,22 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             {comentarios.length === 0 ? (
               <p className="text-sm text-ink/40">Nenhum comentário ainda.</p>
             ) : (
-              comentarios.map((c) => (
-                <div key={c.id} className="flex items-start gap-2.5">
-                  <Avatar nome={nomeDoAutor(c.autor_id)} tamanho={30} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-sm font-bold text-ink">{nomeDoAutor(c.autor_id)}</span>
-                      <span className="text-[11px] text-ink/40">{formatarQuando(c.created_at)}</span>
+              comentarios.map((c) => {
+                const nome = nomeDoAutor(c.autor_id);
+                const fotoAutor = funcionariosComAcesso.find((f) => f.authUserId === c.autor_id)?.fotoUrl ?? null;
+                return (
+                  <div key={c.id} className="flex items-start gap-2.5">
+                    <Avatar nome={nome} fotoUrl={fotoAutor} tamanho={30} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-sm font-bold text-ink">{nome}</span>
+                        <span className="text-[11px] text-ink/40">{formatarQuando(c.created_at)}</span>
+                      </div>
+                      <p className="text-sm text-ink whitespace-pre-wrap break-words">{renderizarTexto(c.texto, todosOsNomes)}</p>
                     </div>
-                    <p className="text-sm text-ink whitespace-pre-wrap break-words">{renderizarTexto(c.texto, todosOsNomes)}</p>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
           <div className="p-4 border-t border-black/5 shrink-0 relative">

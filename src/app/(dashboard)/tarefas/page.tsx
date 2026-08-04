@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
@@ -29,18 +30,23 @@ interface Opcao {
   nome: string;
 }
 
+interface Responsavel {
+  id: string;
+  nome: string;
+  fotoUrl: string | null;
+  authUserId: string | null;
+}
+
 interface Tarefa {
   id: string;
   titulo: string;
   descricao: string | null;
   cliente_id: string | null;
-  responsavel_id: string | null;
   status_id: string;
   prioridade: "baixa" | "media" | "alta" | null;
   data_inicio: string | null;
   prazo: string | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
-  funcionarios: { papeis: { pessoas: { nome: string } | null } | null } | null;
 }
 
 interface CamposVisiveisTarefa {
@@ -64,13 +70,14 @@ function carregarCamposVisiveis(): CamposVisiveisTarefa {
 
 interface AcoesCard {
   statusList: StatusItem[];
-  funcionarios: Opcao[];
+  funcionariosComAcesso: Responsavel[];
+  responsaveisPorTarefa: Record<string, Responsavel[]>;
   onRenomear: (t: Tarefa) => void;
   onMover: (tarefaId: string, novoStatusId: string) => void;
   onDuplicar: (t: Tarefa) => void;
   onExcluir: (t: Tarefa) => void;
   onArquivar: (t: Tarefa) => void;
-  onAtribuir: (t: Tarefa, responsavelId: string) => void;
+  onToggleResponsavel: (tarefaId: string, funcionarioId: string) => void;
   onCopiarLink: (t: Tarefa) => void;
 }
 
@@ -93,19 +100,50 @@ function iniciais(nome: string) {
   const partes = nome.trim().split(/\s+/);
   return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
 }
-function AvatarMini({ nome }: { nome: string }) {
+function Avatar({ nome, fotoUrl, tamanho = 28 }: { nome: string; fotoUrl?: string | null; tamanho?: number }) {
+  if (fotoUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return (
+      <img
+        src={fotoUrl}
+        alt={nome}
+        className="rounded-full object-cover shrink-0 ring-2 ring-white"
+        style={{ height: tamanho, width: tamanho }}
+      />
+    );
+  }
   return (
-    <div className={`h-5 w-5 rounded-full ${corAvatar(nome)} text-white flex items-center justify-center text-[9px] font-bold shrink-0`} title={nome}>
+    <div
+      className={`rounded-full ${corAvatar(nome)} text-white flex items-center justify-center font-bold shrink-0 ring-2 ring-white`}
+      style={{ height: tamanho, width: tamanho, fontSize: Math.max(9, tamanho * 0.36) }}
+    >
       {iniciais(nome)}
+    </div>
+  );
+}
+function AvatarStack({ pessoas, tamanho = 22 }: { pessoas: Responsavel[]; tamanho?: number }) {
+  if (pessoas.length === 0) return null;
+  const visiveis = pessoas.slice(0, 3);
+  const resto = pessoas.length - visiveis.length;
+  return (
+    <div className="flex items-center -space-x-1.5">
+      {visiveis.map((p) => (
+        <Avatar key={p.id} nome={p.nome} fotoUrl={p.fotoUrl} tamanho={tamanho} />
+      ))}
+      {resto > 0 && (
+        <div
+          className="rounded-full bg-surface ring-2 ring-white text-ink/60 font-bold flex items-center justify-center shrink-0"
+          style={{ height: tamanho, width: tamanho, fontSize: Math.max(8, tamanho * 0.32) }}
+        >
+          +{resto}
+        </div>
+      )}
     </div>
   );
 }
 
 function nomeCliente(t: Tarefa) {
   return t.clientes?.papeis?.pessoas?.nome ?? null;
-}
-function nomeResponsavel(t: Tarefa) {
-  return t.funcionarios?.papeis?.pessoas?.nome ?? null;
 }
 function formatarPrazo(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
@@ -123,19 +161,21 @@ export default function TarefasPage() {
   const router = useRouter();
   const [statusList, setStatusList] = useState<StatusItem[]>([]);
   const [clientes, setClientes] = useState<Opcao[]>([]);
+  const [funcionariosComAcesso, setFuncionariosComAcesso] = useState<Responsavel[]>([]);
+  const [meuFuncionarioId, setMeuFuncionarioId] = useState<string | null>(null);
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
   const [contagemSubtarefas, setContagemSubtarefas] = useState<Record<string, number>>({});
   const [contagemComentarios, setContagemComentarios] = useState<Record<string, number>>({});
+  const [responsaveisPorTarefa, setResponsaveisPorTarefa] = useState<Record<string, Responsavel[]>>({});
   const [clienteFiltroId, setClienteFiltroId] = useState("");
   const [novaAberta, setNovaAberta] = useState(false);
   const [loading, setLoading] = useState(true);
   const [camposVisiveis, setCamposVisiveis] = useState<CamposVisiveisTarefa>(CAMPOS_PADRAO);
   const [painelCamposAberto, setPainelCamposAberto] = useState(false);
   const [painelFiltroAberto, setPainelFiltroAberto] = useState(false);
-  const [funcionarios, setFuncionarios] = useState<Opcao[]>([]);
   const [visualizacao, setVisualizacao] = useState<"kanban" | "semana" | "mes">("kanban");
   const [filtroStatusIds, setFiltroStatusIds] = useState<string[]>([]);
-  const [filtroResponsavelId, setFiltroResponsavelId] = useState("");
+  const [filtroResponsavelId, setFiltroResponsavelId] = useState<string | null>(null);
   const [filtroPrioridade, setFiltroPrioridade] = useState("");
   const [filtroSoAtrasadas, setFiltroSoAtrasadas] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -156,12 +196,16 @@ export default function TarefasPage() {
     setFiltroStatusIds((atual) => (atual.includes(statusId) ? atual.filter((x) => x !== statusId) : [...atual, statusId]));
   }
 
-  const filtrosAtivos =
-    filtroStatusIds.length > 0 || !!filtroResponsavelId || !!filtroPrioridade || filtroSoAtrasadas || !!clienteFiltroId;
+  function mudarFiltroResponsavel(id: string | null) {
+    setFiltroResponsavelId(id);
+    localStorage.setItem("tarefas-filtro-responsavel", id ?? "");
+  }
+
+  const filtrosAtivos = filtroStatusIds.length > 0 || !!filtroResponsavelId || !!filtroPrioridade || filtroSoAtrasadas || !!clienteFiltroId;
 
   function limparFiltros() {
     setFiltroStatusIds([]);
-    setFiltroResponsavelId("");
+    mudarFiltroResponsavel(null);
     setFiltroPrioridade("");
     setFiltroSoAtrasadas(false);
     setClienteFiltroId("");
@@ -169,7 +213,7 @@ export default function TarefasPage() {
 
   const tarefasFiltradas = tarefas.filter((t) => {
     if (filtroStatusIds.length > 0 && !filtroStatusIds.includes(t.status_id)) return false;
-    if (filtroResponsavelId && t.responsavel_id !== filtroResponsavelId) return false;
+    if (filtroResponsavelId && !(responsaveisPorTarefa[t.id] ?? []).some((r) => r.id === filtroResponsavelId)) return false;
     if (filtroPrioridade && t.prioridade !== filtroPrioridade) return false;
     if (filtroSoAtrasadas && !(t.prazo && new Date(t.prazo + "T00:00:00") < new Date(new Date().toDateString()))) return false;
     return true;
@@ -204,13 +248,44 @@ export default function TarefasPage() {
     setClientes(lista);
   }, []);
 
-  const carregarFuncionarios = useCallback(async () => {
+  const carregarFuncionariosComAcesso = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from("funcionarios").select("id, papeis ( pessoas ( nome ) )");
-    const lista = ((data ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[])
-      .map((f) => ({ id: f.id, nome: f.papeis?.pessoas?.nome ?? "—" }))
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data } = await supabase
+      .from("funcionarios")
+      .select("id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )")
+      .not("auth_user_id", "is", null);
+    const lista = ((data ?? []) as unknown as {
+      id: string;
+      auth_user_id: string | null;
+      papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null;
+    }[])
+      .map((f) => ({
+        id: f.id,
+        nome: f.papeis?.pessoas?.apelido || f.papeis?.pessoas?.nome || "Colega",
+        fotoUrl: f.papeis?.pessoas?.foto_url ?? null,
+        authUserId: f.auth_user_id,
+      }))
       .sort((a, b) => a.nome.localeCompare(b.nome));
-    setFuncionarios(lista);
+    setFuncionariosComAcesso(lista);
+
+    if (user) {
+      const eu = lista.find((f) => f.authUserId === user.id);
+      setMeuFuncionarioId(eu?.id ?? null);
+
+      const salvo = localStorage.getItem("tarefas-filtro-responsavel");
+      if (salvo === null) {
+        // primeira visita — padrão é "eu"
+        if (eu) {
+          setFiltroResponsavelId(eu.id);
+          localStorage.setItem("tarefas-filtro-responsavel", eu.id);
+        }
+      } else {
+        setFiltroResponsavelId(salvo || null);
+      }
+    }
   }, []);
 
   const carregarTarefas = useCallback(async () => {
@@ -219,9 +294,8 @@ export default function TarefasPage() {
     let query = supabase
       .from("tarefas")
       .select(
-        `id, titulo, descricao, cliente_id, responsavel_id, status_id, prioridade, data_inicio, prazo,
-         clientes ( papeis ( pessoas ( nome ) ) ),
-         funcionarios ( papeis ( pessoas ( nome ) ) )`
+        `id, titulo, descricao, cliente_id, status_id, prioridade, data_inicio, prazo,
+         clientes ( papeis ( pessoas ( nome ) ) )`
       )
       .is("tarefa_pai_id", null)
       .eq("arquivada", false)
@@ -236,9 +310,13 @@ export default function TarefasPage() {
 
     const ids = lista.map((t) => t.id);
     if (ids.length > 0) {
-      const [{ data: filhas }, { data: comentarios }] = await Promise.all([
+      const [{ data: filhas }, { data: comentarios }, { data: responsaveisData }] = await Promise.all([
         supabase.from("tarefas").select("tarefa_pai_id").in("tarefa_pai_id", ids),
         supabase.from("tarefas_comentarios").select("tarefa_id").in("tarefa_id", ids),
+        supabase
+          .from("tarefas_responsaveis")
+          .select("tarefa_id, funcionarios ( id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) ) )")
+          .in("tarefa_id", ids),
       ]);
       const contFilhas: Record<string, number> = {};
       for (const f of filhas ?? []) {
@@ -250,17 +328,36 @@ export default function TarefasPage() {
         contComentarios[c.tarefa_id] = (contComentarios[c.tarefa_id] ?? 0) + 1;
       }
       setContagemComentarios(contComentarios);
+
+      const mapaResponsaveis: Record<string, Responsavel[]> = {};
+      for (const r of (responsaveisData ?? []) as unknown as {
+        tarefa_id: string;
+        funcionarios: { id: string; auth_user_id: string | null; papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null } | null;
+      }[]) {
+        if (!r.funcionarios) continue;
+        const pessoa = r.funcionarios.papeis?.pessoas;
+        const resp: Responsavel = {
+          id: r.funcionarios.id,
+          nome: pessoa?.apelido || pessoa?.nome || "Colega",
+          fotoUrl: pessoa?.foto_url ?? null,
+          authUserId: r.funcionarios.auth_user_id,
+        };
+        if (!mapaResponsaveis[r.tarefa_id]) mapaResponsaveis[r.tarefa_id] = [];
+        mapaResponsaveis[r.tarefa_id].push(resp);
+      }
+      setResponsaveisPorTarefa(mapaResponsaveis);
     } else {
       setContagemSubtarefas({});
       setContagemComentarios({});
+      setResponsaveisPorTarefa({});
     }
   }, [clienteFiltroId]);
 
   useEffect(() => {
     carregarStatus();
     carregarClientes();
-    carregarFuncionarios();
-  }, [carregarStatus, carregarClientes, carregarFuncionarios]);
+    carregarFuncionariosComAcesso();
+  }, [carregarStatus, carregarClientes, carregarFuncionariosComAcesso]);
 
   useEffect(() => {
     carregarTarefas();
@@ -282,14 +379,23 @@ export default function TarefasPage() {
 
   async function duplicarTarefa(t: Tarefa) {
     const supabase = createClient();
-    await supabase.from("tarefas").insert({
-      titulo: `${t.titulo} (cópia)`,
-      descricao: t.descricao,
-      cliente_id: t.cliente_id,
-      responsavel_id: t.responsavel_id,
-      status_id: t.status_id,
-      prioridade: t.prioridade,
-    });
+    const { data: nova } = await supabase
+      .from("tarefas")
+      .insert({
+        titulo: `${t.titulo} (cópia)`,
+        descricao: t.descricao,
+        cliente_id: t.cliente_id,
+        status_id: t.status_id,
+        prioridade: t.prioridade,
+      })
+      .select("id")
+      .single();
+    const responsaveisAtuais = responsaveisPorTarefa[t.id] ?? [];
+    if (nova && responsaveisAtuais.length > 0) {
+      await supabase
+        .from("tarefas_responsaveis")
+        .insert(responsaveisAtuais.map((r) => ({ tarefa_id: nova.id, funcionario_id: r.id })));
+    }
     carregarTarefas();
   }
 
@@ -306,10 +412,25 @@ export default function TarefasPage() {
     carregarTarefas();
   }
 
-  async function atribuirTarefaMenu(t: Tarefa, responsavelId: string) {
+  async function toggleResponsavelTarefa(tarefaId: string, funcionarioId: string) {
     const supabase = createClient();
-    await supabase.from("tarefas").update({ responsavel_id: responsavelId || null }).eq("id", t.id);
-    carregarTarefas();
+    const jaTem = (responsaveisPorTarefa[tarefaId] ?? []).some((r) => r.id === funcionarioId);
+    if (jaTem) {
+      setResponsaveisPorTarefa((atual) => ({
+        ...atual,
+        [tarefaId]: (atual[tarefaId] ?? []).filter((r) => r.id !== funcionarioId),
+      }));
+      await supabase.from("tarefas_responsaveis").delete().eq("tarefa_id", tarefaId).eq("funcionario_id", funcionarioId);
+    } else {
+      const pessoa = funcionariosComAcesso.find((f) => f.id === funcionarioId);
+      if (pessoa) {
+        setResponsaveisPorTarefa((atual) => ({
+          ...atual,
+          [tarefaId]: [...(atual[tarefaId] ?? []), pessoa],
+        }));
+      }
+      await supabase.from("tarefas_responsaveis").insert({ tarefa_id: tarefaId, funcionario_id: funcionarioId });
+    }
   }
 
   function copiarLinkTarefa(t: Tarefa) {
@@ -318,13 +439,14 @@ export default function TarefasPage() {
 
   const acoesCard: AcoesCard = {
     statusList,
-    funcionarios,
+    funcionariosComAcesso,
+    responsaveisPorTarefa,
     onRenomear: renomearTarefa,
     onMover: moverTarefaStatus,
     onDuplicar: duplicarTarefa,
     onExcluir: excluirTarefaMenu,
     onArquivar: arquivarTarefaMenu,
-    onAtribuir: atribuirTarefaMenu,
+    onToggleResponsavel: toggleResponsavelTarefa,
     onCopiarLink: copiarLinkTarefa,
   };
 
@@ -367,17 +489,26 @@ export default function TarefasPage() {
                     ))}
                   </div>
                 </div>
-                <label className="block">
-                  <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">Responsável</span>
-                  <select value={filtroResponsavelId} onChange={(e) => setFiltroResponsavelId(e.target.value)} className="input py-1.5 text-sm">
-                    <option value="">Todos</option>
-                    {funcionarios.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.nome}
-                      </option>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Responsável</p>
+                  <div className="flex flex-wrap gap-2">
+                    {funcionariosComAcesso.map((f) => (
+                      <button
+                        key={f.id}
+                        onClick={() => mudarFiltroResponsavel(filtroResponsavelId === f.id ? null : f.id)}
+                        className="relative"
+                        title={f.nome}
+                      >
+                        <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={30} />
+                        {filtroResponsavelId === f.id && (
+                          <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-forest text-white text-[8px] flex items-center justify-center ring-2 ring-white">
+                            ✓
+                          </span>
+                        )}
+                      </button>
                     ))}
-                  </select>
-                </label>
+                  </div>
+                </div>
                 <label className="block">
                   <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">Prioridade</span>
                   <select value={filtroPrioridade} onChange={(e) => setFiltroPrioridade(e.target.value)} className="input py-1.5 text-sm">
@@ -406,34 +537,34 @@ export default function TarefasPage() {
           </div>
 
           <div className="relative">
-          <button
-            onClick={() => setPainelCamposAberto((v) => !v)}
-            className="rounded-full h-10 w-10 flex items-center justify-center border-2 border-black/10 text-ink/50 hover:text-ink hover:bg-surface transition-colors"
-            title="Escolher quais informações aparecem nos cards"
-          >
-            ⚙
-          </button>
-          {painelCamposAberto && (
-            <div
-              className="absolute z-20 right-0 mt-1 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
-              onMouseLeave={() => setPainelCamposAberto(false)}
+            <button
+              onClick={() => setPainelCamposAberto((v) => !v)}
+              className="rounded-full h-10 w-10 flex items-center justify-center border-2 border-black/10 text-ink/50 hover:text-ink hover:bg-surface transition-colors"
+              title="Escolher quais informações aparecem nos cards"
             >
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2 px-1">Campos visíveis</p>
-              {(
-                [
-                  ["cliente", "Cliente / Interna"],
-                  ["responsavel", "Responsável"],
-                  ["indicadores", "Descrição, comentários e subtarefas"],
-                  ["mostrarFinsDeSemana", "Mostrar sábado e domingo (visão Semana)"],
-                ] as [keyof CamposVisiveisTarefa, string][]
-              ).map(([campo, label]) => (
-                <label key={campo} className="flex items-center gap-2 px-1 py-1.5 text-sm text-ink cursor-pointer">
-                  <input type="checkbox" checked={camposVisiveis[campo]} onChange={() => alternarCampo(campo)} className="h-4 w-4 rounded accent-forest" />
-                  {label}
-                </label>
-              ))}
-            </div>
-          )}
+              ⚙
+            </button>
+            {painelCamposAberto && (
+              <div
+                className="absolute z-20 right-0 mt-1 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+                onMouseLeave={() => setPainelCamposAberto(false)}
+              >
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2 px-1">Campos visíveis</p>
+                {(
+                  [
+                    ["cliente", "Cliente / Interna"],
+                    ["responsavel", "Responsável"],
+                    ["indicadores", "Descrição, comentários e subtarefas"],
+                    ["mostrarFinsDeSemana", "Mostrar sábado e domingo (visão Semana)"],
+                  ] as [keyof CamposVisiveisTarefa, string][]
+                ).map(([campo, label]) => (
+                  <label key={campo} className="flex items-center gap-2 px-1 py-1.5 text-sm text-ink cursor-pointer">
+                    <input type="checkbox" checked={camposVisiveis[campo]} onChange={() => alternarCampo(campo)} className="h-4 w-4 rounded accent-forest" />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -466,6 +597,9 @@ export default function TarefasPage() {
               Mês
             </button>
           </div>
+          {filtroResponsavelId === meuFuncionarioId && meuFuncionarioId && (
+            <span className="text-xs text-ink/40">Mostrando suas tarefas</span>
+          )}
         </div>
         <button
           onClick={() => setNovaAberta(true)}
@@ -579,6 +713,7 @@ function TarefasBoard({
             tarefa={tarefaAtiva}
             qtdSubtarefas={contagemSubtarefas[tarefaAtiva.id] ?? 0}
             qtdComentarios={contagemComentarios[tarefaAtiva.id] ?? 0}
+            responsaveis={acoes.responsaveisPorTarefa[tarefaAtiva.id] ?? []}
             camposVisiveis={camposVisiveis}
             arrastando
           />
@@ -667,6 +802,7 @@ function TarefaCardArrastavel({
         tarefa={tarefa}
         qtdSubtarefas={qtdSubtarefas}
         qtdComentarios={qtdComentarios}
+        responsaveis={acoes.responsaveisPorTarefa[tarefa.id] ?? []}
         camposVisiveis={camposVisiveis}
         acoes={acoes}
       />
@@ -677,6 +813,15 @@ function TarefaCardArrastavel({
 function MenuAcoesTarefa({ tarefa, acoes }: { tarefa: Tarefa; acoes: AcoesCard }) {
   const [aberto, setAberto] = useState(false);
   const [submenu, setSubmenu] = useState<"mover" | "atribuir" | null>(null);
+  const [posicao, setPosicao] = useState({ top: 0, left: 0 });
+  const botaoRef = useRef<HTMLButtonElement>(null);
+  const responsaveisAtuais = acoes.responsaveisPorTarefa[tarefa.id] ?? [];
+
+  function abrir() {
+    const rect = botaoRef.current?.getBoundingClientRect();
+    if (rect) setPosicao({ top: rect.bottom + 4, left: Math.min(rect.left, window.innerWidth - 210) });
+    setAberto(true);
+  }
 
   function fechar() {
     setAberto(false);
@@ -684,120 +829,123 @@ function MenuAcoesTarefa({ tarefa, acoes }: { tarefa: Tarefa; acoes: AcoesCard }
   }
 
   return (
-    <div className="relative" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+    <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
       <button
-        onClick={() => setAberto((v) => !v)}
+        ref={botaoRef}
+        onClick={() => (aberto ? fechar() : abrir())}
         className="h-6 w-6 rounded-full bg-white/90 hover:bg-surface flex items-center justify-center text-ink/50 shadow-sm text-xs font-bold"
       >
         ⋯
       </button>
-      {aberto && (
-        <div className="absolute z-30 top-7 right-0 w-52 rounded-2xl bg-white border border-black/10 shadow-lg py-1.5" onMouseLeave={fechar}>
-          {submenu === null && (
-            <>
-              <button
-                onClick={() => {
-                  acoes.onRenomear(tarefa);
-                  fechar();
-                }}
-                className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface"
-              >
-                ✏️ Renomear
-              </button>
-              <button onClick={() => setSubmenu("mover")} className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface">
-                ➡️ Mover para etapa
-              </button>
-              <button onClick={() => setSubmenu("atribuir")} className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface">
-                👤 Atribuir a
-              </button>
-              <button
-                onClick={() => {
-                  acoes.onDuplicar(tarefa);
-                  fechar();
-                }}
-                className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface"
-              >
-                📄 Duplicar
-              </button>
-              <button
-                onClick={() => {
-                  acoes.onCopiarLink(tarefa);
-                  fechar();
-                }}
-                className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface"
-              >
-                🔗 Copiar link
-              </button>
-              <button
-                onClick={() => {
-                  acoes.onArquivar(tarefa);
-                  fechar();
-                }}
-                className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface text-ink/70"
-              >
-                🗄 Arquivar
-              </button>
-              <button
-                onClick={() => {
-                  acoes.onExcluir(tarefa);
-                  fechar();
-                }}
-                className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface text-red-600"
-              >
-                🗑 Excluir
-              </button>
-            </>
-          )}
-          {submenu === "mover" && (
-            <>
-              <button onClick={() => setSubmenu(null)} className="w-full text-left px-3.5 py-2 text-xs font-bold text-ink/40 hover:bg-surface">
-                ← Voltar
-              </button>
-              {acoes.statusList.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => {
-                    acoes.onMover(tarefa.id, s.id);
-                    fechar();
-                  }}
-                  className="w-full flex items-center gap-2 text-left px-3.5 py-2 text-sm hover:bg-surface"
-                >
-                  <span className={`h-2 w-2 rounded-full ${corDoStatus(s.cor).dot}`} />
-                  {s.nome}
-                </button>
-              ))}
-            </>
-          )}
-          {submenu === "atribuir" && (
-            <>
-              <button onClick={() => setSubmenu(null)} className="w-full text-left px-3.5 py-2 text-xs font-bold text-ink/40 hover:bg-surface">
-                ← Voltar
-              </button>
-              <button
-                onClick={() => {
-                  acoes.onAtribuir(tarefa, "");
-                  fechar();
-                }}
-                className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface text-ink/50"
-              >
-                Sem responsável
-              </button>
-              {acoes.funcionarios.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => {
-                    acoes.onAtribuir(tarefa, f.id);
-                    fechar();
-                  }}
-                  className="w-full text-left px-3.5 py-2 text-sm hover:bg-surface"
-                >
-                  {f.nome}
-                </button>
-              ))}
-            </>
-          )}
-        </div>
-      )}
+      {aberto &&
+        createPortal(
+          <>
+            <div className="fixed inset-0 z-40" onClick={fechar} />
+            <div
+              className="fixed z-50 w-52 rounded-xl bg-white border border-black/10 shadow-lg py-1"
+              style={{ top: posicao.top, left: posicao.left }}
+            >
+              {submenu === null && (
+                <>
+                  <button
+                    onClick={() => {
+                      acoes.onRenomear(tarefa);
+                      fechar();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink/70 hover:bg-surface"
+                  >
+                    Renomear
+                  </button>
+                  <button onClick={() => setSubmenu("mover")} className="w-full text-left px-3 py-1.5 text-xs text-ink/70 hover:bg-surface">
+                    Mover para etapa
+                  </button>
+                  <button onClick={() => setSubmenu("atribuir")} className="w-full text-left px-3 py-1.5 text-xs text-ink/70 hover:bg-surface">
+                    Atribuir a
+                  </button>
+                  <button
+                    onClick={() => {
+                      acoes.onDuplicar(tarefa);
+                      fechar();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink/70 hover:bg-surface"
+                  >
+                    Duplicar
+                  </button>
+                  <button
+                    onClick={() => {
+                      acoes.onCopiarLink(tarefa);
+                      fechar();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink/70 hover:bg-surface"
+                  >
+                    Copiar link
+                  </button>
+                  <button
+                    onClick={() => {
+                      acoes.onArquivar(tarefa);
+                      fechar();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink/50 hover:bg-surface"
+                  >
+                    Arquivar
+                  </button>
+                  <button
+                    onClick={() => {
+                      acoes.onExcluir(tarefa);
+                      fechar();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-surface"
+                  >
+                    Excluir
+                  </button>
+                </>
+              )}
+              {submenu === "mover" && (
+                <>
+                  <button onClick={() => setSubmenu(null)} className="w-full text-left px-3 py-1.5 text-[11px] font-bold text-ink/40 hover:bg-surface">
+                    ← Voltar
+                  </button>
+                  {acoes.statusList.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => {
+                        acoes.onMover(tarefa.id, s.id);
+                        fechar();
+                      }}
+                      className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-xs text-ink/70 hover:bg-surface"
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${corDoStatus(s.cor).dot}`} />
+                      {s.nome}
+                    </button>
+                  ))}
+                </>
+              )}
+              {submenu === "atribuir" && (
+                <>
+                  <button onClick={() => setSubmenu(null)} className="w-full text-left px-3 py-1.5 text-[11px] font-bold text-ink/40 hover:bg-surface">
+                    ← Voltar
+                  </button>
+                  <div className="grid grid-cols-5 gap-2 p-2.5">
+                    {acoes.funcionariosComAcesso.map((f) => {
+                      const marcado = responsaveisAtuais.some((r) => r.id === f.id);
+                      return (
+                        <button key={f.id} onClick={() => acoes.onToggleResponsavel(tarefa.id, f.id)} className="relative" title={f.nome}>
+                          <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={30} />
+                          {marcado && (
+                            <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-forest text-white text-[8px] flex items-center justify-center ring-2 ring-white">
+                              ✓
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </>,
+          document.body
+        )}
     </div>
   );
 }
@@ -806,6 +954,7 @@ function TarefaCardConteudo({
   tarefa,
   qtdSubtarefas = 0,
   qtdComentarios = 0,
+  responsaveis = [],
   camposVisiveis,
   acoes,
   arrastando,
@@ -813,12 +962,12 @@ function TarefaCardConteudo({
   tarefa: Tarefa;
   qtdSubtarefas?: number;
   qtdComentarios?: number;
+  responsaveis?: Responsavel[];
   camposVisiveis: CamposVisiveisTarefa;
   acoes?: AcoesCard;
   arrastando?: boolean;
 }) {
   const cliente = nomeCliente(tarefa);
-  const responsavel = nomeResponsavel(tarefa);
   const temIndicador = camposVisiveis.indicadores && (tarefa.descricao || qtdComentarios > 0 || qtdSubtarefas > 0);
 
   return (
@@ -854,7 +1003,7 @@ function TarefaCardConteudo({
           })()}
       </div>
 
-      {(temIndicador || (camposVisiveis.responsavel && responsavel)) && (
+      {(temIndicador || (camposVisiveis.responsavel && responsaveis.length > 0)) && (
         <div className="flex items-center justify-between mt-2 pt-2 border-t border-black/5">
           <div className="flex items-center gap-2 text-ink/40">
             {temIndicador && (
@@ -873,7 +1022,7 @@ function TarefaCardConteudo({
               </>
             )}
           </div>
-          {camposVisiveis.responsavel && responsavel && <AvatarMini nome={responsavel} />}
+          {camposVisiveis.responsavel && responsaveis.length > 0 && <AvatarStack pessoas={responsaveis} />}
         </div>
       )}
     </div>
@@ -967,6 +1116,7 @@ function TarefasSemana({
                   tarefa={t}
                   qtdSubtarefas={contagemSubtarefas[t.id] ?? 0}
                   qtdComentarios={contagemComentarios[t.id] ?? 0}
+                  responsaveis={acoes.responsaveisPorTarefa[t.id] ?? []}
                   camposVisiveis={camposVisiveis}
                   acoes={acoes}
                 />
@@ -993,6 +1143,7 @@ function TarefasSemana({
                       tarefa={t}
                       qtdSubtarefas={contagemSubtarefas[t.id] ?? 0}
                       qtdComentarios={contagemComentarios[t.id] ?? 0}
+                      responsaveis={acoes.responsaveisPorTarefa[t.id] ?? []}
                       camposVisiveis={camposVisiveis}
                       acoes={acoes}
                     />
