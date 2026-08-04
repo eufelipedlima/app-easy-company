@@ -96,6 +96,14 @@ function nomeResponsavel(t: Tarefa) {
 function formatarPrazo(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
+function diasAtraso(prazo: string | null): number | null {
+  if (!prazo) return null;
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const dataPrazo = new Date(prazo + "T00:00:00");
+  const diffDias = Math.floor((hoje.getTime() - dataPrazo.getTime()) / (1000 * 60 * 60 * 24));
+  return diffDias > 0 ? diffDias : null;
+}
 
 export default function TarefasPage() {
   const router = useRouter();
@@ -109,6 +117,13 @@ export default function TarefasPage() {
   const [loading, setLoading] = useState(true);
   const [camposVisiveis, setCamposVisiveis] = useState<CamposVisiveisTarefa>(CAMPOS_PADRAO);
   const [painelCamposAberto, setPainelCamposAberto] = useState(false);
+  const [painelFiltroAberto, setPainelFiltroAberto] = useState(false);
+  const [funcionarios, setFuncionarios] = useState<Opcao[]>([]);
+  const [visualizacao, setVisualizacao] = useState<"kanban" | "semana">("kanban");
+  const [filtroStatusIds, setFiltroStatusIds] = useState<string[]>([]);
+  const [filtroResponsavelId, setFiltroResponsavelId] = useState("");
+  const [filtroPrioridade, setFiltroPrioridade] = useState("");
+  const [filtroSoAtrasadas, setFiltroSoAtrasadas] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -122,6 +137,28 @@ export default function TarefasPage() {
       return novo;
     });
   }
+
+  function alternarFiltroStatus(statusId: string) {
+    setFiltroStatusIds((atual) => (atual.includes(statusId) ? atual.filter((x) => x !== statusId) : [...atual, statusId]));
+  }
+
+  const filtrosAtivos =
+    filtroStatusIds.length > 0 || !!filtroResponsavelId || !!filtroPrioridade || filtroSoAtrasadas;
+
+  function limparFiltros() {
+    setFiltroStatusIds([]);
+    setFiltroResponsavelId("");
+    setFiltroPrioridade("");
+    setFiltroSoAtrasadas(false);
+  }
+
+  const tarefasFiltradas = tarefas.filter((t) => {
+    if (filtroStatusIds.length > 0 && !filtroStatusIds.includes(t.status_id)) return false;
+    if (filtroResponsavelId && t.responsavel_id !== filtroResponsavelId) return false;
+    if (filtroPrioridade && t.prioridade !== filtroPrioridade) return false;
+    if (filtroSoAtrasadas && !(t.prazo && new Date(t.prazo + "T00:00:00") < new Date(new Date().toDateString()))) return false;
+    return true;
+  });
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -150,6 +187,15 @@ export default function TarefasPage() {
       .map((c) => ({ id: c.id, nome: c.papeis?.pessoas?.nome ?? "—" }))
       .sort((a, b) => a.nome.localeCompare(b.nome));
     setClientes(lista);
+  }, []);
+
+  const carregarFuncionarios = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase.from("funcionarios").select("id, papeis ( pessoas ( nome ) )");
+    const lista = ((data ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[])
+      .map((f) => ({ id: f.id, nome: f.papeis?.pessoas?.nome ?? "—" }))
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+    setFuncionarios(lista);
   }, []);
 
   const carregarTarefas = useCallback(async () => {
@@ -197,7 +243,8 @@ export default function TarefasPage() {
   useEffect(() => {
     carregarStatus();
     carregarClientes();
-  }, [carregarStatus, carregarClientes]);
+    carregarFuncionarios();
+  }, [carregarStatus, carregarClientes, carregarFuncionarios]);
 
   useEffect(() => {
     carregarTarefas();
@@ -216,7 +263,76 @@ export default function TarefasPage() {
           <h1 className="text-2xl font-extrabold text-ink mb-1">Tarefas e Projetos</h1>
           <p className="text-sm text-ink/60">Demandas da equipe, por cliente ou internas.</p>
         </div>
-        <div className="relative shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="relative">
+            <button
+              onClick={() => setPainelFiltroAberto((v) => !v)}
+              className={`rounded-full h-10 px-4 flex items-center gap-1.5 border-2 text-sm font-semibold transition-colors ${
+                filtrosAtivos ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/50 hover:text-ink hover:bg-surface"
+              }`}
+            >
+              🔍 Filtro
+            </button>
+            {painelFiltroAberto && (
+              <div
+                className="absolute z-20 right-0 mt-1 w-72 rounded-2xl bg-white border border-black/10 shadow-lg p-4 space-y-4"
+                onMouseLeave={() => setPainelFiltroAberto(false)}
+              >
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Status</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {statusList.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => alternarFiltroStatus(s.id)}
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold border transition-colors ${
+                          filtroStatusIds.includes(s.id) ? corDoStatus(s.cor).cor + " border-transparent" : "border-black/10 text-ink/50"
+                        }`}
+                      >
+                        {s.nome}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <label className="block">
+                  <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">Responsável</span>
+                  <select value={filtroResponsavelId} onChange={(e) => setFiltroResponsavelId(e.target.value)} className="input py-1.5 text-sm">
+                    <option value="">Todos</option>
+                    {funcionarios.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">Prioridade</span>
+                  <select value={filtroPrioridade} onChange={(e) => setFiltroPrioridade(e.target.value)} className="input py-1.5 text-sm">
+                    <option value="">Todas</option>
+                    <option value="baixa">Baixa</option>
+                    <option value="media">Média</option>
+                    <option value="alta">Alta</option>
+                  </select>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filtroSoAtrasadas}
+                    onChange={(e) => setFiltroSoAtrasadas(e.target.checked)}
+                    className="h-4 w-4 rounded accent-red-600"
+                  />
+                  Só atrasadas
+                </label>
+                {filtrosAtivos && (
+                  <button onClick={limparFiltros} className="text-xs font-semibold text-ink/50 hover:text-red-600">
+                    Limpar filtros
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
           <button
             onClick={() => setPainelCamposAberto((v) => !v)}
             className="rounded-full h-10 w-10 flex items-center justify-center border-2 border-black/10 text-ink/50 hover:text-ink hover:bg-surface transition-colors"
@@ -244,19 +360,40 @@ export default function TarefasPage() {
               ))}
             </div>
           )}
+          </div>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <select value={clienteFiltroId} onChange={(e) => setClienteFiltroId(e.target.value)} className="input py-2 !w-auto">
-          <option value="">Todos os clientes</option>
-          <option value="internas">Internas (sem cliente)</option>
-          {clientes.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nome}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-3">
+          <select value={clienteFiltroId} onChange={(e) => setClienteFiltroId(e.target.value)} className="input py-2 !w-auto">
+            <option value="">Todos os clientes</option>
+            <option value="internas">Internas (sem cliente)</option>
+            {clientes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+          <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+            <button
+              onClick={() => setVisualizacao("kanban")}
+              className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
+                visualizacao === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Kanban
+            </button>
+            <button
+              onClick={() => setVisualizacao("semana")}
+              className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
+                visualizacao === "semana" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Semana
+            </button>
+          </div>
+        </div>
         <button
           onClick={() => setNovaAberta(true)}
           className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors"
@@ -268,14 +405,22 @@ export default function TarefasPage() {
       <div ref={scrollRef} className="overflow-x-auto pb-4">
         {loading ? (
           <p className="text-sm text-ink/50">Carregando...</p>
-        ) : (
+        ) : visualizacao === "kanban" ? (
           <TarefasBoard
             statusList={statusList}
-            tarefas={tarefas}
+            tarefas={tarefasFiltradas}
             contagemSubtarefas={contagemSubtarefas}
             contagemComentarios={contagemComentarios}
             camposVisiveis={camposVisiveis}
             onMoverTarefa={moverTarefaStatus}
+            onAbrirTarefa={(t) => router.push(`/tarefas/${t.id}`)}
+          />
+        ) : (
+          <TarefasSemana
+            tarefas={tarefasFiltradas}
+            contagemSubtarefas={contagemSubtarefas}
+            contagemComentarios={contagemComentarios}
+            camposVisiveis={camposVisiveis}
             onAbrirTarefa={(t) => router.push(`/tarefas/${t.id}`)}
           />
         )}
@@ -463,7 +608,16 @@ function TarefaCardConteudo({
             {PRIORIDADE_CONFIG[tarefa.prioridade].label}
           </span>
         )}
-        {tarefa.prazo && <span className="text-[10px] text-ink/40">📅 {formatarPrazo(tarefa.prazo)}</span>}
+        {tarefa.prazo &&
+          (() => {
+            const atraso = diasAtraso(tarefa.prazo);
+            return (
+              <span className={`text-[10px] ${atraso ? "text-red-600 font-bold" : "text-ink/40"}`}>
+                📅 {formatarPrazo(tarefa.prazo)}
+                {atraso && ` · ${atraso}d atrasado`}
+              </span>
+            );
+          })()}
       </div>
 
       {(temIndicador || (camposVisiveis.responsavel && responsavel)) && (
@@ -488,6 +642,129 @@ function TarefaCardConteudo({
           {camposVisiveis.responsavel && responsavel && <AvatarMini nome={responsavel} />}
         </div>
       )}
+    </div>
+  );
+}
+
+const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+function toISODateLocal(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function TarefasSemana({
+  tarefas,
+  contagemSubtarefas,
+  contagemComentarios,
+  camposVisiveis,
+  onAbrirTarefa,
+}: {
+  tarefas: Tarefa[];
+  contagemSubtarefas: Record<string, number>;
+  contagemComentarios: Record<string, number>;
+  camposVisiveis: CamposVisiveisTarefa;
+  onAbrirTarefa: (t: Tarefa) => void;
+}) {
+  const hoje = new Date();
+  const [inicioSemana, setInicioSemana] = useState(() => {
+    const d = new Date(hoje);
+    d.setDate(d.getDate() - d.getDay());
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+
+  const dias = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(inicioSemana);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+
+  const semPrazo = tarefas.filter((t) => !t.prazo);
+  const hojeISO = toISODateLocal(hoje);
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <button
+          onClick={() => {
+            const d = new Date(inicioSemana);
+            d.setDate(d.getDate() - 7);
+            setInicioSemana(d);
+          }}
+          className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-surface text-ink/50"
+        >
+          ←
+        </button>
+        <button
+          onClick={() => {
+            const d = new Date(hoje);
+            d.setDate(d.getDate() - d.getDay());
+            d.setHours(0, 0, 0, 0);
+            setInicioSemana(d);
+          }}
+          className="rounded-full border-2 border-ink/15 px-4 py-1.5 text-sm font-semibold hover:bg-surface"
+        >
+          Esta semana
+        </button>
+        <button
+          onClick={() => {
+            const d = new Date(inicioSemana);
+            d.setDate(d.getDate() + 7);
+            setInicioSemana(d);
+          }}
+          className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-surface text-ink/50"
+        >
+          →
+        </button>
+        <h2 className="text-lg font-bold text-ink ml-2">
+          {dias[0].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} – {dias[6].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+        </h2>
+      </div>
+
+      {semPrazo.length > 0 && (
+        <details className="mb-4 rounded-2xl bg-surface p-3">
+          <summary className="text-sm font-semibold text-ink/60 cursor-pointer">Sem prazo definido ({semPrazo.length})</summary>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+            {semPrazo.map((t) => (
+              <div key={t.id} onClick={() => onAbrirTarefa(t)} className="cursor-pointer">
+                <TarefaCardConteudo
+                  tarefa={t}
+                  qtdSubtarefas={contagemSubtarefas[t.id] ?? 0}
+                  qtdComentarios={contagemComentarios[t.id] ?? 0}
+                  camposVisiveis={camposVisiveis}
+                />
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      <div className="flex gap-3 min-w-max">
+        {dias.map((dia) => {
+          const iso = toISODateLocal(dia);
+          const tarefasDoDia = tarefas.filter((t) => t.prazo === iso);
+          return (
+            <div key={iso} className={`w-64 shrink-0 rounded-3xl p-3 min-h-[50vh] ${iso === hojeISO ? "bg-mint/40" : "bg-surface"}`}>
+              <div className="mb-3 px-1">
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/50">{DIAS_SEMANA[dia.getDay()]}</p>
+                <p className={`text-lg font-extrabold ${iso === hojeISO ? "text-forest" : "text-ink"}`}>{dia.getDate()}</p>
+              </div>
+              <div className="space-y-2">
+                {tarefasDoDia.map((t) => (
+                  <div key={t.id} onClick={() => onAbrirTarefa(t)} className="cursor-pointer">
+                    <TarefaCardConteudo
+                      tarefa={t}
+                      qtdSubtarefas={contagemSubtarefas[t.id] ?? 0}
+                      qtdComentarios={contagemComentarios[t.id] ?? 0}
+                      camposVisiveis={camposVisiveis}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

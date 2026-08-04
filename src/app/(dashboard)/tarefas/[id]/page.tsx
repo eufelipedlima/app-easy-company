@@ -44,6 +44,8 @@ interface Subtarefa {
   titulo: string;
   status_id: string;
   responsavel_id: string | null;
+  data_inicio: string | null;
+  prazo: string | null;
 }
 
 const CORES_AVATAR = [
@@ -92,6 +94,19 @@ function renderizarTexto(texto: string, todosOsNomes: string[]) {
 
 const ALTURA_DESCRICAO_COLAPSADA = 110;
 
+function formatarDataCurta(iso: string) {
+  return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
+function diasAtraso(prazo: string | null): number | null {
+  if (!prazo) return null;
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const dataPrazo = new Date(prazo + "T00:00:00");
+  const diffDias = Math.floor((hoje.getTime() - dataPrazo.getTime()) / (1000 * 60 * 60 * 24));
+  return diffDias > 0 ? diffDias : null;
+}
+
 export default function TarefaDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -111,7 +126,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [descricaoExpandida, setDescricaoExpandida] = useState(false);
+  const [descricaoRecolhida, setDescricaoRecolhida] = useState(false);
   const [descricaoTransborda, setDescricaoTransborda] = useState(false);
   const descricaoRef = useRef<HTMLTextAreaElement>(null);
   const [clienteSelecionado, setClienteSelecionado] = useState<Opcao | null>(null);
@@ -138,7 +153,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   useEffect(() => {
     ajustarAlturaDescricao();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [descricao, descricaoExpandida]);
+  }, [descricao, descricaoRecolhida]);
 
   const carregarTudo = useCallback(async () => {
     setLoading(true);
@@ -200,7 +215,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
   const carregarSubtarefas = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from("tarefas").select("id, titulo, status_id, responsavel_id").eq("tarefa_pai_id", id).order("created_at");
+    const { data } = await supabase.from("tarefas").select("id, titulo, status_id, responsavel_id, data_inicio, prazo").eq("tarefa_pai_id", id).order("created_at");
     setSubtarefas(data ?? []);
   }, [id]);
 
@@ -466,15 +481,15 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
               onInput={ajustarAlturaDescricao}
               onBlur={() => salvarCampo({ descricao: descricao || null })}
               className="input resize-none overflow-hidden"
-              style={!descricaoExpandida && descricaoTransborda ? { maxHeight: ALTURA_DESCRICAO_COLAPSADA, overflow: "hidden" } : undefined}
+              style={descricaoRecolhida && descricaoTransborda ? { maxHeight: ALTURA_DESCRICAO_COLAPSADA, overflow: "hidden" } : undefined}
               placeholder="Detalhes da tarefa..."
             />
             {descricaoTransborda && (
               <button
-                onClick={() => setDescricaoExpandida((v) => !v)}
+                onClick={() => setDescricaoRecolhida((v) => !v)}
                 className="mt-1 text-xs font-semibold text-ink/50 hover:text-ink flex items-center gap-1"
               >
-                {descricaoExpandida ? "▲ Recolher" : "▼ Expandir"}
+                {descricaoRecolhida ? "▼ Expandir" : "▲ Recolher"}
               </button>
             )}
           </div>
@@ -484,6 +499,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             <div className="space-y-1.5 mb-2">
               {subtarefas.map((s) => {
                 const statusSub = statusList.find((st) => st.id === s.status_id);
+                const atraso = diasAtraso(s.prazo);
                 return (
                   <button
                     key={s.id}
@@ -492,6 +508,14 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                   >
                     <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
                     <span className="flex-1 text-sm text-ink truncate">{s.titulo}</span>
+                    {(s.data_inicio || s.prazo) && (
+                      <span className={`text-[11px] shrink-0 ${atraso ? "text-red-600 font-bold" : "text-ink/40"}`}>
+                        {s.data_inicio && `Início ${formatarDataCurta(s.data_inicio)}`}
+                        {s.data_inicio && s.prazo && " · "}
+                        {s.prazo && `Prazo ${formatarDataCurta(s.prazo)}`}
+                        {atraso && ` · Atrasado ${atraso} dia${atraso > 1 ? "s" : ""}`}
+                      </span>
+                    )}
                     <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
                       {statusSub?.nome ?? "—"}
                     </span>
