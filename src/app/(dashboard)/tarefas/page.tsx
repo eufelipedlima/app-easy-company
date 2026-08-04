@@ -32,6 +32,7 @@ interface Opcao {
 interface Tarefa {
   id: string;
   titulo: string;
+  descricao: string | null;
   cliente_id: string | null;
   responsavel_id: string | null;
   status_id: string;
@@ -41,11 +42,50 @@ interface Tarefa {
   funcionarios: { papeis: { pessoas: { nome: string } | null } | null } | null;
 }
 
+interface CamposVisiveisTarefa {
+  cliente: boolean;
+  responsavel: boolean;
+  indicadores: boolean;
+}
+
+const CAMPOS_PADRAO: CamposVisiveisTarefa = { cliente: true, responsavel: true, indicadores: true };
+
+function carregarCamposVisiveis(): CamposVisiveisTarefa {
+  if (typeof window === "undefined") return CAMPOS_PADRAO;
+  try {
+    const salvo = localStorage.getItem("tarefas-campos-visiveis");
+    return salvo ? { ...CAMPOS_PADRAO, ...JSON.parse(salvo) } : CAMPOS_PADRAO;
+  } catch {
+    return CAMPOS_PADRAO;
+  }
+}
+
 const PRIORIDADE_CONFIG: Record<string, { label: string; cor: string }> = {
   baixa: { label: "Baixa", cor: "bg-sky-100 text-sky-700" },
   media: { label: "Média", cor: "bg-amber-100 text-amber-700" },
   alta: { label: "Alta", cor: "bg-red-100 text-red-700" },
 };
+
+const CORES_AVATAR = [
+  "bg-red-400", "bg-orange-400", "bg-amber-500", "bg-lime-500", "bg-emerald-500",
+  "bg-teal-500", "bg-sky-500", "bg-indigo-500", "bg-violet-500", "bg-pink-500",
+];
+function corAvatar(nome: string) {
+  let hash = 0;
+  for (let i = 0; i < nome.length; i++) hash = (hash * 31 + nome.charCodeAt(i)) % CORES_AVATAR.length;
+  return CORES_AVATAR[Math.abs(hash) % CORES_AVATAR.length];
+}
+function iniciais(nome: string) {
+  const partes = nome.trim().split(/\s+/);
+  return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
+}
+function AvatarMini({ nome }: { nome: string }) {
+  return (
+    <div className={`h-5 w-5 rounded-full ${corAvatar(nome)} text-white flex items-center justify-center text-[9px] font-bold shrink-0`} title={nome}>
+      {iniciais(nome)}
+    </div>
+  );
+}
 
 function nomeCliente(t: Tarefa) {
   return t.clientes?.papeis?.pessoas?.nome ?? null;
@@ -62,10 +102,26 @@ export default function TarefasPage() {
   const [statusList, setStatusList] = useState<StatusItem[]>([]);
   const [clientes, setClientes] = useState<Opcao[]>([]);
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
+  const [contagemSubtarefas, setContagemSubtarefas] = useState<Record<string, number>>({});
+  const [contagemComentarios, setContagemComentarios] = useState<Record<string, number>>({});
   const [clienteFiltroId, setClienteFiltroId] = useState("");
   const [novaAberta, setNovaAberta] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [camposVisiveis, setCamposVisiveis] = useState<CamposVisiveisTarefa>(CAMPOS_PADRAO);
+  const [painelCamposAberto, setPainelCamposAberto] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setCamposVisiveis(carregarCamposVisiveis());
+  }, []);
+
+  function alternarCampo(campo: keyof CamposVisiveisTarefa) {
+    setCamposVisiveis((atual) => {
+      const novo = { ...atual, [campo]: !atual[campo] };
+      localStorage.setItem("tarefas-campos-visiveis", JSON.stringify(novo));
+      return novo;
+    });
+  }
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -102,17 +158,40 @@ export default function TarefasPage() {
     let query = supabase
       .from("tarefas")
       .select(
-        `id, titulo, cliente_id, responsavel_id, status_id, prioridade, prazo,
+        `id, titulo, descricao, cliente_id, responsavel_id, status_id, prioridade, prazo,
          clientes ( papeis ( pessoas ( nome ) ) ),
          funcionarios ( papeis ( pessoas ( nome ) ) )`
       )
+      .is("tarefa_pai_id", null)
       .order("created_at", { ascending: false });
     if (clienteFiltroId === "internas") query = query.is("cliente_id", null);
     else if (clienteFiltroId) query = query.eq("cliente_id", clienteFiltroId);
     const { data, error } = await query;
     if (error) console.error("Erro ao carregar tarefas:", error);
-    setTarefas((data as unknown as Tarefa[]) ?? []);
+    const lista = (data as unknown as Tarefa[]) ?? [];
+    setTarefas(lista);
     setLoading(false);
+
+    const ids = lista.map((t) => t.id);
+    if (ids.length > 0) {
+      const [{ data: filhas }, { data: comentarios }] = await Promise.all([
+        supabase.from("tarefas").select("tarefa_pai_id").in("tarefa_pai_id", ids),
+        supabase.from("tarefas_comentarios").select("tarefa_id").in("tarefa_id", ids),
+      ]);
+      const contFilhas: Record<string, number> = {};
+      for (const f of filhas ?? []) {
+        if (f.tarefa_pai_id) contFilhas[f.tarefa_pai_id] = (contFilhas[f.tarefa_pai_id] ?? 0) + 1;
+      }
+      setContagemSubtarefas(contFilhas);
+      const contComentarios: Record<string, number> = {};
+      for (const c of comentarios ?? []) {
+        contComentarios[c.tarefa_id] = (contComentarios[c.tarefa_id] ?? 0) + 1;
+      }
+      setContagemComentarios(contComentarios);
+    } else {
+      setContagemSubtarefas({});
+      setContagemComentarios({});
+    }
   }, [clienteFiltroId]);
 
   useEffect(() => {
@@ -136,6 +215,35 @@ export default function TarefasPage() {
         <div>
           <h1 className="text-2xl font-extrabold text-ink mb-1">Tarefas e Projetos</h1>
           <p className="text-sm text-ink/60">Demandas da equipe, por cliente ou internas.</p>
+        </div>
+        <div className="relative shrink-0">
+          <button
+            onClick={() => setPainelCamposAberto((v) => !v)}
+            className="rounded-full h-10 w-10 flex items-center justify-center border-2 border-black/10 text-ink/50 hover:text-ink hover:bg-surface transition-colors"
+            title="Escolher quais informações aparecem nos cards"
+          >
+            ⚙
+          </button>
+          {painelCamposAberto && (
+            <div
+              className="absolute z-20 right-0 mt-1 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+              onMouseLeave={() => setPainelCamposAberto(false)}
+            >
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2 px-1">Campos visíveis</p>
+              {(
+                [
+                  ["cliente", "Cliente / Interna"],
+                  ["responsavel", "Responsável"],
+                  ["indicadores", "Descrição, comentários e subtarefas"],
+                ] as [keyof CamposVisiveisTarefa, string][]
+              ).map(([campo, label]) => (
+                <label key={campo} className="flex items-center gap-2 px-1 py-1.5 text-sm text-ink cursor-pointer">
+                  <input type="checkbox" checked={camposVisiveis[campo]} onChange={() => alternarCampo(campo)} className="h-4 w-4 rounded accent-forest" />
+                  {label}
+                </label>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -164,6 +272,9 @@ export default function TarefasPage() {
           <TarefasBoard
             statusList={statusList}
             tarefas={tarefas}
+            contagemSubtarefas={contagemSubtarefas}
+            contagemComentarios={contagemComentarios}
+            camposVisiveis={camposVisiveis}
             onMoverTarefa={moverTarefaStatus}
             onAbrirTarefa={(t) => router.push(`/tarefas/${t.id}`)}
           />
@@ -186,11 +297,17 @@ export default function TarefasPage() {
 function TarefasBoard({
   statusList,
   tarefas,
+  contagemSubtarefas,
+  contagemComentarios,
+  camposVisiveis,
   onMoverTarefa,
   onAbrirTarefa,
 }: {
   statusList: StatusItem[];
   tarefas: Tarefa[];
+  contagemSubtarefas: Record<string, number>;
+  contagemComentarios: Record<string, number>;
+  camposVisiveis: CamposVisiveisTarefa;
   onMoverTarefa: (tarefaId: string, novoStatusId: string) => void;
   onAbrirTarefa: (t: Tarefa) => void;
 }) {
@@ -217,11 +334,24 @@ function TarefasBoard({
             key={coluna.id}
             coluna={coluna}
             cards={tarefas.filter((t) => t.status_id === coluna.id)}
+            contagemSubtarefas={contagemSubtarefas}
+            contagemComentarios={contagemComentarios}
+            camposVisiveis={camposVisiveis}
             onAbrirTarefa={onAbrirTarefa}
           />
         ))}
       </div>
-      <DragOverlay>{tarefaAtiva && <TarefaCardConteudo tarefa={tarefaAtiva} arrastando />}</DragOverlay>
+      <DragOverlay>
+        {tarefaAtiva && (
+          <TarefaCardConteudo
+            tarefa={tarefaAtiva}
+            qtdSubtarefas={contagemSubtarefas[tarefaAtiva.id] ?? 0}
+            qtdComentarios={contagemComentarios[tarefaAtiva.id] ?? 0}
+            camposVisiveis={camposVisiveis}
+            arrastando
+          />
+        )}
+      </DragOverlay>
     </DndContext>
   );
 }
@@ -229,10 +359,16 @@ function TarefasBoard({
 function TarefasColuna({
   coluna,
   cards,
+  contagemSubtarefas,
+  contagemComentarios,
+  camposVisiveis,
   onAbrirTarefa,
 }: {
   coluna: StatusItem;
   cards: Tarefa[];
+  contagemSubtarefas: Record<string, number>;
+  contagemComentarios: Record<string, number>;
+  camposVisiveis: CamposVisiveisTarefa;
   onAbrirTarefa: (t: Tarefa) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: coluna.id });
@@ -251,7 +387,15 @@ function TarefasColuna({
       </div>
       <div className="space-y-2 min-h-[80px]">
         {cards.map((t) => (
-          <TarefaCardArrastavel key={t.id} tarefa={t} statusAtual={coluna.id} onAbrirTarefa={onAbrirTarefa} />
+          <TarefaCardArrastavel
+            key={t.id}
+            tarefa={t}
+            statusAtual={coluna.id}
+            qtdSubtarefas={contagemSubtarefas[t.id] ?? 0}
+            qtdComentarios={contagemComentarios[t.id] ?? 0}
+            camposVisiveis={camposVisiveis}
+            onAbrirTarefa={onAbrirTarefa}
+          />
         ))}
       </div>
     </div>
@@ -261,10 +405,16 @@ function TarefasColuna({
 function TarefaCardArrastavel({
   tarefa,
   statusAtual,
+  qtdSubtarefas,
+  qtdComentarios,
+  camposVisiveis,
   onAbrirTarefa,
 }: {
   tarefa: Tarefa;
   statusAtual: string;
+  qtdSubtarefas: number;
+  qtdComentarios: number;
+  camposVisiveis: CamposVisiveisTarefa;
   onAbrirTarefa: (t: Tarefa) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: tarefa.id, data: { statusAtual } });
@@ -276,22 +426,37 @@ function TarefaCardArrastavel({
       onClick={() => !isDragging && onAbrirTarefa(tarefa)}
       className={`touch-none transition-opacity ${isDragging ? "opacity-30" : "opacity-100"}`}
     >
-      <TarefaCardConteudo tarefa={tarefa} />
+      <TarefaCardConteudo tarefa={tarefa} qtdSubtarefas={qtdSubtarefas} qtdComentarios={qtdComentarios} camposVisiveis={camposVisiveis} />
     </div>
   );
 }
 
-function TarefaCardConteudo({ tarefa, arrastando }: { tarefa: Tarefa; arrastando?: boolean }) {
+function TarefaCardConteudo({
+  tarefa,
+  qtdSubtarefas = 0,
+  qtdComentarios = 0,
+  camposVisiveis,
+  arrastando,
+}: {
+  tarefa: Tarefa;
+  qtdSubtarefas?: number;
+  qtdComentarios?: number;
+  camposVisiveis: CamposVisiveisTarefa;
+  arrastando?: boolean;
+}) {
   const cliente = nomeCliente(tarefa);
   const responsavel = nomeResponsavel(tarefa);
+  const temIndicador = camposVisiveis.indicadores && (tarefa.descricao || qtdComentarios > 0 || qtdSubtarefas > 0);
+
   return (
     <div
-      className={`rounded-2xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow w-72 ${
+      className={`rounded-2xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow ${arrastando ? "w-72" : "w-full"} ${
         arrastando ? "shadow-2xl rotate-2 border-2 border-forest/30" : "border border-black/5 shadow-sm hover:shadow-md"
       }`}
     >
       <p className="text-sm font-semibold text-ink truncate">{tarefa.titulo}</p>
-      <p className="text-xs text-ink/50 truncate mt-0.5">{cliente ?? "Interna"}</p>
+      {camposVisiveis.cliente && <p className="text-xs text-ink/50 truncate mt-0.5">{cliente ?? "Interna"}</p>}
+
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {tarefa.prioridade && (
           <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${PRIORIDADE_CONFIG[tarefa.prioridade].cor}`}>
@@ -299,8 +464,30 @@ function TarefaCardConteudo({ tarefa, arrastando }: { tarefa: Tarefa; arrastando
           </span>
         )}
         {tarefa.prazo && <span className="text-[10px] text-ink/40">📅 {formatarPrazo(tarefa.prazo)}</span>}
-        {responsavel && <span className="text-[10px] text-ink/40 ml-auto">👤 {responsavel}</span>}
       </div>
+
+      {(temIndicador || (camposVisiveis.responsavel && responsavel)) && (
+        <div className="flex items-center justify-between mt-2 pt-2 border-t border-black/5">
+          <div className="flex items-center gap-2 text-ink/40">
+            {temIndicador && (
+              <>
+                {tarefa.descricao && <span title="Tem descrição">☰</span>}
+                {qtdComentarios > 0 && (
+                  <span className="flex items-center gap-0.5 text-[11px]" title="Comentários">
+                    💬 {qtdComentarios}
+                  </span>
+                )}
+                {qtdSubtarefas > 0 && (
+                  <span className="flex items-center gap-0.5 text-[11px]" title="Subtarefas">
+                    🔗 {qtdSubtarefas}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+          {camposVisiveis.responsavel && responsavel && <AvatarMini nome={responsavel} />}
+        </div>
+      )}
     </div>
   );
 }

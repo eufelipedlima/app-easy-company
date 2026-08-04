@@ -1348,7 +1348,7 @@ function KanbanCardConteudo({
 
   return (
     <div
-      className={`rounded-2xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow w-72 ${
+      className={`rounded-2xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow ${arrastando ? "w-72" : "w-full"} ${
         arrastando ? "shadow-2xl rotate-2 border-2 border-forest/30" : "border border-black/5 shadow-sm hover:shadow-md"
       }`}
     >
