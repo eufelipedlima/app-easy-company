@@ -23,7 +23,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // pra ninguém comentar em post de outro cliente só sabendo o id do post.
   const { data: cliente } = await supabase
     .from("clientes")
-    .select("id")
+    .select("id, papeis ( pessoas ( nome, foto_url ) )")
     .eq("link_publico_token", token)
     .maybeSingle();
 
@@ -31,14 +31,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Link não encontrado." }, { status: 404 });
   }
 
+  const clienteInfo = cliente as unknown as { id: string; papeis: { pessoas: { nome: string; foto_url: string | null } | null } | null };
+  const nomeCliente = clienteInfo.papeis?.pessoas?.nome ?? "Cliente";
+  const fotoCliente = clienteInfo.papeis?.pessoas?.foto_url ?? null;
+
   const { data: post } = await supabase
     .from("posts_conteudo")
-    .select("id, cliente_id, titulo, responsavel_id")
+    .select("id, cliente_id, titulo, responsavel_id, status_id, status_conteudo ( nome )")
     .eq("id", postId)
     .maybeSingle();
 
   if (!post || post.cliente_id !== cliente.id) {
     return NextResponse.json({ error: "Post não encontrado." }, { status: 404 });
+  }
+
+  const statusAtualNome = (post as unknown as { status_conteudo: { nome: string } | null }).status_conteudo?.nome ?? "";
+  const jaConcluido = /conclu/i.test(statusAtualNome);
+
+  if (acao === "solicitar_alteracao" && jaConcluido) {
+    return NextResponse.json({ error: "Esse conteúdo já foi finalizado e não aceita mais ajustes." }, { status: 400 });
   }
 
   if (texto?.trim()) {
@@ -79,9 +90,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       idsResponsaveis.map((destinatario_id) => ({
         destinatario_id,
         tipo: "comentario_cliente",
-        titulo: acao === "aprovar" ? "Cliente aprovou um conteúdo" : "Cliente pediu ajuste",
+        titulo: acao === "aprovar" ? `${nomeCliente} aprovou um conteúdo` : `${nomeCliente} pediu ajuste`,
         descricao: post.titulo || (texto?.trim() ? texto.trim().slice(0, 120) : null),
         link: `/conteudo/calendario/post/${postId}`,
+        autor_nome: nomeCliente,
+        autor_foto_url: fotoCliente,
       }))
     );
   }

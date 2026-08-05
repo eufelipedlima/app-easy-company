@@ -457,7 +457,10 @@ export default function ChatPage() {
             tipo: "mencao_chat",
             titulo: `${meuNome} te mencionou`,
             descricao: textoEnviado.slice(0, 120),
-            link: "/chat",
+            link: canalAtivoId ? `/chat?canal=${canalAtivoId}` : "/chat",
+            autor_id: meuId,
+            autor_nome: meuNome,
+            autor_foto_url: meuFotoUrl,
           }))
         );
       }

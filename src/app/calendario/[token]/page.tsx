@@ -87,17 +87,21 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
         setErro(data.error ?? "Não foi possível carregar o calendário.");
         setLoading(false);
         setAtualizando(false);
-        return;
+        return [];
       }
       setNomeCliente(data.nomeCliente);
       setFotoCliente(data.fotoCliente ?? null);
       setPosts(data.posts);
       setUltimaAtualizacao(new Date());
+      setLoading(false);
+      setAtualizando(false);
+      return data.posts as Post[];
     } catch {
       setErro("Não foi possível carregar o calendário.");
     }
     setLoading(false);
     setAtualizando(false);
+    return [];
   }, [token, mes, ano]);
 
   useEffect(() => {
@@ -305,7 +309,7 @@ function PostPublicoModal({
   listaPendentes: Post[];
   onNavegar: (p: Post) => void;
   onClose: () => void;
-  onComentado: () => void;
+  onComentado: () => Promise<Post[]>;
 }) {
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState<"aprovar" | "solicitar_alteracao" | null>(null);
@@ -331,19 +335,26 @@ function PostPublicoModal({
       body: JSON.stringify({ postId: post.id, texto, acao }),
     });
     const data = await res.json();
-    setEnviando(null);
     if (res.ok) {
       setTexto("");
       setMostrarCampoAlteracao(false);
-      const idxAtual = listaPendentes.findIndex((p) => p.id === post.id);
-      const proximo = listaPendentes[idxAtual + 1] ?? listaPendentes.filter((p) => p.id !== post.id)[idxAtual - 1] ?? null;
-      onComentado();
-      if (proximo) {
-        onNavegar(proximo);
+      const postsFrescos = await onComentado();
+      const pendentesFrescos = postsFrescos.filter(
+        (p) => !/agend/i.test(p.status_conteudo?.nome ?? "") && !/altera/i.test(p.status_conteudo?.nome ?? "")
+      );
+      const postAtualAtualizado = postsFrescos.find((p) => p.id === post.id) ?? post;
+      const idxNaListaOriginal = listaPendentes.findIndex((p) => p.id === post.id);
+      const proximoOriginal = listaPendentes[idxNaListaOriginal + 1] ?? listaPendentes[idxNaListaOriginal - 1] ?? null;
+      const proximoFresco = proximoOriginal ? pendentesFrescos.find((p) => p.id === proximoOriginal.id) ?? proximoOriginal : null;
+      setEnviando(null);
+      if (proximoFresco) {
+        onNavegar(proximoFresco);
       } else {
+        onNavegar(postAtualAtualizado);
         setEnviado(acao === "aprovar" ? "Conteúdo aprovado! 🎉 Você já viu tudo por aqui." : "Ajuste solicitado! A equipe foi avisada.");
       }
     } else {
+      setEnviando(null);
       setErro(data.error ?? "Não foi possível enviar.");
     }
   }
@@ -353,6 +364,7 @@ function PostPublicoModal({
   const idxAtual = listaPendentes.findIndex((p) => p.id === post.id);
   const totalNav = listaPendentes.length;
   const jaAprovado = /agend/i.test(post.status_conteudo?.nome ?? "");
+  const jaConcluido = /conclu/i.test(post.status_conteudo?.nome ?? "");
 
   function irPara(offset: number) {
     const alvo = idxAtual + offset;
@@ -368,7 +380,7 @@ function PostPublicoModal({
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-black/5 shrink-0">
           <p className="text-xs font-bold uppercase tracking-widest text-ink/40">Aprovação de conteúdo</p>
           <div className="flex items-center gap-2">
-            {!jaAprovado && (
+            {!jaAprovado && !jaConcluido && (
               <button
                 onClick={() => enviar("aprovar")}
                 disabled={enviando !== null}
@@ -379,6 +391,11 @@ function PostPublicoModal({
             )}
             <button
               onClick={() => {
+                if (jaConcluido) {
+                  setComentarioAberto(true);
+                  setMostrarCampoAlteracao(false);
+                  return;
+                }
                 setMostrarCampoAlteracao(true);
                 setComentarioAberto(true);
               }}
@@ -511,39 +528,45 @@ function PostPublicoModal({
               <div className="p-3 border-t border-black/5 shrink-0">
                 {erro && <p className="text-xs text-red-600 mb-2">{erro}</p>}
                 {enviado && <p className="text-xs text-forest font-semibold mb-2">{enviado}</p>}
-                <div className="space-y-2">
-                  <span className="block text-xs font-medium text-ink/60">
-                    Escreva o que precisa ajustar — ideia, arte, texto, edição, o que for
-                  </span>
-                  <textarea
-                    autoFocus
-                    value={texto}
-                    onChange={(e) => setTexto(e.target.value)}
-                    rows={3}
-                    placeholder="Ex: pode trocar a foto de capa? Ou mudar o texto da legenda?"
-                    className="input resize-none text-sm"
-                  />
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => enviar("solicitar_alteracao")}
-                      disabled={enviando !== null || !texto.trim()}
-                      className="rounded-full bg-forest text-white px-4 py-2 text-xs font-semibold hover:brightness-110 transition disabled:opacity-50"
-                    >
-                      {enviando === "solicitar_alteracao" ? "Enviando..." : "Enviar alteração"}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setMostrarCampoAlteracao(false);
-                        setComentarioAberto(false);
-                        setTexto("");
-                        setErro(null);
-                      }}
-                      className="text-xs font-semibold text-ink/50 hover:text-ink"
-                    >
-                      Cancelar
-                    </button>
+                {jaConcluido ? (
+                  <div className="rounded-xl bg-amber-50 text-amber-700 text-xs font-medium px-3 py-3 text-center">
+                    ⚠ Esse conteúdo já foi finalizado e não aceita mais ajustes. Fala com a gente pelo WhatsApp se precisar de algo.
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-2">
+                    <span className="block text-xs font-medium text-ink/60">
+                      Escreva o que precisa ajustar — ideia, arte, texto, edição, o que for
+                    </span>
+                    <textarea
+                      autoFocus
+                      value={texto}
+                      onChange={(e) => setTexto(e.target.value)}
+                      rows={3}
+                      placeholder="Ex: pode trocar a foto de capa? Ou mudar o texto da legenda?"
+                      className="input resize-none text-sm"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => enviar("solicitar_alteracao")}
+                        disabled={enviando !== null || !texto.trim()}
+                        className="rounded-full bg-forest text-white px-4 py-2 text-xs font-semibold hover:brightness-110 transition disabled:opacity-50"
+                      >
+                        {enviando === "solicitar_alteracao" ? "Enviando..." : "Enviar alteração"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMostrarCampoAlteracao(false);
+                          setComentarioAberto(false);
+                          setTexto("");
+                          setErro(null);
+                        }}
+                        className="text-xs font-semibold text-ink/50 hover:text-ink"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

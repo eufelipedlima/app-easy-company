@@ -150,6 +150,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   const [colegas, setColegas] = useState<Opcao[]>([]);
   const [meuId, setMeuId] = useState<string | null>(null);
   const [meuNome, setMeuNome] = useState("Você");
+  const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
   const [responsaveis, setResponsaveis] = useState<Responsavel[]>([]);
   const [seletorResponsavelAberto, setSeletorResponsavelAberto] = useState(false);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
@@ -216,6 +217,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       setMeuId(user.id);
       const eu = listaFunc.find((f) => f.authUserId === user.id);
       setMeuNome(eu?.nome ?? "Você");
+      setMeuFotoUrl(eu?.fotoUrl ?? null);
     }
 
     if (p) {
@@ -373,6 +375,9 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
           titulo: `${meuNome} ${descricaoEvento} num conteúdo seu`,
           descricao: post?.titulo ?? null,
           link: `/conteudo/calendario/post/${id}`,
+          autor_id: meuId,
+          autor_nome: meuNome,
+          autor_foto_url: meuFotoUrl,
         }))
       );
     }
@@ -403,6 +408,9 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
           titulo: `${meuNome} te atribuiu a um conteúdo`,
           descricao: post?.titulo ?? null,
           link: `/conteudo/calendario/post/${id}`,
+          autor_id: meuId,
+          autor_nome: meuNome,
+          autor_foto_url: meuFotoUrl,
         });
       }
     }
@@ -446,9 +454,12 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
         await supabase.from("notificacoes").insert({
           destinatario_id: pessoa.authUserId,
           tipo: "atribuicao_conteudo",
-          titulo: "Você foi atribuído a um sub-conteúdo",
+          titulo: `${meuNome} te atribuiu a um sub-conteúdo`,
           descricao: subConteudos.find((s) => s.id === subId)?.titulo ?? null,
           link: `/conteudo/calendario/post/${subId}`,
+          autor_id: meuId,
+          autor_nome: meuNome,
+          autor_foto_url: meuFotoUrl,
         });
       }
     }
@@ -476,6 +487,9 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
               titulo: `${meuNome} te mencionou num conteúdo`,
               descricao: post?.titulo || texto.slice(0, 120),
               link: `/conteudo/calendario/post/${id}`,
+              autor_id: meuId,
+              autor_nome: meuNome,
+              autor_foto_url: meuFotoUrl,
             }))
             .filter((n) => n.destinatario_id)
         );

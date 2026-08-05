@@ -160,6 +160,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   const [colegas, setColegas] = useState<Opcao[]>([]);
   const [meuId, setMeuId] = useState<string | null>(null);
   const [meuNome, setMeuNome] = useState("Você");
+  const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
   const [subtarefas, setSubtarefas] = useState<Subtarefa[]>([]);
   const [responsaveisPorSubtarefa, setResponsaveisPorSubtarefa] = useState<Record<string, Responsavel[]>>({});
   const [responsaveis, setResponsaveis] = useState<Responsavel[]>([]);
@@ -222,6 +223,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       setMeuId(user.id);
       const eu = listaFunc.find((f) => f.authUserId === user.id);
       setMeuNome(eu?.nome ?? "Você");
+      setMeuFotoUrl(eu?.fotoUrl ?? null);
     }
 
     if (t) {
@@ -354,6 +356,9 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
           titulo: `${meuNome} ${descricaoEvento} numa tarefa sua`,
           descricao: tarefa?.titulo ?? null,
           link: `/tarefas/${id}`,
+          autor_id: meuId,
+          autor_nome: meuNome,
+          autor_foto_url: meuFotoUrl,
         }))
       );
     }
@@ -388,6 +393,9 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
           titulo: `${meuNome} te atribuiu a uma tarefa`,
           descricao: tarefa?.titulo ?? null,
           link: `/tarefas/${id}`,
+          autor_id: meuId,
+          autor_nome: meuNome,
+          autor_foto_url: meuFotoUrl,
         });
       }
     }
@@ -436,6 +444,9 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
           titulo: `${meuNome} te atribuiu a uma subtarefa`,
           descricao: subtarefas.find((s) => s.id === subId)?.titulo ?? null,
           link: `/tarefas/${subId}`,
+          autor_id: meuId,
+          autor_nome: meuNome,
+          autor_foto_url: meuFotoUrl,
         });
       }
     }
@@ -459,6 +470,9 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             titulo: `${meuNome} te mencionou numa tarefa`,
             descricao: tarefa?.titulo ?? texto.slice(0, 120),
             link: `/tarefas/${id}`,
+            autor_id: meuId,
+            autor_nome: meuNome,
+            autor_foto_url: meuFotoUrl,
           })).filter((n) => n.destinatario_id)
         );
       }
