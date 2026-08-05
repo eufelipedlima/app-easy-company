@@ -847,7 +847,7 @@ export default function ChatPage() {
                   <div key={m.id}>
                     {novoDia && (
                       <div className="flex items-center justify-center my-4">
-                        <span className="text-xs font-semibold text-ink/40 bg-surface rounded-full px-3 py-1">
+                        <span className="text-xs font-semibold text-forest bg-mint rounded-full px-3 py-1">
                           {formatarDiaSeparador(m.created_at)}
                         </span>
                       </div>
@@ -867,8 +867,10 @@ export default function ChatPage() {
                         {!mesmoAutorSeguido && (
                           <div className="flex items-baseline gap-2 mb-0.5">
                             <span className="text-sm font-bold text-ink">{nomeAutor}</span>
-                            {cargoAutor && <span className="text-[11px] text-ink/40">{cargoAutor}</span>}
-                            <span className="text-[11px] text-ink/40">{formatarHora(m.created_at)}</span>
+                            {cargoAutor && (
+                              <span className="text-[10px] font-semibold text-forest bg-mint rounded-full px-2 py-0.5">{cargoAutor}</span>
+                            )}
+                            <span className="text-[11px] font-medium text-forest/70">{formatarHora(m.created_at)}</span>
                           </div>
                         )}
 
@@ -1045,10 +1047,15 @@ export default function ChatPage() {
                     <button
                       type="button"
                       onClick={iniciarGravacao}
-                      className="rounded-full h-10 w-10 flex items-center justify-center border border-black/10 hover:bg-surface text-base shrink-0"
+                      className="rounded-full h-10 w-10 flex items-center justify-center border border-black/10 hover:bg-surface text-ink/60 hover:text-ink shrink-0"
                       title="Gravar áudio"
                     >
-                      🎤
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="2" width="6" height="12" rx="3" />
+                        <path d="M5 10v1a7 7 0 0 0 14 0v-1" />
+                        <line x1="12" y1="18" x2="12" y2="22" />
+                        <line x1="8" y1="22" x2="16" y2="22" />
+                      </svg>
                     </button>
                     <div className="relative flex-1">
                       <textarea

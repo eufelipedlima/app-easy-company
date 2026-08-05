@@ -303,12 +303,12 @@ export default function InicioPage() {
     <main className="min-h-screen bg-gradient-to-b from-mint/20 via-white to-white px-8 py-8">
       <div className="max-w-[1400px] mx-auto">
         <div className="flex items-center justify-between mb-1">
-          <h1 className="text-3xl font-extrabold text-ink">
+          <h1 className="text-xl font-extrabold text-ink">
             {saudacao()}
             {nome ? `, ${nome}` : ""} 👋
           </h1>
         </div>
-        <p className="text-sm text-ink/50 italic mb-8">
+        <p className="text-xs text-ink/50 italic mb-6">
           &ldquo;{frase[0]}&rdquo; <span className="not-italic text-ink/30">— {frase[1]}</span>
         </p>
 
@@ -316,10 +316,10 @@ export default function InicioPage() {
           <p className="text-sm text-ink/50">Carregando...</p>
         ) : (
           <div className="space-y-6">
-            <div className="rounded-3xl bg-white border border-black/5 shadow-sm p-6">
+            <div className="rounded-2xl bg-white border border-black/5 shadow-sm p-4">
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-lg">📌</span>
-                <h2 className="text-base font-extrabold text-ink">Tarefas e conteúdos da agência</h2>
+                <h2 className="text-sm font-bold text-ink">Tarefas e conteúdos da agência</h2>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 mb-5">
@@ -327,7 +327,7 @@ export default function InicioPage() {
                   <button
                     key={a.chave}
                     onClick={() => setAbaTarefas(a.chave)}
-                    className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold transition-all ${
+                    className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
                       abaTarefas === a.chave
                         ? "bg-ink text-white shadow-md scale-105"
                         : "bg-surface text-ink/60 hover:bg-black/10"
@@ -340,7 +340,7 @@ export default function InicioPage() {
               </div>
 
               {listaAtiva.length === 0 ? (
-                <p className="text-sm text-ink/40 py-6 text-center">Nada por aqui. 🎉</p>
+                <p className="text-xs text-ink/40 py-4 text-center">Nada por aqui. 🎉</p>
               ) : (
                 <div className="space-y-1.5">
                   {listaAtiva.map((item) => {
@@ -349,14 +349,14 @@ export default function InicioPage() {
                       <button
                         key={`${item.tipo}-${item.id}`}
                         onClick={() => router.push(item.link)}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-colors ${
+                        className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-left transition-colors ${
                           atrasado ? "bg-red-50 hover:bg-red-100" : "bg-surface/60 hover:bg-surface"
                         }`}
                       >
                         <span className="text-base shrink-0">{item.tipo === "tarefa" ? "✔️" : "📅"}</span>
                         <span className="flex-1 min-w-0">
-                          <span className="block text-sm font-semibold text-ink truncate">{item.titulo}</span>
-                          {item.clienteNome && <span className="block text-xs text-ink/40 truncate">{item.clienteNome}</span>}
+                          <span className="block text-[13px] font-semibold text-ink truncate">{item.titulo}</span>
+                          {item.clienteNome && <span className="block text-[11px] text-ink/40 truncate">{item.clienteNome}</span>}
                         </span>
                         <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 shrink-0 ${corDoStatus(item.statusCor).cor}`}>
                           {item.statusNome}
@@ -373,12 +373,12 @@ export default function InicioPage() {
               )}
             </div>
 
-            <div className="rounded-3xl bg-white border border-black/5 shadow-sm p-6">
+            <div className="rounded-2xl bg-white border border-black/5 shadow-sm p-4">
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-lg">📊</span>
-                <h2 className="text-base font-extrabold text-ink">Resumo</h2>
+                <h2 className="text-sm font-bold text-ink">Resumo</h2>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                 {[
                   ["Total em aberto", resumo.total, "bg-surface text-ink", "📋"],
                   ["Vencem hoje", resumo.hoje, "bg-amber-50 text-amber-700", "🎯"],
@@ -386,12 +386,12 @@ export default function InicioPage() {
                   ["Concluídos", resumo.concluidos, "bg-emerald-50 text-emerald-700", "✅"],
                   ["Sem prazo", resumo.semData, "bg-sky-50 text-sky-700", "🗂️"],
                 ].map(([label, valor, cor, icone]) => (
-                  <div key={label as string} className={`rounded-2xl p-4 ${cor}`}>
+                  <div key={label as string} className={`rounded-xl p-3 ${cor}`}>
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-lg">{icone}</span>
-                      <span className="text-2xl font-extrabold">{valor}</span>
+                      <span className="text-xl font-extrabold">{valor}</span>
                     </div>
-                    <p className="text-xs font-semibold opacity-70">{label}</p>
+                    <p className="text-[11px] font-semibold opacity-70">{label}</p>
                   </div>
                 ))}
               </div>
@@ -402,14 +402,14 @@ export default function InicioPage() {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <span className="text-lg">📥</span>
-                    <h2 className="text-base font-extrabold text-ink">Caixa de Entrada</h2>
+                    <h2 className="text-sm font-bold text-ink">Caixa de Entrada</h2>
                   </div>
                   <button onClick={() => router.push("/caixa-de-entrada")} className="text-xs font-semibold text-forest hover:text-ink">
                     Ver tudo →
                   </button>
                 </div>
                 {notificacoes.length === 0 ? (
-                  <p className="text-sm text-ink/40 py-4 text-center">Tudo em dia. 🎉</p>
+                  <p className="text-xs text-ink/40 py-3 text-center">Tudo em dia. 🎉</p>
                 ) : (
                   <div className="space-y-1">
                     {notificacoes.map((n) => (
@@ -427,8 +427,8 @@ export default function InicioPage() {
                           </span>
                         )}
                         <span className="min-w-0">
-                          <span className="block text-sm font-semibold text-ink truncate">{n.titulo}</span>
-                          {n.descricao && <span className="block text-xs text-ink/50 truncate">{n.descricao}</span>}
+                          <span className="block text-[13px] font-semibold text-ink truncate">{n.titulo}</span>
+                          {n.descricao && <span className="block text-[11px] text-ink/50 truncate">{n.descricao}</span>}
                         </span>
                       </button>
                     ))}
@@ -440,14 +440,14 @@ export default function InicioPage() {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <span className="text-lg">💬</span>
-                    <h2 className="text-base font-extrabold text-ink">Chat</h2>
+                    <h2 className="text-sm font-bold text-ink">Chat</h2>
                   </div>
                   <button onClick={() => router.push("/chat")} className="text-xs font-semibold text-forest hover:text-ink">
                     Abrir chat →
                   </button>
                 </div>
                 {canaisChat.length === 0 ? (
-                  <p className="text-sm text-ink/40 py-4 text-center">Nenhuma conversa ainda.</p>
+                  <p className="text-xs text-ink/40 py-3 text-center">Nenhuma conversa ainda.</p>
                 ) : (
                   <div className="space-y-1">
                     {canaisChat.map((c) => (
@@ -457,8 +457,8 @@ export default function InicioPage() {
                         className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl hover:bg-surface transition-colors text-left"
                       >
                         <span className="min-w-0">
-                          <span className="block text-sm font-semibold text-ink truncate">{c.nome}</span>
-                          {c.ultimaMensagem && <span className="block text-xs text-ink/50 truncate">{c.ultimaMensagem}</span>}
+                          <span className="block text-[13px] font-semibold text-ink truncate">{c.nome}</span>
+                          {c.ultimaMensagem && <span className="block text-[11px] text-ink/50 truncate">{c.ultimaMensagem}</span>}
                         </span>
                         {c.naoLidas > 0 && (
                           <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">{c.naoLidas}</span>
