@@ -37,17 +37,25 @@ interface Post {
   cliente_id: string;
   titulo: string | null;
   data_publicacao: string;
+  data_inicio: string | null;
   hora_publicacao: string | null;
   legenda: string | null;
   objetivo: "atracao" | "educacao" | "conversao" | null;
   formato: "estatico" | "carrossel" | "video" | null;
   status_id: string;
   responsavel_id: string | null;
+  post_pai_id: string | null;
   observacoes_internas: string | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
   funcionarios: { papeis: { pessoas: { nome: string } | null } | null } | null;
   posts_conteudo_midias: Midia[];
   status_conteudo: { nome: string; cor: string } | null;
+}
+
+interface Responsavel {
+  id: string;
+  nome: string;
+  fotoUrl: string | null;
 }
 
 interface CamposVisiveis {
@@ -183,6 +191,8 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
   const [visualizacao, setVisualizacao] = useState<"calendario" | "kanban">(viewInicial);
   const [postsKanban, setPostsKanban] = useState<Post[]>([]);
+  const [responsaveisPorPost, setResponsaveisPorPost] = useState<Record<string, Responsavel[]>>({});
+  const [contagemSubconteudos, setContagemSubconteudos] = useState<Record<string, number>>({});
   const [loadingKanban, setLoadingKanban] = useState(false);
   const [mesKanban, setMesKanban] = useState(hoje.getMonth());
   const [anoKanban, setAnoKanban] = useState(hoje.getFullYear());
@@ -203,25 +213,61 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     return () => el.removeEventListener("wheel", onWheel);
   }, [visualizacao]);
 
+  const carregarExtras = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) {
+      setResponsaveisPorPost({});
+      setContagemSubconteudos({});
+      return;
+    }
+    const supabase = createClient();
+    const [{ data: respData }, { data: filhos }] = await Promise.all([
+      supabase
+        .from("posts_conteudo_responsaveis")
+        .select("post_id, funcionarios ( id, papeis ( pessoas ( nome, apelido, foto_url ) ) )")
+        .in("post_id", ids),
+      supabase.from("posts_conteudo").select("post_pai_id").in("post_pai_id", ids),
+    ]);
+    const mapa: Record<string, Responsavel[]> = {};
+    for (const r of (respData ?? []) as unknown as {
+      post_id: string;
+      funcionarios: { id: string; papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null } | null;
+    }[]) {
+      if (!r.funcionarios) continue;
+      const pessoa = r.funcionarios.papeis?.pessoas;
+      const resp: Responsavel = { id: r.funcionarios.id, nome: pessoa?.apelido || pessoa?.nome || "Colega", fotoUrl: pessoa?.foto_url ?? null };
+      if (!mapa[r.post_id]) mapa[r.post_id] = [];
+      mapa[r.post_id].push(resp);
+    }
+    setResponsaveisPorPost(mapa);
+    const contFilhos: Record<string, number> = {};
+    for (const f of filhos ?? []) {
+      if (f.post_pai_id) contFilhos[f.post_pai_id] = (contFilhos[f.post_pai_id] ?? 0) + 1;
+    }
+    setContagemSubconteudos(contFilhos);
+  }, []);
+
   const carregarKanban = useCallback(async () => {
     setLoadingKanban(true);
     const supabase = createClient();
     let query = supabase
       .from("posts_conteudo")
       .select(
-        `id, cliente_id, titulo, data_publicacao, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, observacoes_internas,
+        `id, cliente_id, titulo, data_publicacao, data_inicio, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, post_pai_id, observacoes_internas,
          clientes ( papeis ( pessoas ( nome ) ) ),
          funcionarios!responsavel_id ( papeis ( pessoas ( nome ) ) ),
          posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
          status_conteudo ( nome, cor )`
       )
+      .is("post_pai_id", null)
       .order("data_publicacao");
     if (clienteFiltroId) query = query.eq("cliente_id", clienteFiltroId);
     const { data, error } = await query;
     if (error) console.error("Erro ao carregar kanban:", error);
-    setPostsKanban((data as unknown as Post[]) ?? []);
+    const lista = (data as unknown as Post[]) ?? [];
+    setPostsKanban(lista);
     setLoadingKanban(false);
-  }, [clienteFiltroId]);
+    carregarExtras(lista.map((p) => p.id));
+  }, [clienteFiltroId, carregarExtras]);
 
   async function moverCardStatus(postId: string, novoStatusId: string) {
     setPostsKanban((atual) => atual.map((p) => (p.id === postId ? { ...p, status_id: novoStatusId } : p)));
@@ -251,12 +297,13 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     let query = supabase
       .from("posts_conteudo")
       .select(
-        `id, cliente_id, titulo, data_publicacao, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, observacoes_internas,
+        `id, cliente_id, titulo, data_publicacao, data_inicio, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, post_pai_id, observacoes_internas,
          clientes ( papeis ( pessoas ( nome ) ) ),
          funcionarios!responsavel_id ( papeis ( pessoas ( nome ) ) ),
          posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
          status_conteudo ( nome, cor )`
       )
+      .is("post_pai_id", null)
       .gte("data_publicacao", inicio)
       .lte("data_publicacao", fim)
       .order("data_publicacao");
@@ -267,9 +314,11 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
       console.error("Erro ao carregar posts:", error);
       setErroCarregamento(error.message);
     }
-    setPosts((data as unknown as Post[]) ?? []);
+    const lista = (data as unknown as Post[]) ?? [];
+    setPosts(lista);
     setLoading(false);
-  }, [mes, ano, clienteFiltroId]);
+    carregarExtras(lista.map((p) => p.id));
+  }, [mes, ano, clienteFiltroId, carregarExtras]);
 
   const router = useRouter();
 
@@ -489,27 +538,27 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
                     const mostrarTitulo = camposVisiveis.titulo && p.titulo;
                     const mostrarCliente = camposVisiveis.cliente && !clienteFiltroId;
                     const mostrarFormato = camposVisiveis.formato && p.formato;
-                    const mostrarResponsavel = camposVisiveis.responsavel && nomeResponsavel(p);
+                    const respDoPost = responsaveisPorPost[p.id] ?? [];
+                    const mostrarResponsavel = camposVisiveis.responsavel && respDoPost.length > 0;
                     return (
                       <button
                         key={p.id}
-                        onClick={() => setEditando(p)}
-                        className={`w-full text-left rounded-lg px-1.5 py-1 leading-tight ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
+                        onClick={() => router.push(`/conteudo/calendario/post/${p.id}`)}
+                        className={`w-full text-left rounded-lg px-1.5 py-1 leading-tight flex items-start gap-1 ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
                       >
-                        <p className="text-[11px] font-semibold truncate">
-                          {mostrarTitulo ? p.titulo : p.hora_publicacao?.slice(0, 5) || "Post"}
-                        </p>
-                        {(mostrarCliente || mostrarFormato || mostrarResponsavel) && (
-                          <p className="text-[10px] opacity-70 truncate">
-                            {[
-                              mostrarCliente ? nomeCliente(p) : null,
-                              mostrarFormato ? FORMATO_CONFIG[p.formato!]?.label : null,
-                              mostrarResponsavel ? nomeResponsavel(p) : null,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
+                        <span className="flex-1 min-w-0">
+                          <p className="text-[11px] font-semibold truncate">
+                            {mostrarTitulo ? p.titulo : p.hora_publicacao?.slice(0, 5) || "Post"}
                           </p>
-                        )}
+                          {(mostrarCliente || mostrarFormato) && (
+                            <p className="text-[10px] opacity-70 truncate">
+                              {[mostrarCliente ? nomeCliente(p) : null, mostrarFormato ? FORMATO_CONFIG[p.formato!]?.label : null]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                          )}
+                        </span>
+                        {mostrarResponsavel && <AvatarStackPost pessoas={respDoPost} tamanho={16} />}
                       </button>
                     );
                   })}
@@ -585,8 +634,10 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
                       })
                 }
                 onMoverCard={moverCardStatus}
-                onAbrirCard={setEditando}
+                onAbrirCard={(p) => router.push(`/conteudo/calendario/post/${p.id}`)}
                 camposVisiveis={camposVisiveis}
+                responsaveisPorPost={responsaveisPorPost}
+                contagemSubconteudos={contagemSubconteudos}
               />
             )}
           </div>
@@ -605,11 +656,15 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
             setEditando(null);
             setNovoEmData(null);
           }}
-          onSaved={() => {
+          onSaved={(novoPostId) => {
             setEditando(null);
             setNovoEmData(null);
-            carregarPosts();
-            if (visualizacao === "kanban") carregarKanban();
+            if (novoPostId) {
+              router.push(`/conteudo/calendario/post/${novoPostId}`);
+            } else {
+              carregarPosts();
+              if (visualizacao === "kanban") carregarKanban();
+            }
           }}
         />
       )}
@@ -724,7 +779,7 @@ function PostModal({
   clienteFixoId: string | null;
   statusList: StatusItem[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (postId?: string) => void;
 }) {
   const editando = !!post;
   const router = useRouter();
@@ -900,7 +955,7 @@ function PostModal({
       }
 
       setSaving(false);
-      onSaved();
+      onSaved(editando ? undefined : postId);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao salvar post.");
       setSaving(false);
@@ -1240,12 +1295,16 @@ function KanbanBoard({
   onMoverCard,
   onAbrirCard,
   camposVisiveis,
+  responsaveisPorPost,
+  contagemSubconteudos,
 }: {
   statusList: StatusItem[];
   posts: Post[];
   onMoverCard: (postId: string, novoStatusId: string) => void;
   onAbrirCard: (post: Post) => void;
   camposVisiveis: CamposVisiveis;
+  responsaveisPorPost: Record<string, Responsavel[]>;
+  contagemSubconteudos: Record<string, number>;
 }) {
   const [ativoId, setAtivoId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -1273,10 +1332,22 @@ function KanbanBoard({
             cards={posts.filter((p) => p.status_id === coluna.id)}
             onAbrirCard={onAbrirCard}
             camposVisiveis={camposVisiveis}
+            responsaveisPorPost={responsaveisPorPost}
+            contagemSubconteudos={contagemSubconteudos}
           />
         ))}
       </div>
-      <DragOverlay>{postAtivo && <KanbanCardConteudo post={postAtivo} camposVisiveis={camposVisiveis} arrastando />}</DragOverlay>
+      <DragOverlay>
+        {postAtivo && (
+          <KanbanCardConteudo
+            post={postAtivo}
+            camposVisiveis={camposVisiveis}
+            responsaveis={responsaveisPorPost[postAtivo.id] ?? []}
+            qtdSubconteudos={contagemSubconteudos[postAtivo.id] ?? 0}
+            arrastando
+          />
+        )}
+      </DragOverlay>
     </DndContext>
   );
 }
@@ -1286,11 +1357,15 @@ function KanbanColuna({
   cards,
   onAbrirCard,
   camposVisiveis,
+  responsaveisPorPost,
+  contagemSubconteudos,
 }: {
   coluna: StatusItem;
   cards: Post[];
   onAbrirCard: (post: Post) => void;
   camposVisiveis: CamposVisiveis;
+  responsaveisPorPost: Record<string, Responsavel[]>;
+  contagemSubconteudos: Record<string, number>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: coluna.id });
   const cor = corDoStatus(coluna.cor);
@@ -1307,9 +1382,17 @@ function KanbanColuna({
         <p className="text-sm font-bold text-ink truncate">{coluna.nome}</p>
         <span className={`ml-auto text-xs font-bold rounded-full px-2 py-0.5 shrink-0 ${cor.cor}`}>{cards.length}</span>
       </div>
-      <div className="space-y-2 min-h-[80px]">
+      <div className="space-y-2 min-h-[80px] max-h-[65vh] overflow-y-auto pr-1">
         {cards.map((p) => (
-          <KanbanCardArrastavel key={p.id} post={p} statusAtual={coluna.id} onAbrirCard={onAbrirCard} camposVisiveis={camposVisiveis} />
+          <KanbanCardArrastavel
+            key={p.id}
+            post={p}
+            statusAtual={coluna.id}
+            onAbrirCard={onAbrirCard}
+            camposVisiveis={camposVisiveis}
+            responsaveis={responsaveisPorPost[p.id] ?? []}
+            qtdSubconteudos={contagemSubconteudos[p.id] ?? 0}
+          />
         ))}
       </div>
     </div>
@@ -1321,11 +1404,15 @@ function KanbanCardArrastavel({
   statusAtual,
   onAbrirCard,
   camposVisiveis,
+  responsaveis,
+  qtdSubconteudos,
 }: {
   post: Post;
   statusAtual: string;
   onAbrirCard: (post: Post) => void;
   camposVisiveis: CamposVisiveis;
+  responsaveis: Responsavel[];
+  qtdSubconteudos: number;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: post.id,
@@ -1340,7 +1427,55 @@ function KanbanCardArrastavel({
       onClick={() => !isDragging && onAbrirCard(post)}
       className={`touch-none transition-opacity ${isDragging ? "opacity-30" : "opacity-100"}`}
     >
-      <KanbanCardConteudo post={post} camposVisiveis={camposVisiveis} />
+      <KanbanCardConteudo post={post} camposVisiveis={camposVisiveis} responsaveis={responsaveis} qtdSubconteudos={qtdSubconteudos} />
+    </div>
+  );
+}
+
+const CORES_AVATAR = [
+  "bg-red-400", "bg-orange-400", "bg-amber-500", "bg-lime-500", "bg-emerald-500",
+  "bg-teal-500", "bg-sky-500", "bg-indigo-500", "bg-violet-500", "bg-pink-500",
+];
+function corAvatar(nome: string) {
+  let hash = 0;
+  for (let i = 0; i < nome.length; i++) hash = (hash * 31 + nome.charCodeAt(i)) % CORES_AVATAR.length;
+  return CORES_AVATAR[Math.abs(hash) % CORES_AVATAR.length];
+}
+function iniciaisAvatar(nome: string) {
+  const partes = nome.trim().split(/\s+/);
+  return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
+}
+function AvatarPost({ nome, fotoUrl, tamanho = 22 }: { nome: string; fotoUrl?: string | null; tamanho?: number }) {
+  if (fotoUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={fotoUrl} alt={nome} className="rounded-full object-cover shrink-0 ring-2 ring-white" style={{ height: tamanho, width: tamanho }} />;
+  }
+  return (
+    <div
+      className={`rounded-full ${corAvatar(nome)} text-white flex items-center justify-center font-bold shrink-0 ring-2 ring-white`}
+      style={{ height: tamanho, width: tamanho, fontSize: Math.max(8, tamanho * 0.36) }}
+    >
+      {iniciaisAvatar(nome)}
+    </div>
+  );
+}
+function AvatarStackPost({ pessoas, tamanho = 20 }: { pessoas: Responsavel[]; tamanho?: number }) {
+  if (pessoas.length === 0) return null;
+  const visiveis = pessoas.slice(0, 3);
+  const resto = pessoas.length - visiveis.length;
+  return (
+    <div className="flex items-center -space-x-1.5">
+      {visiveis.map((p) => (
+        <AvatarPost key={p.id} nome={p.nome} fotoUrl={p.fotoUrl} tamanho={tamanho} />
+      ))}
+      {resto > 0 && (
+        <div
+          className="rounded-full bg-surface ring-2 ring-white text-ink/60 font-bold flex items-center justify-center shrink-0"
+          style={{ height: tamanho, width: tamanho, fontSize: Math.max(7, tamanho * 0.32) }}
+        >
+          +{resto}
+        </div>
+      )}
     </div>
   );
 }
@@ -1348,16 +1483,21 @@ function KanbanCardArrastavel({
 function KanbanCardConteudo({
   post,
   camposVisiveis,
+  responsaveis = [],
+  qtdSubconteudos = 0,
   arrastando,
 }: {
   post: Post;
   camposVisiveis: CamposVisiveis;
+  responsaveis?: Responsavel[];
+  qtdSubconteudos?: number;
   arrastando?: boolean;
 }) {
   const mostrarTitulo = camposVisiveis.titulo && post.titulo;
   const mostrarCliente = camposVisiveis.cliente;
   const mostrarFormato = camposVisiveis.formato && post.formato;
-  const mostrarResponsavel = camposVisiveis.responsavel && nomeResponsavel(post);
+  const mostrarResponsavel = camposVisiveis.responsavel && responsaveis.length > 0;
+  const temIndicador = post.observacoes_internas || qtdSubconteudos > 0;
 
   return (
     <div
@@ -1368,21 +1508,32 @@ function KanbanCardConteudo({
       <p className="text-sm font-semibold text-ink truncate">
         {mostrarTitulo ? post.titulo : nomeCliente(post) || "Sem título"}
       </p>
-      {(mostrarCliente || mostrarFormato || mostrarResponsavel) && (
-        <p className="text-xs text-ink/50 truncate mt-0.5">
-          {[
-            mostrarCliente ? nomeCliente(post) : null,
-            mostrarFormato ? FORMATO_CONFIG[post.formato!]?.label : null,
-            mostrarResponsavel ? nomeResponsavel(post) : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
+      {mostrarCliente && <p className="text-xs text-ink/50 truncate mt-0.5">{nomeCliente(post)}</p>}
+
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        {mostrarFormato && (
+          <span className="text-[10px] font-bold rounded-full px-2 py-0.5 bg-surface text-ink/60">{FORMATO_CONFIG[post.formato!]?.label}</span>
+        )}
+        {post.data_inicio && <span className="text-[10px] text-ink/40">Início: {formatarDataChip(post.data_inicio)}</span>}
+        <span className="text-[10px] text-ink/40">
+          Publica: {formatarDataChip(post.data_publicacao)}
+          {post.hora_publicacao && ` ${post.hora_publicacao.slice(0, 5)}`}
+        </span>
+      </div>
+
+      {(temIndicador || mostrarResponsavel) && (
+        <div className="flex items-center justify-between mt-2 pt-2 border-t border-black/5">
+          <div className="flex items-center gap-2 text-ink/40">
+            {post.observacoes_internas && <span title="Tem observações">☰</span>}
+            {qtdSubconteudos > 0 && (
+              <span className="flex items-center gap-0.5 text-[11px]" title="Sub-conteúdos">
+                🔗 {qtdSubconteudos}
+              </span>
+            )}
+          </div>
+          {mostrarResponsavel && <AvatarStackPost pessoas={responsaveis} />}
+        </div>
       )}
-      <p className="text-xs text-ink/40 mt-1">
-        {formatarDataChip(post.data_publicacao)}
-        {post.hora_publicacao && ` · ${post.hora_publicacao.slice(0, 5)}`}
-      </p>
     </div>
   );
 }

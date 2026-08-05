@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { RichTextEditor } from "@/components/rich-text-editor";
+import { BuscaCliente } from "@/components/busca-cliente";
 
 interface StatusItem {
   id: string;
@@ -45,9 +46,17 @@ interface Post {
   formato: string | null;
   status_id: string;
   data_publicacao: string;
+  data_inicio: string | null;
   hora_publicacao: string | null;
+  post_pai_id: string | null;
 }
 
+interface SubConteudo {
+  id: string;
+  titulo: string | null;
+  status_id: string;
+  data_publicacao: string;
+}
 const OBJETIVO_CONFIG: Record<string, string> = {
   atracao: "Atração",
   educacao: "Educação",
@@ -106,6 +115,10 @@ function AvatarStack({ pessoas, tamanho = 22 }: { pessoas: Responsavel[]; tamanh
   );
 }
 
+function formatarDataCurta(iso: string) {
+  return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
 function formatarQuando(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
@@ -147,11 +160,17 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
 
   const [titulo, setTitulo] = useState("");
   const [observacoes, setObservacoes] = useState("");
-  const [clienteId, setClienteId] = useState("");
+  const [clienteSelecionado, setClienteSelecionado] = useState<Opcao | null>(null);
   const [objetivo, setObjetivo] = useState("");
   const [formato, setFormato] = useState("");
+  const [dataInicio, setDataInicio] = useState("");
   const [dataPublicacao, setDataPublicacao] = useState("");
   const [horaPublicacao, setHoraPublicacao] = useState("");
+
+  const [tituloPostPai, setTituloPostPai] = useState<string | null>(null);
+  const [subConteudos, setSubConteudos] = useState<SubConteudo[]>([]);
+  const [novoSubConteudo, setNovoSubConteudo] = useState("");
+  const [criandoSub, setCriandoSub] = useState(false);
 
   const [novoComentario, setNovoComentario] = useState("");
   const [mencaoBusca, setMencaoBusca] = useState<string | null>(null);
@@ -201,18 +220,37 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       setPost(p);
       setTitulo(p.titulo ?? "");
       setObservacoes(p.observacoes_internas ?? "");
-      setClienteId(p.cliente_id ?? "");
+      setClienteSelecionado(listaClientes.find((c) => c.id === p.cliente_id) ?? null);
       setObjetivo(p.objetivo ?? "");
       setFormato(p.formato ?? "");
+      setDataInicio(p.data_inicio ?? "");
       setDataPublicacao(p.data_publicacao ?? "");
       setHoraPublicacao(p.hora_publicacao ?? "");
+
+      if (p.post_pai_id) {
+        const { data: pai } = await supabase.from("posts_conteudo").select("titulo").eq("id", p.post_pai_id).maybeSingle();
+        setTituloPostPai(pai?.titulo ?? null);
+      } else {
+        setTituloPostPai(null);
+      }
     }
     setLoading(false);
   }, [id]);
 
+  const carregarSubConteudos = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("posts_conteudo")
+      .select("id, titulo, status_id, data_publicacao")
+      .eq("post_pai_id", id)
+      .order("data_publicacao");
+    setSubConteudos(data ?? []);
+  }, [id]);
+
   useEffect(() => {
     carregarTudo();
-  }, [carregarTudo]);
+    carregarSubConteudos();
+  }, [carregarTudo, carregarSubConteudos]);
 
   const carregarResponsaveis = useCallback(async () => {
     const supabase = createClient();
@@ -305,6 +343,23 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     }
   }
 
+  async function adicionarSubConteudo() {
+    if (!novoSubConteudo.trim() || !post) return;
+    setCriandoSub(true);
+    const supabase = createClient();
+    await supabase.from("posts_conteudo").insert({
+      titulo: novoSubConteudo.trim(),
+      post_pai_id: id,
+      cliente_id: post.cliente_id,
+      data_publicacao: post.data_publicacao,
+      status_id: statusList[0]?.id,
+    });
+    setNovoSubConteudo("");
+    setCriandoSub(false);
+    carregarSubConteudos();
+    registrarHistorico(`adicionou o sub-conteúdo "${novoSubConteudo.trim()}"`);
+  }
+
   function nomeDoAutor(authUserId: string) {
     return authUserId === meuId ? meuNome : colegas.find((c) => c.id === authUserId)?.nome ?? "Alguém";
   }
@@ -374,12 +429,25 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   return (
     <main className="h-screen flex flex-col bg-surface/30">
       <div className="px-8 py-4 flex items-center justify-between shrink-0 bg-white">
-        <button
-          onClick={() => router.push("/conteudo/calendario")}
-          className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors"
-        >
-          ← Calendário de Conteúdo
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push("/conteudo/calendario")}
+            className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors"
+          >
+            ← Calendário de Conteúdo
+          </button>
+          {tituloPostPai && post.post_pai_id && (
+            <>
+              <span className="text-ink/20">/</span>
+              <button
+                onClick={() => router.push(`/conteudo/calendario/post/${post.post_pai_id}`)}
+                className="text-sm font-semibold text-forest hover:text-ink truncate max-w-xs"
+              >
+                {tituloPostPai}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
@@ -429,21 +497,15 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
 
             <div>
               <span className="block text-xs text-ink/50 mb-1">Cliente</span>
-              <select
-                value={clienteId}
-                onChange={(e) => {
-                  setClienteId(e.target.value);
-                  const nome = clientes.find((c) => c.id === e.target.value)?.nome;
-                  salvarCampo({ cliente_id: e.target.value }, `mudou o cliente para ${nome}`);
+              <BuscaCliente
+                clientes={clientes}
+                valor={clienteSelecionado}
+                onSelecionar={(c) => {
+                  if (!c) return;
+                  setClienteSelecionado(c);
+                  salvarCampo({ cliente_id: c.id }, `mudou o cliente para ${c.nome}`);
                 }}
-                className="input"
-              >
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div>
@@ -523,9 +585,22 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
               </select>
             </div>
 
+            <div>
+              <span className="block text-xs text-ink/50 mb-1">Início (produção)</span>
+              <input
+                type="date"
+                value={dataInicio}
+                onChange={(e) => {
+                  setDataInicio(e.target.value);
+                  salvarCampo({ data_inicio: e.target.value || null }, "mudou a data de início");
+                }}
+                className="input"
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <span className="block text-xs text-ink/50 mb-1">Data</span>
+                <span className="block text-xs text-ink/50 mb-1">Publicação</span>
                 <input
                   type="date"
                   value={dataPublicacao}
@@ -562,6 +637,53 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
             <p className="text-xs text-ink/40 mt-2">
               A legenda que o cliente vê continua sendo editada no formulário rápido do calendário.
             </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <span className="block text-sm font-bold text-ink mb-2">Sub-conteúdos</span>
+            <p className="text-xs text-ink/40 mb-3">
+              Use isso pra agrupar vários posts dentro de um "pacote" — por exemplo, um post "Conteúdo de Setembro" com um sub-conteúdo pra cada publicação do mês.
+            </p>
+            <div className="space-y-1.5 mb-2">
+              {subConteudos.map((s) => {
+                const statusSub = statusList.find((st) => st.id === s.status_id);
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => router.push(`/conteudo/calendario/post/${s.id}`)}
+                    className="w-full flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors text-left"
+                  >
+                    <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
+                    <span className="flex-1 text-sm text-ink truncate">{s.titulo || "Sem título"}</span>
+                    <span className="text-xs text-ink/40">{formatarDataCurta(s.data_publicacao)}</span>
+                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
+                      {statusSub?.nome ?? "—"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                value={novoSubConteudo}
+                onChange={(e) => setNovoSubConteudo(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    adicionarSubConteudo();
+                  }
+                }}
+                className="input text-sm"
+                placeholder="Nome do sub-conteúdo..."
+              />
+              <button
+                onClick={adicionarSubConteudo}
+                disabled={criandoSub}
+                className="shrink-0 text-sm font-semibold text-forest hover:text-ink disabled:opacity-50"
+              >
+                Adicionar
+              </button>
+            </div>
           </div>
         </div>
 

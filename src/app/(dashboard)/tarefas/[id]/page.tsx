@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
-import { BuscaCliente } from "../page";
+import { BuscaCliente } from "@/components/busca-cliente";
 import { RichTextEditor } from "@/components/rich-text-editor";
 
 interface StatusItem {

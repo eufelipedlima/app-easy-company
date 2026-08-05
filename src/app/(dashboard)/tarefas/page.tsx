@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
+import { BuscaCliente } from "@/components/busca-cliente";
 import {
   DndContext,
   DragOverlay,
@@ -1352,58 +1353,6 @@ function FiltroCliente({
   );
 }
 
-export function BuscaCliente({
-  clientes,
-  valor,
-  onSelecionar,
-}: {
-  clientes: Opcao[];
-  valor: Opcao | null;
-  onSelecionar: (c: Opcao | null) => void;
-}) {
-  const [busca, setBusca] = useState(valor?.nome ?? "");
-  const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
-  const sugestoes = clientes.filter((c) => normalizar(c.nome).includes(normalizar(busca)));
-
-  return (
-    <div className="relative">
-      <input
-        value={busca}
-        onChange={(e) => {
-          setBusca(e.target.value);
-          onSelecionar(null);
-          setMostrarSugestoes(true);
-        }}
-        onFocus={() => setMostrarSugestoes(true)}
-        className="input"
-        placeholder="Digite pra buscar (deixe em branco = interna)..."
-      />
-      {mostrarSugestoes && busca && !valor && (
-        <div className="absolute z-20 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
-          {sugestoes.length > 0 ? (
-            sugestoes.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => {
-                  onSelecionar(c);
-                  setBusca(c.nome);
-                  setMostrarSugestoes(false);
-                }}
-                className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
-              >
-                {c.nome}
-              </button>
-            ))
-          ) : (
-            <p className="px-4 py-2.5 text-sm text-ink/40">Nenhum cliente encontrado.</p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function NovaTarefaModal({
   clientes,
   clienteFixoId,
@@ -1457,7 +1406,12 @@ function NovaTarefaModal({
           </label>
           <label className="block">
             <span className="block text-sm font-medium text-ink/70 mb-1">Cliente</span>
-            <BuscaCliente clientes={clientes} valor={clienteSelecionado} onSelecionar={setClienteSelecionado} />
+            <BuscaCliente
+              clientes={clientes}
+              valor={clienteSelecionado}
+              onSelecionar={setClienteSelecionado}
+              placeholder="Digite pra buscar (deixe em branco = interna)..."
+            />
           </label>
           {erro && <p className="text-sm text-red-600">{erro}</p>}
           <div className="flex items-center gap-3">
