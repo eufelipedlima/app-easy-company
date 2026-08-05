@@ -27,6 +27,11 @@ const MENU: Grupo[] = [
     href: "/inicio",
   },
   {
+    label: "Pauta da semana",
+    icon: <CalendarDays size={18} />,
+    href: "/inicio/pauta",
+  },
+  {
     label: "Caixa de Entrada",
     icon: <Inbox size={18} />,
     href: "/caixa-de-entrada",

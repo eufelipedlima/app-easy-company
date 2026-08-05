@@ -155,6 +155,12 @@ function diasAtraso(prazo: string | null): number | null {
 export default function TarefaDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const [veioDePauta, setVeioDePauta] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setVeioDePauta(new URLSearchParams(window.location.search).get("from") === "pauta");
+    }
+  }, []);
 
   const [tarefa, setTarefa] = useState<Tarefa | null>(null);
   const [tituloTarefaMae, setTituloTarefaMae] = useState<string | null>(null);
@@ -552,10 +558,10 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       <div className="px-8 py-4 flex items-center justify-between shrink-0 bg-white">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/tarefas")}
+            onClick={() => router.push(veioDePauta ? "/inicio/pauta" : "/tarefas")}
             className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors"
           >
-            ← Tarefas
+            {veioDePauta ? "← Pauta" : "← Tarefas"}
           </button>
           {tituloTarefaMae && tarefa.tarefa_pai_id && (
             <>

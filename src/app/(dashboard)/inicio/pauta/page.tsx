@@ -24,6 +24,10 @@ interface ItemPauta {
 }
 
 const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+const MESES = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
 
 function toISODateLocal(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -63,25 +67,42 @@ function Avatar({ nome, fotoUrl, tamanho = 26 }: { nome: string; fotoUrl?: strin
 export default function PautaPage() {
   const router = useRouter();
   const [modo, setModo] = useState<"minha" | "equipe">("minha");
+  const [visualizacao, setVisualizacao] = useState<"semana" | "mes">("semana");
   const [meuFuncionarioId, setMeuFuncionarioId] = useState<string | null>(null);
   const [funcionarios, setFuncionarios] = useState<Responsavel[]>([]);
   const [itens, setItens] = useState<ItemPauta[]>([]);
   const [statusList, setStatusList] = useState<{ id: string; nome: string; cor: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const hoje = new Date();
   const [inicioSemana, setInicioSemana] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - d.getDay());
     d.setHours(0, 0, 0, 0);
     return d;
   });
+  const [mes, setMes] = useState(hoje.getMonth());
+  const [ano, setAno] = useState(hoje.getFullYear());
 
-  const dias = Array.from({ length: 7 }, (_, i) => {
+  const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(inicioSemana);
     d.setDate(d.getDate() + i);
     return d;
   });
-  const inicioISO = toISODateLocal(dias[0]);
-  const fimISO = toISODateLocal(dias[6]);
+
+  const primeiroDiaMes = new Date(ano, mes, 1);
+  const ultimoDiaMes = new Date(ano, mes + 1, 0);
+  const inicioGrade = new Date(primeiroDiaMes);
+  inicioGrade.setDate(inicioGrade.getDate() - primeiroDiaMes.getDay());
+  const fimGrade = new Date(ultimoDiaMes);
+  fimGrade.setDate(fimGrade.getDate() + (6 - ultimoDiaMes.getDay()));
+  const diasMes: Date[] = [];
+  for (let d = new Date(inicioGrade); d <= fimGrade; d.setDate(d.getDate() + 1)) {
+    diasMes.push(new Date(d));
+  }
+
+  const diasAtivos = visualizacao === "semana" ? diasSemana : diasMes;
+  const inicioISO = toISODateLocal(diasAtivos[0]);
+  const fimISO = toISODateLocal(diasAtivos[diasAtivos.length - 1]);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -117,7 +138,7 @@ export default function PautaPage() {
         .eq("arquivado", false),
     ]);
 
-    const tarefasDaSemana = ((tarefasData ?? []) as unknown as {
+    const tarefasNoPeriodo = ((tarefasData ?? []) as unknown as {
       id: string;
       titulo: string;
       data_inicio: string | null;
@@ -127,7 +148,7 @@ export default function PautaPage() {
       .map((t) => ({ ...t, dataExibicao: t.data_inicio ?? t.prazo }))
       .filter((t) => t.dataExibicao && t.dataExibicao >= inicioISO && t.dataExibicao <= fimISO);
 
-    const postsDaSemana = ((postsData ?? []) as unknown as {
+    const postsNoPeriodo = ((postsData ?? []) as unknown as {
       id: string;
       titulo: string | null;
       data_inicio: string | null;
@@ -137,8 +158,8 @@ export default function PautaPage() {
       .map((p) => ({ ...p, dataExibicao: p.data_inicio ?? p.data_publicacao }))
       .filter((p) => p.dataExibicao && p.dataExibicao >= inicioISO && p.dataExibicao <= fimISO);
 
-    const idsTarefas = tarefasDaSemana.map((t) => t.id);
-    const idsPosts = postsDaSemana.map((p) => p.id);
+    const idsTarefas = tarefasNoPeriodo.map((t) => t.id);
+    const idsPosts = postsNoPeriodo.map((p) => p.id);
 
     const [{ data: respTarefas }, { data: respPosts }] = await Promise.all([
       idsTarefas.length > 0
@@ -158,24 +179,24 @@ export default function PautaPage() {
       mapaRespP.set(r.post_id, [...(mapaRespP.get(r.post_id) ?? []), r.funcionario_id]);
     }
 
-    const itensT: ItemPauta[] = tarefasDaSemana.map((t) => ({
+    const itensT: ItemPauta[] = tarefasNoPeriodo.map((t) => ({
       id: t.id,
       titulo: t.titulo,
       tipo: "tarefa",
       statusNome: t.status_conteudo?.nome ?? "—",
       statusCor: t.status_conteudo?.cor ?? "cinza",
       dataExibicao: t.dataExibicao!,
-      link: `/tarefas/${t.id}`,
+      link: `/tarefas/${t.id}?from=pauta`,
       responsavelIds: mapaRespT.get(t.id) ?? [],
     }));
-    const itensP: ItemPauta[] = postsDaSemana.map((p) => ({
+    const itensP: ItemPauta[] = postsNoPeriodo.map((p) => ({
       id: p.id,
       titulo: p.titulo || "Sem título",
       tipo: "conteudo",
       statusNome: p.status_conteudo?.nome ?? "—",
       statusCor: p.status_conteudo?.cor ?? "cinza",
       dataExibicao: p.dataExibicao!,
-      link: `/conteudo/calendario/post/${p.id}`,
+      link: `/conteudo/calendario/post/${p.id}?from=pauta`,
       responsavelIds: mapaRespP.get(p.id) ?? [],
     }));
 
@@ -188,18 +209,16 @@ export default function PautaPage() {
   }, [carregar]);
 
   async function novaTarefaNoDia(dataISO: string, funcionarioId: string | null) {
-    const tituloNovo = window.prompt("Nome da tarefa:");
-    if (!tituloNovo || !tituloNovo.trim()) return;
     const supabase = createClient();
     const { data: nova } = await supabase
       .from("tarefas")
-      .insert({ titulo: tituloNovo.trim(), data_inicio: dataISO, status_id: statusList[0]?.id })
+      .insert({ titulo: "Nova tarefa", data_inicio: dataISO, status_id: statusList[0]?.id })
       .select("id")
       .single();
     if (nova) {
       const respId = funcionarioId ?? meuFuncionarioId;
       if (respId) await supabase.from("tarefas_responsaveis").insert({ tarefa_id: nova.id, funcionario_id: respId });
-      carregar();
+      router.push(`/tarefas/${nova.id}?from=pauta`);
     }
   }
 
@@ -213,19 +232,23 @@ export default function PautaPage() {
   }
 
   const funcionariosExibidos = modo === "minha" ? funcionarios.filter((f) => f.id === meuFuncionarioId) : funcionarios;
+  const hojeISO = toISODateLocal(hoje);
 
   return (
-    <main className="min-h-screen bg-surface/30 px-8 py-8">
-      <div className="max-w-[1400px] mx-auto">
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-          <div>
-            <button onClick={() => router.push("/inicio")} className="text-xs font-semibold text-ink/50 hover:text-ink mb-1">
+    <main className="h-screen flex flex-col bg-surface/30 px-8 py-6">
+      <div className="max-w-[1500px] mx-auto w-full flex flex-col flex-1 min-h-0">
+        <div className="flex items-center justify-between mb-5 flex-wrap gap-3 shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push("/inicio")}
+              className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors"
+            >
               ← Início
             </button>
-            <h1 className="text-xl font-extrabold text-ink">📋 Pauta da semana</h1>
+            <h1 className="text-xl font-extrabold text-ink">📋 Pauta</h1>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
               <button
                 onClick={() => setModo("minha")}
@@ -244,40 +267,79 @@ export default function PautaPage() {
                 Toda a equipe
               </button>
             </div>
-            <div className="flex items-center gap-1.5">
+
+            <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+              <button
+                onClick={() => setVisualizacao("semana")}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                  visualizacao === "semana" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                }`}
+              >
+                Semana
+              </button>
+              <button
+                onClick={() => setVisualizacao("mes")}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                  visualizacao === "mes" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                }`}
+              >
+                Mês
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5 rounded-full border-2 border-black/10 pl-1.5 pr-3 py-1">
               <button
                 onClick={() => {
-                  const d = new Date(inicioSemana);
-                  d.setDate(d.getDate() - 7);
-                  setInicioSemana(d);
+                  if (visualizacao === "semana") {
+                    const d = new Date(inicioSemana);
+                    d.setDate(d.getDate() - 7);
+                    setInicioSemana(d);
+                  } else {
+                    const d = new Date(ano, mes - 1, 1);
+                    setMes(d.getMonth());
+                    setAno(d.getFullYear());
+                  }
                 }}
-                className="rounded-full h-8 w-8 flex items-center justify-center hover:bg-surface text-ink/50"
+                className="rounded-full h-7 w-7 flex items-center justify-center hover:bg-surface text-ink font-bold"
               >
                 ←
               </button>
               <button
                 onClick={() => {
-                  const d = new Date();
-                  d.setDate(d.getDate() - d.getDay());
-                  d.setHours(0, 0, 0, 0);
-                  setInicioSemana(d);
+                  if (visualizacao === "semana") {
+                    const d = new Date();
+                    d.setDate(d.getDate() - d.getDay());
+                    d.setHours(0, 0, 0, 0);
+                    setInicioSemana(d);
+                  } else {
+                    setMes(hoje.getMonth());
+                    setAno(hoje.getFullYear());
+                  }
                 }}
-                className="rounded-full border-2 border-ink/15 px-3 py-1 text-xs font-semibold hover:bg-surface"
+                className="text-xs font-bold text-ink hover:text-forest px-1"
               >
-                Esta semana
+                Hoje
               </button>
               <button
                 onClick={() => {
-                  const d = new Date(inicioSemana);
-                  d.setDate(d.getDate() + 7);
-                  setInicioSemana(d);
+                  if (visualizacao === "semana") {
+                    const d = new Date(inicioSemana);
+                    d.setDate(d.getDate() + 7);
+                    setInicioSemana(d);
+                  } else {
+                    const d = new Date(ano, mes + 1, 1);
+                    setMes(d.getMonth());
+                    setAno(d.getFullYear());
+                  }
                 }}
-                className="rounded-full h-8 w-8 flex items-center justify-center hover:bg-surface text-ink/50"
+                className="rounded-full h-7 w-7 flex items-center justify-center hover:bg-surface text-ink font-bold"
               >
                 →
               </button>
-              <span className="text-xs text-ink/50 ml-1">
-                {formatarDataCurta(inicioISO)} – {formatarDataCurta(fimISO)}
+              <span className="text-sm font-bold text-ink ml-1">
+                {visualizacao === "semana"
+                  ? `${formatarDataCurta(inicioISO)} – ${formatarDataCurta(fimISO)}`
+                  : `${MESES[mes]} ${ano}`}
               </span>
             </div>
           </div>
@@ -288,23 +350,35 @@ export default function PautaPage() {
         ) : funcionariosExibidos.length === 0 ? (
           <p className="text-sm text-ink/50">Você ainda não tem cadastro de funcionário vinculado à sua conta.</p>
         ) : (
-          <div className="space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-5 pb-2">
             {funcionariosExibidos.map((f) => (
-              <div key={f.id} className="rounded-3xl bg-white border border-black/5 shadow-sm overflow-hidden">
-                <div className="flex items-center gap-2.5 px-5 py-3 border-b border-black/5 bg-surface/50">
+              <div
+                key={f.id}
+                className={`rounded-3xl bg-white border border-black/5 shadow-sm overflow-hidden flex flex-col ${
+                  funcionariosExibidos.length === 1 ? "h-full" : "min-h-[240px]"
+                }`}
+              >
+                <div className="flex items-center gap-2.5 px-5 py-3 border-b border-black/5 bg-surface/50 shrink-0">
                   <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={26} />
                   <p className="text-sm font-bold text-ink">{f.nome}</p>
                 </div>
-                <div className="grid grid-cols-7 divide-x divide-black/5">
-                  {dias.map((dia) => {
+                <div className={`grid grid-cols-7 divide-x divide-black/5 flex-1 ${funcionariosExibidos.length > 1 ? "" : ""}`}>
+                  {diasAtivos.map((dia) => {
                     const iso = toISODateLocal(dia);
                     const itensCelula = itensPorPessoaEDia.get(`${f.id}|${iso}`) ?? [];
-                    const hojeISO = toISODateLocal(new Date());
+                    const doMesAtivo = visualizacao === "semana" || dia.getMonth() === mes;
                     return (
-                      <div key={iso} className={`min-h-[130px] p-2 group/cel ${iso === hojeISO ? "bg-mint/20" : ""}`}>
+                      <div
+                        key={iso}
+                        className={`p-2 group/cel ${iso === hojeISO ? "bg-mint/20" : !doMesAtivo ? "bg-surface/40" : ""}`}
+                      >
                         <div className="flex items-center justify-between mb-1.5 px-0.5">
-                          <span className={`text-[10px] font-bold uppercase tracking-wide ${iso === hojeISO ? "text-forest" : "text-ink/40"}`}>
-                            {DIAS_SEMANA[dia.getDay()].slice(0, 3)} {dia.getDate()}
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-wide ${
+                              iso === hojeISO ? "text-forest" : doMesAtivo ? "text-ink/40" : "text-ink/20"
+                            }`}
+                          >
+                            {visualizacao === "semana" ? `${DIAS_SEMANA[dia.getDay()].slice(0, 3)} ${dia.getDate()}` : dia.getDate()}
                           </span>
                           <button
                             onClick={() => novaTarefaNoDia(iso, f.id)}
@@ -314,7 +388,7 @@ export default function PautaPage() {
                           </button>
                         </div>
                         <div className="space-y-1">
-                          {itensCelula.map((item) => (
+                          {itensCelula.slice(0, visualizacao === "mes" ? 3 : undefined).map((item) => (
                             <button
                               key={`${item.tipo}-${item.id}`}
                               onClick={() => router.push(item.link)}
@@ -323,6 +397,9 @@ export default function PautaPage() {
                               {item.tipo === "tarefa" ? "✔️" : "📅"} {item.titulo}
                             </button>
                           ))}
+                          {visualizacao === "mes" && itensCelula.length > 3 && (
+                            <p className="text-[10px] text-ink/40 px-1">+{itensCelula.length - 3} mais</p>
+                          )}
                         </div>
                       </div>
                     );

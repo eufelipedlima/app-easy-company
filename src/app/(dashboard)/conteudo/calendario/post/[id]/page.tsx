@@ -146,6 +146,12 @@ function renderizarTexto(texto: string, todosOsNomes: string[]) {
 export default function PostDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const [veioDePauta, setVeioDePauta] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setVeioDePauta(new URLSearchParams(window.location.search).get("from") === "pauta");
+    }
+  }, []);
 
   const [post, setPost] = useState<Post | null>(null);
   const [statusList, setStatusList] = useState<StatusItem[]>([]);
@@ -562,10 +568,10 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       <div className="px-8 py-4 flex items-center justify-between shrink-0 bg-white">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/conteudo/calendario")}
+            onClick={() => router.push(veioDePauta ? "/inicio/pauta" : "/conteudo/calendario")}
             className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors"
           >
-            ← Calendário de Conteúdo
+            {veioDePauta ? "← Pauta" : "← Calendário de Conteúdo"}
           </button>
           {tituloPostPai && post.post_pai_id && (
             <>
