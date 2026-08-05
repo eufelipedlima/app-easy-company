@@ -52,6 +52,12 @@ const MENU: Grupo[] = [
     href: "/tarefas",
   },
   {
+    label: "Docs",
+    icon: <FileText size={18} />,
+    areaSlug: "docs",
+    href: "/docs",
+  },
+  {
     label: "Contratos",
     icon: <FileText size={18} />,
     areaSlug: "contratos",

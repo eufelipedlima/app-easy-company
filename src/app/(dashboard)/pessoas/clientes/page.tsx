@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PessoaForm } from "@/components/pessoa-form";
 import { useTabelaConfig, LINHAS_POR_PAGINA_OPCOES, type ColunaDef } from "@/lib/use-tabela-config";
+import { normalizar } from "@/lib/normalizar";
 
 interface Pessoa {
   id: string;
@@ -135,6 +136,8 @@ export default function PessoasPage() {
     carregarLinkCalendario();
   }, [detalhe]);
   const [filtroPapel, setFiltroPapel] = useState<FiltroPapel>("todos");
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const [buscaTexto, setBuscaTexto] = useState("");
 
   const {
     colunas,
@@ -166,9 +169,18 @@ export default function PessoasPage() {
   }, [carregar]);
 
   const pessoasFiltradas = pessoas.filter((p) => {
-    if (filtroPapel === "todos") return true;
-    if (filtroPapel === "sem_papel") return p.papeis.length === 0;
-    return p.papeis.some((papel) => papel.papel === filtroPapel);
+    if (filtroPapel === "todos") {
+      // segue pro filtro de texto abaixo
+    } else if (filtroPapel === "sem_papel") {
+      if (p.papeis.length !== 0) return false;
+    } else if (!p.papeis.some((papel) => papel.papel === filtroPapel)) {
+      return false;
+    }
+    if (!buscaTexto.trim()) return true;
+    const alvo = normalizar(
+      [p.nome, p.razao_social, p.nome_fantasia, p.documento, p.email, p.whatsapp].filter(Boolean).join(" ")
+    );
+    return alvo.includes(normalizar(buscaTexto));
   });
 
   const totalPaginas = Math.max(Math.ceil(pessoasFiltradas.length / linhasPorPagina), 1);
@@ -205,6 +217,28 @@ export default function PessoasPage() {
           ))}
         </div>
         <div className="flex items-center gap-2">
+          <div className="relative">
+            {buscaAberta ? (
+              <input
+                autoFocus
+                value={buscaTexto}
+                onChange={(e) => setBuscaTexto(e.target.value)}
+                onBlur={() => {
+                  if (!buscaTexto.trim()) setBuscaAberta(false);
+                }}
+                placeholder="Buscar por nome, documento, e-mail..."
+                className="input py-2.5 text-sm w-64"
+              />
+            ) : (
+              <button
+                onClick={() => setBuscaAberta(true)}
+                className="rounded-full border-2 border-ink/15 text-ink h-10 w-10 flex items-center justify-center hover:bg-surface transition-colors"
+                title="Buscar pessoa"
+              >
+                🔍
+              </button>
+            )}
+          </div>
           <div className="relative">
             <button
               onClick={() => setPainelColunasAberto((v) => !v)}
