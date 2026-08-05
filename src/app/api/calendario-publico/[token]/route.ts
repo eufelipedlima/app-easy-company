@@ -15,7 +15,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const { data: cliente, error: clienteError } = await supabase
     .from("clientes")
-    .select("id, papeis ( pessoas ( nome ) )")
+    .select("id, papeis ( pessoas ( nome, foto_url ) )")
     .eq("link_publico_token", token)
     .maybeSingle();
 
@@ -59,8 +59,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })),
   }));
 
-  const nomeCliente =
-    (cliente as unknown as { papeis: { pessoas: { nome: string } | null } | null }).papeis?.pessoas?.nome ?? "Cliente";
+  const clienteInfo = cliente as unknown as { papeis: { pessoas: { nome: string; foto_url: string | null } | null } | null };
+  const nomeCliente = clienteInfo.papeis?.pessoas?.nome ?? "Cliente";
+  const fotoCliente = clienteInfo.papeis?.pessoas?.foto_url ?? null;
 
-  return NextResponse.json({ nomeCliente, posts: postsComMidia });
+  return NextResponse.json({ nomeCliente, fotoCliente, posts: postsComMidia });
 }
