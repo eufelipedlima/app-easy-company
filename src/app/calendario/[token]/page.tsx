@@ -347,80 +347,82 @@ function PostPublicoModal({
     }
   }
 
+  const [comentarioAberto, setComentarioAberto] = useState(false);
+  const comentarios = post.posts_conteudo_comentarios ?? [];
+  const idxAtual = listaPendentes.findIndex((p) => p.id === post.id);
+  const totalNav = listaPendentes.length;
+
+  function irPara(offset: number) {
+    const alvo = idxAtual + offset;
+    if (alvo >= 0 && alvo < listaPendentes.length) onNavegar(listaPendentes[alvo]);
+  }
+
   return (
-    <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-20 bg-black/75 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="w-full max-w-3xl rounded-3xl bg-card shadow-2xl max-h-[90vh] overflow-y-auto"
+        className="w-full max-w-6xl h-[88vh] rounded-2xl bg-[#15151a] text-white shadow-2xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {listaPendentes.length > 1 && (
-          <div className="flex items-center justify-between px-6 pt-4 text-xs text-ink/40">
-            <span>
-              {listaPendentes.some((p) => p.id === post.id)
-                ? `Conteúdo ${listaPendentes.findIndex((p) => p.id === post.id) + 1} de ${listaPendentes.length} pendentes`
-                : "Conteúdo já avaliado"}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  const idx = listaPendentes.findIndex((p) => p.id === post.id);
-                  if (idx > 0) onNavegar(listaPendentes[idx - 1]);
-                }}
-                disabled={listaPendentes.findIndex((p) => p.id === post.id) <= 0}
-                className="h-7 w-7 rounded-full hover:bg-surface flex items-center justify-center disabled:opacity-20"
-              >
-                ←
-              </button>
-              <button
-                onClick={() => {
-                  const idx = listaPendentes.findIndex((p) => p.id === post.id);
-                  if (idx >= 0 && idx < listaPendentes.length - 1) onNavegar(listaPendentes[idx + 1]);
-                }}
-                disabled={(() => {
-                  const idx = listaPendentes.findIndex((p) => p.id === post.id);
-                  return idx < 0 || idx >= listaPendentes.length - 1;
-                })()}
-                className="h-7 w-7 rounded-full hover:bg-surface flex items-center justify-center disabled:opacity-20"
-              >
-                →
-              </button>
-            </div>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 shrink-0">
+          <p className="text-xs font-bold uppercase tracking-widest text-white/60">Aprovação de conteúdo</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => enviar("aprovar")}
+              disabled={enviando !== null}
+              className="rounded-full bg-forest text-white px-4 py-1.5 text-sm font-semibold hover:brightness-110 transition disabled:opacity-50"
+            >
+              ✓ Aprovar
+            </button>
+            <button
+              onClick={() => {
+                setMostrarCampoAlteracao(true);
+                setComentarioAberto(true);
+              }}
+              disabled={enviando !== null}
+              className="rounded-full border border-white/20 text-white px-4 py-1.5 text-sm font-semibold hover:bg-white/10 transition disabled:opacity-50"
+            >
+              ✏ Ajustar
+            </button>
+            <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-white/10 flex items-center justify-center text-white/60 ml-1">
+              ✕
+            </button>
           </div>
-        )}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
-          <div className="bg-black/5 md:rounded-l-3xl flex items-center justify-center p-4">
+        </div>
+
+        <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 bg-black flex items-center justify-center relative p-6 min-w-0">
             {midias.length > 0 ? (
-              <div className="w-full">
-                <div className="relative rounded-2xl overflow-hidden bg-black/10">
+              <div className="w-full max-w-md">
+                <div className="relative rounded-2xl overflow-hidden bg-white/5">
                   {midiaAtual.arquivo_tipo?.startsWith("video") ? (
-                    <div className="w-full h-[280px] flex flex-col items-center justify-center gap-3 bg-ink/5">
+                    <div className="w-full aspect-square flex flex-col items-center justify-center gap-3">
                       <span className="text-4xl">🎬</span>
                       <a
                         href={midiaAtual.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+                        className="rounded-full bg-white text-ink px-5 py-2.5 text-sm font-semibold hover:bg-white/90 transition-colors"
                       >
                         ▶ Abrir vídeo
                       </a>
                     </div>
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={midiaAtual.url} alt="Mídia do post" className="w-full max-h-[420px] object-contain mx-auto" />
+                    <img src={midiaAtual.url} alt="Mídia do post" className="w-full max-h-[65vh] object-contain mx-auto" />
                   )}
                   {midias.length > 1 && (
                     <>
                       <button
                         onClick={() => setMidiaIndex((i) => Math.max(i - 1, 0))}
                         disabled={midiaIndex === 0}
-                        className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white/90 flex items-center justify-center disabled:opacity-30"
+                        className="absolute left-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white/90 flex items-center justify-center disabled:opacity-30 text-ink"
                       >
                         ←
                       </button>
                       <button
                         onClick={() => setMidiaIndex((i) => Math.min(i + 1, midias.length - 1))}
                         disabled={midiaIndex === midias.length - 1}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white/90 flex items-center justify-center disabled:opacity-30"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white/90 flex items-center justify-center disabled:opacity-30 text-ink"
                       >
                         →
                       </button>
@@ -428,121 +430,133 @@ function PostPublicoModal({
                   )}
                 </div>
                 {midias.length > 1 && (
-                  <p className="text-center text-xs text-ink/40 mt-1">
-                    {midiaIndex + 1} de {midias.length}
-                  </p>
+                  <div className="flex items-center justify-center gap-1.5 mt-3">
+                    {midias.map((m, i) => (
+                      <span key={m.id} className={`h-1.5 rounded-full transition-all ${i === midiaIndex ? "w-5 bg-white" : "w-1.5 bg-white/30"}`} />
+                    ))}
+                  </div>
                 )}
               </div>
             ) : (
-              <p className="text-sm text-ink/40 py-16">Sem mídia anexada</p>
+              <p className="text-sm text-white/40 py-16">Sem mídia anexada</p>
             )}
           </div>
 
-          <div className="p-6 flex flex-col">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-ink/40">
+          <div className="w-[320px] shrink-0 border-l border-white/10 overflow-y-auto p-5">
+            {post.titulo && <h3 className="text-xl font-extrabold text-white mb-2 leading-snug">{post.titulo}</h3>}
+
+            <div className="flex flex-wrap items-center gap-1.5 mb-4">
+              <span className="rounded-full bg-white/10 text-white/70 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide">Post</span>
+              {post.formato && (
+                <span className="rounded-full bg-white/10 text-white/70 px-2.5 py-1 text-[11px] font-semibold">{FORMATO_LABEL[post.formato]}</span>
+              )}
+              <span className="rounded-full bg-white/10 text-white/70 px-2.5 py-1 text-[11px] font-semibold">
                 {formatarData(post.data_publicacao)}
-                {post.hora_publicacao && ` às ${post.hora_publicacao.slice(0, 5)}`}
-              </p>
-              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${corDoStatus(post.status_conteudo?.cor ?? "cinza").cor}`}>
+                {post.hora_publicacao && ` · ${post.hora_publicacao.slice(0, 5)}`}
+              </span>
+              <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${corDoStatus(post.status_conteudo?.cor ?? "cinza").cor}`}>
                 {post.status_conteudo?.nome ?? "—"}
               </span>
             </div>
 
-            {post.titulo && <h3 className="text-lg font-extrabold text-ink mb-1">{post.titulo}</h3>}
-
-            {(post.formato || post.objetivo) && (
-              <p className="text-xs text-ink/40 mb-2">
-                {post.formato && FORMATO_LABEL[post.formato]}
-                {post.formato && post.objetivo && " · "}
-                {post.objetivo && `Objetivo: ${OBJETIVO_LABEL[post.objetivo]}`}
-              </p>
-            )}
+            {post.objetivo && <p className="text-xs text-white/40 mb-3">Objetivo: {OBJETIVO_LABEL[post.objetivo]}</p>}
 
             {post.legenda && (
-              <div className="rounded-2xl bg-surface p-4 mb-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">Legenda</p>
-                <p className="text-sm text-ink whitespace-pre-wrap">{post.legenda}</p>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-white/40 mb-1.5">Legenda</p>
+                <p className="text-sm text-white/80 whitespace-pre-wrap leading-relaxed">{post.legenda}</p>
               </div>
             )}
+          </div>
 
-            {post.posts_conteudo_comentarios?.length > 0 && (
-              <div className="space-y-2 mb-4">
-                {post.posts_conteudo_comentarios.map((c) => (
-                  <div key={c.id} className="text-sm rounded-xl bg-surface p-3">
-                    <span className={`font-semibold ${c.autor === "cliente" ? "text-amber-700" : "text-forest"}`}>
-                      {c.autor === "cliente" ? "Você" : "Equipe Easy Company"}:
-                    </span>{" "}
-                    {c.texto}
+          <div className="w-[300px] shrink-0 border-l border-white/10 flex flex-col">
+            <div className="px-4 py-3 border-b border-white/10 shrink-0">
+              <p className="text-sm font-bold text-white">💬 Comentários</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {comentarios.length === 0 ? (
+                <p className="text-xs text-white/30 text-center mt-6">Nenhuma mensagem ainda.</p>
+              ) : (
+                comentarios.map((c) => (
+                  <div key={c.id} className="text-sm">
+                    <span className={`font-semibold ${c.autor === "cliente" ? "text-amber-400" : "text-emerald-400"}`}>
+                      {c.autor === "cliente" ? "Você" : "Equipe Easy Company"}
+                    </span>
+                    <p className="text-white/80 mt-0.5">{c.texto}</p>
                   </div>
-                ))}
-              </div>
-            )}
-
-            <div className="mt-auto space-y-3 pt-2">
-              {mostrarCampoAlteracao && (
-                <label className="block">
-                  <span className="block text-sm font-medium text-ink/70 mb-1">
-                    Deixe aqui suas alterações — de ideia, arte, texto, edição, o que for
-                  </span>
+                ))
+              )}
+            </div>
+            <div className="p-3 border-t border-white/10 shrink-0">
+              {erro && <p className="text-xs text-red-400 mb-2">{erro}</p>}
+              {enviado && <p className="text-xs text-emerald-400 font-semibold mb-2">{enviado}</p>}
+              {comentarioAberto ? (
+                <div className="space-y-2">
                   <textarea
                     autoFocus
                     value={texto}
                     onChange={(e) => setTexto(e.target.value)}
-                    className="input"
                     rows={3}
-                    placeholder="Ex: pode trocar a foto de capa? Ou mudar o texto da legenda?"
+                    placeholder="Escreva o que precisa ajustar — ideia, arte, texto, edição..."
+                    className="w-full rounded-xl bg-white/10 border border-white/10 text-white placeholder:text-white/30 text-sm p-3 outline-none focus:border-white/30 resize-none"
                   />
-                </label>
-              )}
-
-              {erro && <p className="text-sm text-red-600">{erro}</p>}
-              {enviado && <p className="text-sm text-forest font-semibold">{enviado}</p>}
-
-              <div className="flex items-center gap-3">
-                {!mostrarCampoAlteracao && (
-                  <button
-                    onClick={() => enviar("aprovar")}
-                    disabled={enviando !== null}
-                    className="rounded-full bg-forest text-white px-5 py-2.5 text-sm font-semibold hover:bg-ink transition-colors disabled:opacity-50"
-                  >
-                    {enviando === "aprovar" ? "Enviando..." : "✓ Aprovar conteúdo"}
-                  </button>
-                )}
-                {mostrarCampoAlteracao ? (
-                  <>
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={() => enviar("solicitar_alteracao")}
                       disabled={enviando !== null || !texto.trim()}
-                      className="rounded-full bg-forest text-white px-5 py-2.5 text-sm font-semibold hover:bg-ink transition-colors disabled:opacity-50"
+                      className="rounded-full bg-forest text-white px-4 py-2 text-xs font-semibold hover:brightness-110 transition disabled:opacity-50"
                     >
                       {enviando === "solicitar_alteracao" ? "Enviando..." : "Enviar alteração"}
                     </button>
                     <button
                       onClick={() => {
                         setMostrarCampoAlteracao(false);
+                        setComentarioAberto(false);
                         setTexto("");
                         setErro(null);
                       }}
-                      disabled={enviando !== null}
-                      className="rounded-full border-2 border-ink/15 text-ink px-5 py-2.5 text-sm font-semibold hover:bg-surface transition-colors disabled:opacity-50"
+                      className="text-xs font-semibold text-white/50 hover:text-white"
                     >
                       Cancelar
                     </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => setMostrarCampoAlteracao(true)}
-                    disabled={enviando !== null}
-                    className="rounded-full border-2 border-ink/15 text-ink px-5 py-2.5 text-sm font-semibold hover:bg-surface transition-colors disabled:opacity-50"
-                  >
-                    Solicitar alteração
-                  </button>
-                )}
-              </div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setMostrarCampoAlteracao(true);
+                    setComentarioAberto(true);
+                  }}
+                  className="w-full rounded-xl bg-white/5 border border-white/10 text-white/40 text-sm text-left px-3 py-2.5 hover:bg-white/10 transition-colors"
+                >
+                  Escreva uma mensagem...
+                </button>
+              )}
             </div>
           </div>
         </div>
+
+        {totalNav > 0 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-white/10 shrink-0 text-sm">
+            <button
+              onClick={() => irPara(-1)}
+              disabled={idxAtual <= 0}
+              className="text-white/60 hover:text-white disabled:opacity-20 font-semibold"
+            >
+              ← Anterior
+            </button>
+            <span className="text-white/40 text-xs">
+              {idxAtual >= 0 ? String(idxAtual + 1).padStart(2, "0") : "—"} / {String(totalNav).padStart(2, "0")}
+            </span>
+            <button
+              onClick={() => irPara(1)}
+              disabled={idxAtual < 0 || idxAtual >= totalNav - 1}
+              className="text-white/60 hover:text-white disabled:opacity-20 font-semibold"
+            >
+              Próximo →
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
