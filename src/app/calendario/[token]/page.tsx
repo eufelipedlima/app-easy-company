@@ -19,6 +19,7 @@ interface Midia {
 
 interface Post {
   id: string;
+  titulo: string | null;
   data_publicacao: string;
   hora_publicacao: string | null;
   legenda: string | null;
@@ -123,6 +124,10 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
 
   const hojeISO = toISODate(hoje);
 
+  const postsPendentes = posts.filter(
+    (p) => !/agend/i.test(p.status_conteudo?.nome ?? "") && !/altera/i.test(p.status_conteudo?.nome ?? "")
+  );
+
   if (erro) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-surface px-6">
@@ -169,6 +174,19 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
               {atualizando ? "Atualizando..." : "🔄 Atualizar"}
             </button>
           </div>
+        </div>
+
+        <div className="mb-5">
+          <h2 className="text-2xl font-extrabold text-ink">📋 Aprovação de Conteúdo</h2>
+          <p className="text-sm text-ink/50 mt-0.5">
+            Aqui você acompanha, aprova e pede ajustes nos conteúdos programados pra sua empresa.
+            {postsPendentes.length > 0 && (
+              <span className="font-semibold text-forest">
+                {" "}
+                {postsPendentes.length} {postsPendentes.length === 1 ? "conteúdo aguardando" : "conteúdos aguardando"} sua aprovação.
+              </span>
+            )}
+          </p>
         </div>
 
         <div className="flex items-center gap-3 mb-6">
@@ -240,9 +258,14 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
                       <button
                         key={p.id}
                         onClick={() => setPostAberto(p)}
-                        className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
+                        className={`w-full text-left rounded-lg px-1.5 py-1 leading-tight ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
                       >
-                        {p.hora_publicacao?.slice(0, 5) ?? "Post"}
+                        <p className="text-[11px] font-semibold truncate">{p.titulo || p.hora_publicacao?.slice(0, 5) || "Post"}</p>
+                        {(p.formato || p.hora_publicacao) && (
+                          <p className="text-[10px] opacity-70 truncate">
+                            {[p.formato ? FORMATO_LABEL[p.formato] : null, p.hora_publicacao?.slice(0, 5)].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -254,7 +277,15 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
       </div>
 
       {postAberto && (
-        <PostPublicoModal post={postAberto} token={token} onClose={() => setPostAberto(null)} onComentado={carregar} />
+        <PostPublicoModal
+          key={postAberto.id}
+          post={postAberto}
+          token={token}
+          listaPendentes={postsPendentes}
+          onNavegar={(p) => setPostAberto(p)}
+          onClose={() => setPostAberto(null)}
+          onComentado={carregar}
+        />
       )}
     </main>
   );
@@ -263,11 +294,15 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
 function PostPublicoModal({
   post,
   token,
+  listaPendentes,
+  onNavegar,
   onClose,
   onComentado,
 }: {
   post: Post;
   token: string;
+  listaPendentes: Post[];
+  onNavegar: (p: Post) => void;
   onClose: () => void;
   onComentado: () => void;
 }) {
@@ -299,8 +334,14 @@ function PostPublicoModal({
     if (res.ok) {
       setTexto("");
       setMostrarCampoAlteracao(false);
-      setEnviado(acao === "aprovar" ? "Conteúdo aprovado! 🎉" : "Ajuste solicitado! A equipe foi avisada.");
+      const idxAtual = listaPendentes.findIndex((p) => p.id === post.id);
+      const proximo = listaPendentes[idxAtual + 1] ?? listaPendentes.filter((p) => p.id !== post.id)[idxAtual - 1] ?? null;
       onComentado();
+      if (proximo) {
+        onNavegar(proximo);
+      } else {
+        setEnviado(acao === "aprovar" ? "Conteúdo aprovado! 🎉 Você já viu tudo por aqui." : "Ajuste solicitado! A equipe foi avisada.");
+      }
     } else {
       setErro(data.error ?? "Não foi possível enviar.");
     }
@@ -312,13 +353,57 @@ function PostPublicoModal({
         className="w-full max-w-3xl rounded-3xl bg-card shadow-2xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
+        {listaPendentes.length > 1 && (
+          <div className="flex items-center justify-between px-6 pt-4 text-xs text-ink/40">
+            <span>
+              {listaPendentes.some((p) => p.id === post.id)
+                ? `Conteúdo ${listaPendentes.findIndex((p) => p.id === post.id) + 1} de ${listaPendentes.length} pendentes`
+                : "Conteúdo já avaliado"}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const idx = listaPendentes.findIndex((p) => p.id === post.id);
+                  if (idx > 0) onNavegar(listaPendentes[idx - 1]);
+                }}
+                disabled={listaPendentes.findIndex((p) => p.id === post.id) <= 0}
+                className="h-7 w-7 rounded-full hover:bg-surface flex items-center justify-center disabled:opacity-20"
+              >
+                ←
+              </button>
+              <button
+                onClick={() => {
+                  const idx = listaPendentes.findIndex((p) => p.id === post.id);
+                  if (idx >= 0 && idx < listaPendentes.length - 1) onNavegar(listaPendentes[idx + 1]);
+                }}
+                disabled={(() => {
+                  const idx = listaPendentes.findIndex((p) => p.id === post.id);
+                  return idx < 0 || idx >= listaPendentes.length - 1;
+                })()}
+                className="h-7 w-7 rounded-full hover:bg-surface flex items-center justify-center disabled:opacity-20"
+              >
+                →
+              </button>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
           <div className="bg-black/5 md:rounded-l-3xl flex items-center justify-center p-4">
             {midias.length > 0 ? (
               <div className="w-full">
                 <div className="relative rounded-2xl overflow-hidden bg-black/10">
                   {midiaAtual.arquivo_tipo?.startsWith("video") ? (
-                    <video src={midiaAtual.url} controls className="w-full max-h-[420px] mx-auto" />
+                    <div className="w-full h-[280px] flex flex-col items-center justify-center gap-3 bg-ink/5">
+                      <span className="text-4xl">🎬</span>
+                      <a
+                        href={midiaAtual.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+                      >
+                        ▶ Abrir vídeo
+                      </a>
+                    </div>
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={midiaAtual.url} alt="Mídia do post" className="w-full max-h-[420px] object-contain mx-auto" />
@@ -354,7 +439,7 @@ function PostPublicoModal({
           </div>
 
           <div className="p-6 flex flex-col">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-ink/40">
                 {formatarData(post.data_publicacao)}
                 {post.hora_publicacao && ` às ${post.hora_publicacao.slice(0, 5)}`}
@@ -363,6 +448,8 @@ function PostPublicoModal({
                 {post.status_conteudo?.nome ?? "—"}
               </span>
             </div>
+
+            {post.titulo && <h3 className="text-lg font-extrabold text-ink mb-1">{post.titulo}</h3>}
 
             {(post.formato || post.objetivo) && (
               <p className="text-xs text-ink/40 mb-2">
@@ -396,7 +483,7 @@ function PostPublicoModal({
               {mostrarCampoAlteracao && (
                 <label className="block">
                   <span className="block text-sm font-medium text-ink/70 mb-1">
-                    Deixe aqui suas alterações, observações ou algo do tipo
+                    Deixe aqui suas alterações — de ideia, arte, texto, edição, o que for
                   </span>
                   <textarea
                     autoFocus
@@ -404,7 +491,7 @@ function PostPublicoModal({
                     onChange={(e) => setTexto(e.target.value)}
                     className="input"
                     rows={3}
-                    placeholder="Ex: pode trocar a foto de capa?"
+                    placeholder="Ex: pode trocar a foto de capa? Ou mudar o texto da legenda?"
                   />
                 </label>
               )}
