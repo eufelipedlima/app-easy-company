@@ -307,6 +307,12 @@ export default function InicioPage() {
             {saudacao()}
             {nome ? `, ${nome}` : ""} 👋
           </h1>
+          <button
+            onClick={() => router.push("/inicio/pauta")}
+            className="rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors"
+          >
+            📋 Pauta da semana
+          </button>
         </div>
         <p className="text-xs text-ink/50 italic mb-6">
           &ldquo;{frase[0]}&rdquo; <span className="not-italic text-ink/30">— {frase[1]}</span>

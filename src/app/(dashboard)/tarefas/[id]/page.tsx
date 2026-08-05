@@ -7,6 +7,7 @@ import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { BuscaCliente } from "@/components/busca-cliente";
 import { RichTextEditor } from "@/components/rich-text-editor";
+import { Cronometro } from "@/components/cronometro";
 
 interface StatusItem {
   id: string;
@@ -44,6 +45,9 @@ interface Tarefa {
   data_inicio: string | null;
   prazo: string | null;
   tarefa_pai_id: string | null;
+  tempo_total_segundos: number;
+  timer_iniciado_em: string | null;
+  timer_iniciado_por: string | null;
 }
 
 interface Subtarefa {
@@ -374,6 +378,25 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     await salvarCampo({ [nomeCampo]: valor }, eventoHistorico);
   }
 
+  async function iniciarCronometro() {
+    const supabase = createClient();
+    const agora = new Date().toISOString();
+    await supabase.from("tarefas").update({ timer_iniciado_em: agora, timer_iniciado_por: meuId }).eq("id", id);
+    setTarefa((t) => (t ? { ...t, timer_iniciado_em: agora, timer_iniciado_por: meuId } : t));
+    registrarHistorico("iniciou o cronômetro");
+  }
+
+  async function pausarCronometro() {
+    if (!tarefa?.timer_iniciado_em) return;
+    const segundosCorridos = Math.floor((Date.now() - new Date(tarefa.timer_iniciado_em).getTime()) / 1000);
+    const novoTotal = tarefa.tempo_total_segundos + segundosCorridos;
+    const supabase = createClient();
+    await supabase.from("tarefas").update({ tempo_total_segundos: novoTotal, timer_iniciado_em: null, timer_iniciado_por: null }).eq("id", id);
+    setTarefa((t) => (t ? { ...t, tempo_total_segundos: novoTotal, timer_iniciado_em: null, timer_iniciado_por: null } : t));
+    const minutos = Math.round(segundosCorridos / 60);
+    registrarHistorico(`pausou o cronômetro (+${minutos < 1 ? "menos de 1" : minutos}min)`);
+  }
+
   async function toggleResponsavel(funcionarioId: string) {
     const supabase = createClient();
     const pessoa = funcionariosComAcesso.find((f) => f.id === funcionarioId);
@@ -543,9 +566,19 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             </>
           )}
         </div>
-        <button onClick={excluirTarefa} className="text-sm font-semibold text-red-500 hover:text-red-700">
-          Excluir tarefa
-        </button>
+        <div className="flex items-center gap-3">
+          <Cronometro
+            tempoTotalSegundos={tarefa.tempo_total_segundos}
+            timerIniciadoEm={tarefa.timer_iniciado_em}
+            nomeQuemIniciou={tarefa.timer_iniciado_por ? nomeDoAutor(tarefa.timer_iniciado_por) : null}
+            souEuQuemIniciou={tarefa.timer_iniciado_por === meuId}
+            onIniciar={iniciarCronometro}
+            onPausar={pausarCronometro}
+          />
+          <button onClick={excluirTarefa} className="text-sm font-semibold text-red-500 hover:text-red-700">
+            Excluir tarefa
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">

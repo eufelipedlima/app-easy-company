@@ -34,7 +34,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: posts, error: postsError } = await supabase
     .from("posts_conteudo")
     .select(
-      `id, titulo, data_publicacao, hora_publicacao, legenda, objetivo, formato, updated_at,
+      `id, titulo, data_publicacao, hora_publicacao, legenda, objetivo, formato, link_video, updated_at,
        status_conteudo ( nome, cor ),
        posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
        posts_conteudo_comentarios ( id, autor, texto, created_at )`

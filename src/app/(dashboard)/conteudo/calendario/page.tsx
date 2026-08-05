@@ -44,6 +44,7 @@ interface Post {
   legenda: string | null;
   objetivo: "atracao" | "educacao" | "conversao" | null;
   formato: "estatico" | "carrossel" | "video" | null;
+  link_video: string | null;
   status_id: string;
   responsavel_id: string | null;
   post_pai_id: string | null;
@@ -273,7 +274,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     let query = supabase
       .from("posts_conteudo")
       .select(
-        `id, cliente_id, titulo, data_publicacao, data_inicio, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, post_pai_id, arquivado, observacoes_internas,
+        `id, cliente_id, titulo, data_publicacao, data_inicio, hora_publicacao, legenda, objetivo, formato, link_video, status_id, responsavel_id, post_pai_id, arquivado, observacoes_internas,
          clientes ( papeis ( pessoas ( nome ) ) ),
          funcionarios!responsavel_id ( papeis ( pessoas ( nome ) ) ),
          posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
@@ -419,7 +420,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     let query = supabase
       .from("posts_conteudo")
       .select(
-        `id, cliente_id, titulo, data_publicacao, data_inicio, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, post_pai_id, arquivado, observacoes_internas,
+        `id, cliente_id, titulo, data_publicacao, data_inicio, hora_publicacao, legenda, objetivo, formato, link_video, status_id, responsavel_id, post_pai_id, arquivado, observacoes_internas,
          clientes ( papeis ( pessoas ( nome ) ) ),
          funcionarios!responsavel_id ( papeis ( pessoas ( nome ) ) ),
          posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
@@ -938,6 +939,7 @@ function PostModal({
   const [legenda, setLegenda] = useState(post?.legenda ?? "");
   const [objetivo, setObjetivo] = useState<string>(post?.objetivo ?? "");
   const [formato, setFormato] = useState<string>(post?.formato ?? "");
+  const [linkVideo, setLinkVideo] = useState<string>(post?.link_video ?? "");
   const [statusId, setStatusId] = useState<string>(post?.status_id ?? statusList[0]?.id ?? "");
   const [observacoes, setObservacoes] = useState(post?.observacoes_internas ?? "");
   const [midiasExistentes, setMidiasExistentes] = useState<Midia[]>(
@@ -1057,6 +1059,7 @@ function PostModal({
         legenda: legenda || null,
         objetivo: objetivo || null,
         formato: formato || null,
+        link_video: formato === "video" ? linkVideo.trim() || null : null,
         status_id: statusId,
         observacoes_internas: observacoes || null,
       };
@@ -1206,57 +1209,6 @@ function PostModal({
           </div>
 
           <div>
-            <span className="block text-sm font-medium text-ink/70 mb-1">Mídia</span>
-            <input
-              type="file"
-              accept="image/*,video/*"
-              multiple
-              onChange={(e) => adicionarArquivos(e.target.files)}
-              className="input"
-            />
-            {(midiasExistentes.length > 0 || novosArquivos.length > 0) && (
-              <div className="mt-2 space-y-1.5">
-                {midiasExistentes.map((m, i) => (
-                  <div key={m.id} className="flex items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2 text-sm">
-                    <span className="truncate">
-                      {i + 1}. {m.arquivo_nome ?? "arquivo"}
-                    </span>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button type="button" onClick={() => moverMidiaExistente(i, -1)} disabled={i === 0} className="text-ink/40 hover:text-ink disabled:opacity-20 px-1">
-                        ↑
-                      </button>
-                      <button type="button" onClick={() => moverMidiaExistente(i, 1)} disabled={i === midiasExistentes.length - 1} className="text-ink/40 hover:text-ink disabled:opacity-20 px-1">
-                        ↓
-                      </button>
-                      <button type="button" onClick={() => removerMidiaExistente(m.id)} className="text-ink/40 hover:text-red-600 px-1">
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {novosArquivos.map((f, i) => (
-                  <div key={i} className="flex items-center justify-between gap-2 rounded-xl bg-mint px-3 py-2 text-sm">
-                    <span className="truncate">
-                      {midiasExistentes.length + i + 1}. {f.name} <span className="text-xs text-forest">(novo)</span>
-                    </span>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button type="button" onClick={() => moverNovoArquivo(i, -1)} disabled={i === 0} className="text-ink/40 hover:text-ink disabled:opacity-20 px-1">
-                        ↑
-                      </button>
-                      <button type="button" onClick={() => moverNovoArquivo(i, 1)} disabled={i === novosArquivos.length - 1} className="text-ink/40 hover:text-ink disabled:opacity-20 px-1">
-                        ↓
-                      </button>
-                      <button type="button" onClick={() => removerNovoArquivo(i)} className="text-ink/40 hover:text-red-600 px-1">
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div>
             <span className="block text-sm font-medium text-ink/70 mb-1">Formato</span>
             <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
               <button
@@ -1278,6 +1230,73 @@ function PostModal({
               ))}
             </div>
           </div>
+
+          {formato === "video" ? (
+            <label className="block">
+              <span className="block text-sm font-medium text-ink/70 mb-1">Link do vídeo (Google Drive, etc.)</span>
+              <input
+                value={linkVideo}
+                onChange={(e) => setLinkVideo(e.target.value)}
+                className="input"
+                placeholder="https://drive.google.com/..."
+              />
+              <span className="block text-xs text-ink/40 mt-1">
+                Vídeos não ficam hospedados aqui — deixa o arquivo no Drive e cola o link de acesso.
+              </span>
+            </label>
+          ) : (
+            <div>
+              <span className="block text-sm font-medium text-ink/70 mb-1">Mídia</span>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => adicionarArquivos(e.target.files)}
+                className="input"
+              />
+              {(midiasExistentes.length > 0 || novosArquivos.length > 0) && (
+                <div className="mt-2 space-y-1.5">
+                  {midiasExistentes.map((m, i) => (
+                    <div key={m.id} className="flex items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2 text-sm">
+                      <span className="truncate">
+                        {i + 1}. {m.arquivo_nome ?? "arquivo"}
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button type="button" onClick={() => moverMidiaExistente(i, -1)} disabled={i === 0} className="text-ink/40 hover:text-ink disabled:opacity-20 px-1">
+                          ↑
+                        </button>
+                        <button type="button" onClick={() => moverMidiaExistente(i, 1)} disabled={i === midiasExistentes.length - 1} className="text-ink/40 hover:text-ink disabled:opacity-20 px-1">
+                          ↓
+                        </button>
+                        <button type="button" onClick={() => removerMidiaExistente(m.id)} className="text-ink/40 hover:text-red-600 px-1">
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {novosArquivos.map((f, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2 rounded-xl bg-mint px-3 py-2 text-sm">
+                      <span className="truncate">
+                        {midiasExistentes.length + i + 1}. {f.name} <span className="text-xs text-forest">(novo)</span>
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button type="button" onClick={() => moverNovoArquivo(i, -1)} disabled={i === 0} className="text-ink/40 hover:text-ink disabled:opacity-20 px-1">
+                          ↑
+                        </button>
+                        <button type="button" onClick={() => moverNovoArquivo(i, 1)} disabled={i === novosArquivos.length - 1} className="text-ink/40 hover:text-ink disabled:opacity-20 px-1">
+                          ↓
+                        </button>
+                        <button type="button" onClick={() => removerNovoArquivo(i)} className="text-ink/40 hover:text-red-600 px-1">
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <span className="block text-xs text-ink/40 mt-1">Sobe as artes na ordem certa — usa as setinhas pra reordenar (importante nos carrosséis).</span>
+            </div>
+          )}
 
           <div>
             <span className="block text-sm font-medium text-ink/70 mb-1">Objetivo</span>

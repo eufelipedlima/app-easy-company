@@ -26,6 +26,7 @@ interface Post {
   legenda: string | null;
   objetivo: "atracao" | "educacao" | "conversao" | null;
   formato: "estatico" | "carrossel" | "video" | null;
+  link_video: string | null;
   status_conteudo: { nome: string; cor: string } | null;
   posts_conteudo_midias: Midia[];
   posts_conteudo_comentarios: Comentario[];
@@ -412,25 +413,29 @@ function PostPublicoModal({
 
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 bg-surface flex items-center justify-center relative p-6 min-w-0">
-            {midias.length > 0 ? (
+            {post.formato === "video" ? (
+              <div className="w-full max-w-md">
+                <div className="relative rounded-2xl overflow-hidden bg-black/5 w-full aspect-square flex flex-col items-center justify-center gap-3">
+                  <span className="text-4xl">🎬</span>
+                  {post.link_video ? (
+                    <a
+                      href={post.link_video}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+                    >
+                      ▶ Abrir vídeo
+                    </a>
+                  ) : (
+                    <p className="text-sm text-ink/40">Link do vídeo ainda não cadastrado</p>
+                  )}
+                </div>
+              </div>
+            ) : midias.length > 0 ? (
               <div className="w-full max-w-md">
                 <div className="relative rounded-2xl overflow-hidden bg-black/5">
-                  {midiaAtual.arquivo_tipo?.startsWith("video") ? (
-                    <div className="w-full aspect-square flex flex-col items-center justify-center gap-3">
-                      <span className="text-4xl">🎬</span>
-                      <a
-                        href={midiaAtual.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
-                      >
-                        ▶ Abrir vídeo
-                      </a>
-                    </div>
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={midiaAtual.url} alt="Mídia do post" className="w-full max-h-[65vh] object-contain mx-auto" />
-                  )}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={midiaAtual.url} alt="Mídia do post" className="w-full max-h-[65vh] object-contain mx-auto" />
                   {midias.length > 1 && (
                     <>
                       <button

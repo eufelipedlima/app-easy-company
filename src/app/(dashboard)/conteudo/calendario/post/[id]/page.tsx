@@ -7,6 +7,7 @@ import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { BuscaCliente } from "@/components/busca-cliente";
+import { Cronometro } from "@/components/cronometro";
 
 interface StatusItem {
   id: string;
@@ -50,6 +51,9 @@ interface Post {
   data_inicio: string | null;
   hora_publicacao: string | null;
   post_pai_id: string | null;
+  tempo_total_segundos: number;
+  timer_iniciado_em: string | null;
+  timer_iniciado_por: string | null;
 }
 
 interface SubConteudo {
@@ -389,6 +393,25 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     if (eventoHistorico) registrarHistorico(eventoHistorico);
   }
 
+  async function iniciarCronometro() {
+    const supabase = createClient();
+    const agora = new Date().toISOString();
+    await supabase.from("posts_conteudo").update({ timer_iniciado_em: agora, timer_iniciado_por: meuId }).eq("id", id);
+    setPost((p) => (p ? { ...p, timer_iniciado_em: agora, timer_iniciado_por: meuId } : p));
+    registrarHistorico("iniciou o cronômetro");
+  }
+
+  async function pausarCronometro() {
+    if (!post?.timer_iniciado_em) return;
+    const segundosCorridos = Math.floor((Date.now() - new Date(post.timer_iniciado_em).getTime()) / 1000);
+    const novoTotal = post.tempo_total_segundos + segundosCorridos;
+    const supabase = createClient();
+    await supabase.from("posts_conteudo").update({ tempo_total_segundos: novoTotal, timer_iniciado_em: null, timer_iniciado_por: null }).eq("id", id);
+    setPost((p) => (p ? { ...p, tempo_total_segundos: novoTotal, timer_iniciado_em: null, timer_iniciado_por: null } : p));
+    const minutos = Math.round(segundosCorridos / 60);
+    registrarHistorico(`pausou o cronômetro (+${minutos < 1 ? "menos de 1" : minutos}min)`);
+  }
+
   async function toggleResponsavel(funcionarioId: string) {
     const supabase = createClient();
     const pessoa = funcionariosComAcesso.find((f) => f.id === funcionarioId);
@@ -556,6 +579,14 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
             </>
           )}
         </div>
+        <Cronometro
+          tempoTotalSegundos={post.tempo_total_segundos}
+          timerIniciadoEm={post.timer_iniciado_em}
+          nomeQuemIniciou={post.timer_iniciado_por ? nomeDoAutor(post.timer_iniciado_por) : null}
+          souEuQuemIniciou={post.timer_iniciado_por === meuId}
+          onIniciar={iniciarCronometro}
+          onPausar={pausarCronometro}
+        />
       </div>
 
       <div className="flex-1 flex overflow-hidden">

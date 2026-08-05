@@ -138,6 +138,8 @@ function PlayerAudio({ url, duracao }: { url: string; duracao: number | null }) 
   const [tocando, setTocando] = useState(false);
   const [progresso, setProgresso] = useState(0);
   const [duracaoReal, setDuracaoReal] = useState(duracao ?? 0);
+  const [velocidade, setVelocidade] = useState(1);
+  const VELOCIDADES = [1, 1.25, 1.5, 2];
 
   function alternarPlay() {
     const audio = audioRef.current;
@@ -149,8 +151,15 @@ function PlayerAudio({ url, duracao }: { url: string; duracao: number | null }) 
     }
   }
 
+  function alternarVelocidade() {
+    const idxAtual = VELOCIDADES.indexOf(velocidade);
+    const proxima = VELOCIDADES[(idxAtual + 1) % VELOCIDADES.length];
+    setVelocidade(proxima);
+    if (audioRef.current) audioRef.current.playbackRate = proxima;
+  }
+
   return (
-    <div className="flex items-center gap-2.5 bg-surface rounded-full pl-1 pr-4 py-1 w-64 max-w-full">
+    <div className="flex items-center gap-2.5 bg-surface rounded-full pl-1 pr-2 py-1 w-72 max-w-full">
       <audio
         ref={audioRef}
         src={url}
@@ -170,7 +179,7 @@ function PlayerAudio({ url, duracao }: { url: string; duracao: number | null }) 
       />
       <button
         onClick={alternarPlay}
-        className="h-8 w-8 rounded-full bg-ink text-white flex items-center justify-center shrink-0 hover:bg-forest transition-colors"
+        className="h-8 w-8 rounded-full bg-forest text-white flex items-center justify-center shrink-0 hover:brightness-110 transition-colors"
       >
         {tocando ? "❚❚" : "▶"}
       </button>
@@ -178,6 +187,13 @@ function PlayerAudio({ url, duracao }: { url: string; duracao: number | null }) 
         <div className="h-full bg-forest rounded-full transition-all" style={{ width: `${progresso * 100}%` }} />
       </div>
       <span className="text-[11px] text-ink/40 shrink-0 tabular-nums">{formatarDuracao(duracaoReal)}</span>
+      <button
+        onClick={alternarVelocidade}
+        className="shrink-0 text-[10px] font-bold text-ink/50 hover:text-ink bg-white rounded-full h-6 px-1.5 border border-black/10"
+        title="Velocidade de reprodução"
+      >
+        {velocidade}x
+      </button>
     </div>
   );
 }
@@ -846,10 +862,12 @@ export default function ChatPage() {
                 return (
                   <div key={m.id}>
                     {novoDia && (
-                      <div className="flex items-center justify-center my-4">
-                        <span className="text-xs font-semibold text-forest bg-mint rounded-full px-3 py-1">
+                      <div className="flex items-center gap-3 my-4">
+                        <span className="flex-1 h-px bg-black/10" />
+                        <span className="shrink-0 text-xs font-semibold text-forest bg-mint rounded-full px-3 py-1">
                           {formatarDiaSeparador(m.created_at)}
                         </span>
+                        <span className="flex-1 h-px bg-black/10" />
                       </div>
                     )}
                     <div
@@ -1098,7 +1116,7 @@ export default function ChatPage() {
                     <button
                       type="submit"
                       disabled={enviando || !texto.trim()}
-                      className="shrink-0 rounded-full bg-ink text-white px-5 h-10 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+                      className="shrink-0 rounded-full bg-forest text-white px-5 h-10 text-sm font-semibold hover:brightness-110 transition-colors disabled:opacity-50"
                     >
                       Enviar
                     </button>
