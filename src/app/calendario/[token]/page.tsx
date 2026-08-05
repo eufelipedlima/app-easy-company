@@ -401,20 +401,45 @@ function PostPublicoModal({
               {enviado && <p className="text-sm text-forest font-semibold">{enviado}</p>}
 
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => enviar("aprovar")}
-                  disabled={enviando !== null}
-                  className="rounded-full bg-forest text-white px-5 py-2.5 text-sm font-semibold hover:bg-ink transition-colors disabled:opacity-50"
-                >
-                  {enviando === "aprovar" ? "Enviando..." : "✓ Aprovar conteúdo"}
-                </button>
-                <button
-                  onClick={() => (mostrarCampoAlteracao ? enviar("solicitar_alteracao") : setMostrarCampoAlteracao(true))}
-                  disabled={enviando !== null}
-                  className="rounded-full border-2 border-ink/15 text-ink px-5 py-2.5 text-sm font-semibold hover:bg-surface transition-colors disabled:opacity-50"
-                >
-                  {enviando === "solicitar_alteracao" ? "Enviando..." : "Solicitar alteração"}
-                </button>
+                {!mostrarCampoAlteracao && (
+                  <button
+                    onClick={() => enviar("aprovar")}
+                    disabled={enviando !== null}
+                    className="rounded-full bg-forest text-white px-5 py-2.5 text-sm font-semibold hover:bg-ink transition-colors disabled:opacity-50"
+                  >
+                    {enviando === "aprovar" ? "Enviando..." : "✓ Aprovar conteúdo"}
+                  </button>
+                )}
+                {mostrarCampoAlteracao ? (
+                  <>
+                    <button
+                      onClick={() => enviar("solicitar_alteracao")}
+                      disabled={enviando !== null || !texto.trim()}
+                      className="rounded-full bg-forest text-white px-5 py-2.5 text-sm font-semibold hover:bg-ink transition-colors disabled:opacity-50"
+                    >
+                      {enviando === "solicitar_alteracao" ? "Enviando..." : "Enviar alteração"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMostrarCampoAlteracao(false);
+                        setTexto("");
+                        setErro(null);
+                      }}
+                      disabled={enviando !== null}
+                      className="rounded-full border-2 border-ink/15 text-ink px-5 py-2.5 text-sm font-semibold hover:bg-surface transition-colors disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setMostrarCampoAlteracao(true)}
+                    disabled={enviando !== null}
+                    className="rounded-full border-2 border-ink/15 text-ink px-5 py-2.5 text-sm font-semibold hover:bg-surface transition-colors disabled:opacity-50"
+                  >
+                    Solicitar alteração
+                  </button>
+                )}
               </div>
             </div>
           </div>

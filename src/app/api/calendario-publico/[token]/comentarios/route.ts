@@ -66,21 +66,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     await supabase.from("posts_conteudo").update({ status_id: statusAlvo.id }).eq("id", postId);
   }
 
-  if (post.responsavel_id) {
-    const { data: responsavel } = await supabase
-      .from("funcionarios")
-      .select("auth_user_id")
-      .eq("id", post.responsavel_id)
-      .maybeSingle();
-    if (responsavel?.auth_user_id) {
-      await supabase.from("notificacoes").insert({
-        destinatario_id: responsavel.auth_user_id,
+  const { data: responsaveis } = await supabase
+    .from("posts_conteudo_responsaveis")
+    .select("funcionarios ( auth_user_id )")
+    .eq("post_id", postId);
+  const idsResponsaveis = ((responsaveis ?? []) as unknown as { funcionarios: { auth_user_id: string | null } | null }[])
+    .map((r) => r.funcionarios?.auth_user_id)
+    .filter((x): x is string => !!x);
+
+  if (idsResponsaveis.length > 0) {
+    await supabase.from("notificacoes").insert(
+      idsResponsaveis.map((destinatario_id) => ({
+        destinatario_id,
         tipo: "comentario_cliente",
         titulo: acao === "aprovar" ? "Cliente aprovou um conteúdo" : "Cliente pediu ajuste",
         descricao: post.titulo || (texto?.trim() ? texto.trim().slice(0, 120) : null),
-        link: "/conteudo/calendario",
-      });
-    }
+        link: `/conteudo/calendario/post/${postId}`,
+      }))
+    );
   }
 
   return NextResponse.json({ ok: true });

@@ -26,9 +26,10 @@ interface Responsavel {
 }
 interface Comentario {
   id: string;
-  autor_id: string;
+  autor_id: string | null;
   texto: string;
   created_at: string;
+  doCliente?: boolean;
 }
 interface HistoricoItem {
   id: string;
@@ -303,12 +304,20 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
 
   const carregarComentarios = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase
-      .from("posts_conteudo_comentarios_internos")
-      .select("id, autor_id, texto, created_at")
-      .eq("post_id", id)
-      .order("created_at");
-    setComentarios(data ?? []);
+    const [{ data: internos }, { data: doCliente }] = await Promise.all([
+      supabase.from("posts_conteudo_comentarios_internos").select("id, autor_id, texto, created_at").eq("post_id", id).order("created_at"),
+      supabase.from("posts_conteudo_comentarios").select("id, texto, created_at, autor").eq("post_id", id).order("created_at"),
+    ]);
+    const listaInternos: Comentario[] = (internos ?? []).map((c) => ({ ...c, doCliente: false }));
+    const listaCliente: Comentario[] = ((doCliente ?? []) as { id: string; texto: string; created_at: string; autor: string }[]).map((c) => ({
+      id: `cliente-${c.id}`,
+      autor_id: null,
+      texto: c.texto,
+      created_at: c.created_at,
+      doCliente: c.autor === "cliente",
+    }));
+    const todos = [...listaInternos, ...listaCliente].sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+    setComentarios(todos);
   }, [id]);
 
   const carregarHistorico = useCallback(async () => {
@@ -334,6 +343,11 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "posts_conteudo_comentarios_internos", filter: `post_id=eq.${id}` },
+        () => carregarComentarios()
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "posts_conteudo_comentarios", filter: `post_id=eq.${id}` },
         () => carregarComentarios()
       )
       .subscribe();
@@ -809,14 +823,20 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                     <p className="text-sm text-ink/40">Nenhum comentário ainda.</p>
                   ) : (
                     comentarios.map((c) => {
-                      const nome = nomeDoAutor(c.autor_id);
-                      const fotoAutor = funcionariosComAcesso.find((f) => f.authUserId === c.autor_id)?.fotoUrl ?? null;
+                      const nome = c.doCliente ? "Cliente" : nomeDoAutor(c.autor_id!);
+                      const fotoAutor = c.doCliente ? null : funcionariosComAcesso.find((f) => f.authUserId === c.autor_id)?.fotoUrl ?? null;
                       return (
                         <div key={c.id} className="flex items-start gap-2.5">
-                          <Avatar nome={nome} fotoUrl={fotoAutor} tamanho={30} />
+                          {c.doCliente ? (
+                            <div className="h-[30px] w-[30px] rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold shrink-0 ring-2 ring-white">
+                              👤
+                            </div>
+                          ) : (
+                            <Avatar nome={nome} fotoUrl={fotoAutor} tamanho={30} />
+                          )}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-baseline gap-2">
-                              <span className="text-sm font-bold text-ink">{nome}</span>
+                              <span className={`text-sm font-bold ${c.doCliente ? "text-amber-700" : "text-ink"}`}>{nome}</span>
                               <span className="text-[11px] text-ink/40">{formatarQuando(c.created_at)}</span>
                             </div>
                             <p className="text-sm text-ink whitespace-pre-wrap break-words">{renderizarTexto(c.texto, todosOsNomes)}</p>
