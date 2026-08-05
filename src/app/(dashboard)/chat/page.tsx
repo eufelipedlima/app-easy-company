@@ -298,6 +298,15 @@ export default function ChatPage() {
     carregarCanais();
   }, [carregarCanais]);
 
+  useEffect(() => {
+    if (canais.length === 0 || typeof window === "undefined") return;
+    const canalId = new URLSearchParams(window.location.search).get("canal");
+    if (canalId && canais.some((c) => c.id === canalId)) {
+      abrirCanal(canalId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canais.length]);
+
   const carregarMensagens = useCallback(async (canalId: string) => {
     const supabase = createClient();
     const { data } = await supabase
