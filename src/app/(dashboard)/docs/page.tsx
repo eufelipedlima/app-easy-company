@@ -9,6 +9,7 @@ import { BuscaCliente, type OpcaoCliente } from "@/components/busca-cliente";
 interface Doc {
   id: string;
   titulo: string;
+  emoji: string | null;
   cliente_id: string | null;
   updated_at: string;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
@@ -32,7 +33,7 @@ export default function DocsPage() {
     const supabase = createClient();
     let query = supabase
       .from("docs")
-      .select("id, titulo, cliente_id, updated_at, clientes ( papeis ( pessoas ( nome ) ) )")
+      .select("id, titulo, emoji, cliente_id, updated_at, clientes ( papeis ( pessoas ( nome ) ) )")
       .is("doc_pai_id", null)
       .order("updated_at", { ascending: false });
     if (clienteFiltroId === "internos") query = query.is("cliente_id", null);
@@ -124,7 +125,7 @@ export default function DocsPage() {
               className="w-full flex items-center justify-between gap-3 px-5 py-4 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
             >
               <span className="flex items-center gap-2 min-w-0">
-                <span className="text-lg shrink-0">📄</span>
+                <span className="text-lg shrink-0">{d.emoji || "📄"}</span>
                 <span className="min-w-0">
                   <span className="block text-sm font-semibold text-ink truncate">{d.titulo}</span>
                   <span className="block text-xs text-ink/40 truncate">

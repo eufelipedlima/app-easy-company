@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 const ALTURA_COLAPSADA = 130;
 
@@ -16,9 +17,12 @@ export function RichTextEditor({
   placeholder?: string;
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const inputArquivoRef = useRef<HTMLInputElement>(null);
   const [recolhido, setRecolhido] = useState(false);
   const [transborda, setTransborda] = useState(false);
+  const [enviandoImagem, setEnviandoImagem] = useState(false);
   const montadoRef = useRef(false);
+  const selecaoSalvaRef = useRef<Range | null>(null);
 
   useEffect(() => {
     if (!montadoRef.current && editorRef.current) {
@@ -29,9 +33,22 @@ export function RichTextEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function salvarSelecao() {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) selecaoSalvaRef.current = sel.getRangeAt(0);
+  }
+
+  function restaurarSelecao() {
+    const sel = window.getSelection();
+    if (sel && selecaoSalvaRef.current) {
+      sel.removeAllRanges();
+      sel.addRange(selecaoSalvaRef.current);
+    }
+  }
+
   function exec(comando: string, valor?: string) {
-    document.execCommand(comando, false, valor);
     editorRef.current?.focus();
+    document.execCommand(comando, false, valor);
     handleInput();
   }
 
@@ -41,11 +58,44 @@ export function RichTextEditor({
     setTransborda(editorRef.current.scrollHeight > ALTURA_COLAPSADA + 20);
   }
 
+  function inserirLink() {
+    restaurarSelecao();
+    const url = window.prompt("Link (com https://):");
+    if (!url) return;
+    editorRef.current?.focus();
+    document.execCommand("createLink", false, url);
+    // marca os links recém-criados pra abrir em nova aba
+    editorRef.current?.querySelectorAll("a:not([target])").forEach((a) => {
+      a.setAttribute("target", "_blank");
+      a.setAttribute("rel", "noopener noreferrer");
+    });
+    handleInput();
+  }
+
+  async function selecionarImagem(e: React.ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = "";
+    if (!arquivo) return;
+    setEnviandoImagem(true);
+    const supabase = createClient();
+    const extensao = arquivo.name.split(".").pop();
+    const caminho = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extensao}`;
+    const { error } = await supabase.storage.from("docs-anexos").upload(caminho, arquivo);
+    if (!error) {
+      const { data } = supabase.storage.from("docs-anexos").getPublicUrl(caminho);
+      restaurarSelecao();
+      editorRef.current?.focus();
+      document.execCommand("insertImage", false, data.publicUrl);
+      handleInput();
+    }
+    setEnviandoImagem(false);
+  }
+
   const botao = "h-7 min-w-7 px-2 rounded-lg text-xs font-bold text-ink/60 hover:bg-surface transition-colors";
 
   return (
     <div>
-      <div className="flex items-center gap-0.5 mb-2 rounded-full bg-surface w-fit p-1">
+      <div className="flex items-center gap-0.5 mb-2 rounded-full bg-surface w-fit p-1 flex-wrap">
         <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("bold")} className={botao} title="Negrito">
           B
         </button>
@@ -61,14 +111,24 @@ export function RichTextEditor({
         >
           U
         </button>
+        <span className="w-px h-4 bg-black/10 mx-0.5" />
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => exec("formatBlock", "H2")}
+          className={botao}
+          title="Título"
+        >
+          Título
+        </button>
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => exec("formatBlock", "H3")}
           className={botao}
-          title="Título"
+          title="Subtítulo"
         >
-          Título
+          Subtítulo
         </button>
         <button
           type="button"
@@ -79,6 +139,7 @@ export function RichTextEditor({
         >
           Normal
         </button>
+        <span className="w-px h-4 bg-black/10 mx-0.5" />
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
@@ -88,6 +149,20 @@ export function RichTextEditor({
         >
           ―
         </button>
+        <button type="button" onMouseDown={salvarSelecao} onClick={inserirLink} className={botao} title="Inserir link">
+          🔗
+        </button>
+        <button
+          type="button"
+          onMouseDown={salvarSelecao}
+          onClick={() => inputArquivoRef.current?.click()}
+          disabled={enviandoImagem}
+          className={botao}
+          title="Inserir imagem"
+        >
+          {enviandoImagem ? "..." : "🖼️"}
+        </button>
+        <input ref={inputArquivoRef} type="file" accept="image/*" onChange={selecionarImagem} className="hidden" />
       </div>
 
       <div
@@ -114,6 +189,11 @@ export function RichTextEditor({
           content: attr(data-placeholder);
           color: rgba(2, 23, 11, 0.35);
         }
+        .rich-text-editor h2 {
+          font-size: 1.4rem;
+          font-weight: 800;
+          margin: 0.5em 0 0.25em;
+        }
         .rich-text-editor h3 {
           font-size: 1.05rem;
           font-weight: 800;
@@ -126,6 +206,16 @@ export function RichTextEditor({
         }
         .rich-text-editor p {
           margin: 0.2em 0;
+        }
+        .rich-text-editor a {
+          color: #143421;
+          font-weight: 600;
+          text-decoration: underline;
+        }
+        .rich-text-editor img {
+          max-width: 100%;
+          border-radius: 0.75rem;
+          margin: 0.5em 0;
         }
       `}</style>
     </div>

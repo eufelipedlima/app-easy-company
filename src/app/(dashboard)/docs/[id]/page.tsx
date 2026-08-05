@@ -10,6 +10,7 @@ interface Doc {
   id: string;
   titulo: string;
   conteudo: string | null;
+  emoji: string | null;
   cliente_id: string | null;
   doc_pai_id: string | null;
   criado_por: string | null;
@@ -18,15 +19,29 @@ interface Doc {
   updated_at: string;
 }
 
+interface HistoricoItem {
+  id: string;
+  autor_id: string | null;
+  descricao: string;
+  created_at: string;
+}
+
 interface DocResumo {
   id: string;
   titulo: string;
   doc_pai_id: string | null;
+  emoji: string | null;
 }
 
 interface DocNode extends DocResumo {
   filhos: DocNode[];
 }
+
+const DOC_EMOJIS = [
+  "📄", "📝", "📋", "📌", "🔒", "🔑", "💻", "📊", "📁", "📎",
+  "🎨", "🚀", "💡", "📢", "🗓️", "✅", "⚙️", "💰", "🔗", "🖼️",
+  "📷", "🎯", "🧩", "📞", "🏢", "🌐", "⭐", "🔥", "📈", "🛠️",
+];
 
 function formatarQuando(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -68,15 +83,20 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
   const [colegas, setColegas] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+  const [meuId, setMeuId] = useState<string | null>(null);
+  const [historico, setHistorico] = useState<HistoricoItem[]>([]);
+  const [historicoAberto, setHistoricoAberto] = useState(false);
+  const [seletorEmojiAberto, setSeletorEmojiAberto] = useState(false);
 
   const [titulo, setTitulo] = useState("");
+  const [emoji, setEmoji] = useState<string | null>(null);
   const [conteudo, setConteudo] = useState("");
   const [clienteSelecionado, setClienteSelecionado] = useState<OpcaoCliente | null>(null);
   const [salvando, setSalvando] = useState(false);
 
   const carregarDocsDoEscopo = useCallback(async (clienteId: string | null) => {
     const supabase = createClient();
-    let query = supabase.from("docs").select("id, titulo, doc_pai_id");
+    let query = supabase.from("docs").select("id, titulo, doc_pai_id, emoji");
     query = clienteId ? query.eq("cliente_id", clienteId) : query.is("cliente_id", null);
     const { data } = await query.order("created_at");
     setDocsDoEscopo(data ?? []);
@@ -86,6 +106,11 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
   const carregar = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    setMeuId(user?.id ?? null);
+
     const [{ data: d }, { data: clientesData }, { data: funcData }] = await Promise.all([
       supabase.from("docs").select("*").eq("id", id).maybeSingle(),
       supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )"),
@@ -106,11 +131,19 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
     if (d) {
       setDoc(d);
       setTitulo(d.titulo);
+      setEmoji(d.emoji);
       setConteudo(d.conteudo ?? "");
       setClienteSelecionado(d.cliente_id ? listaClientes.find((c) => c.id === d.cliente_id) ?? null : null);
 
       const escopo = await carregarDocsDoEscopo(d.cliente_id);
       setExpandidos(new Set(ancestrais(escopo, d.id)));
+
+      const { data: historicoData } = await supabase
+        .from("docs_historico")
+        .select("id, autor_id, descricao, created_at")
+        .eq("doc_id", d.id)
+        .order("created_at", { ascending: false });
+      setHistorico(historicoData ?? []);
     }
     setLoading(false);
   }, [id, carregarDocsDoEscopo]);
@@ -119,7 +152,16 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
     carregar();
   }, [carregar]);
 
-  async function salvarCampo(campo: Record<string, string | null>) {
+  async function registrarHistorico(descricaoEvento: string) {
+    const supabase = createClient();
+    await supabase.from("docs_historico").insert({ doc_id: id, autor_id: meuId, descricao: descricaoEvento });
+    setHistorico((atual) => [
+      { id: `temp-${Date.now()}`, autor_id: meuId, descricao: descricaoEvento, created_at: new Date().toISOString() },
+      ...atual,
+    ]);
+  }
+
+  async function salvarCampo(campo: Record<string, string | null>, eventoHistorico?: string) {
     setSalvando(true);
     const supabase = createClient();
     const {
@@ -134,6 +176,7 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
     if ("titulo" in campo) {
       setDocsDoEscopo((atual) => atual.map((d) => (d.id === id ? { ...d, titulo: campo.titulo || d.titulo } : d)));
     }
+    if (eventoHistorico) registrarHistorico(eventoHistorico);
   }
 
   async function excluirDoc() {
@@ -243,11 +286,53 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
 
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-3xl mx-auto px-8 py-8">
+            <div className="relative w-fit mb-2">
+              <button
+                onClick={() => setSeletorEmojiAberto((v) => !v)}
+                className="h-14 w-14 rounded-2xl bg-surface hover:bg-black/5 flex items-center justify-center text-3xl transition-colors"
+                title="Escolher ícone"
+              >
+                {emoji || "📄"}
+              </button>
+              {seletorEmojiAberto && (
+                <div
+                  className="absolute z-20 top-16 left-0 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-2 grid grid-cols-8 gap-1"
+                  onMouseLeave={() => setSeletorEmojiAberto(false)}
+                >
+                  {emoji && (
+                    <button
+                      onClick={() => {
+                        setEmoji(null);
+                        salvarCampo({ emoji: null }, "removeu o ícone");
+                        setSeletorEmojiAberto(false);
+                      }}
+                      className="col-span-8 text-xs text-ink/50 hover:text-red-600 text-left px-1 pb-1"
+                    >
+                      Remover ícone
+                    </button>
+                  )}
+                  {DOC_EMOJIS.map((e) => (
+                    <button
+                      key={e}
+                      onClick={() => {
+                        setEmoji(e);
+                        salvarCampo({ emoji: e }, "mudou o ícone do documento");
+                        setSeletorEmojiAberto(false);
+                      }}
+                      className="text-lg hover:bg-surface rounded-lg h-8 w-8 flex items-center justify-center"
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <input
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
               onBlur={() => {
-                if (titulo.trim() && titulo.trim() !== doc.titulo) salvarCampo({ titulo: titulo.trim() });
+                if (titulo.trim() && titulo.trim() !== doc.titulo) salvarCampo({ titulo: titulo.trim() }, `renomeou para "${titulo.trim()}"`);
               }}
               className="text-3xl font-extrabold text-ink w-full mb-3 outline-none focus:bg-white rounded-lg px-1 -mx-1 bg-transparent"
             />
@@ -259,7 +344,7 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
                   valor={clienteSelecionado}
                   onSelecionar={async (c) => {
                     setClienteSelecionado(c);
-                    await salvarCampo({ cliente_id: c?.id ?? null });
+                    await salvarCampo({ cliente_id: c?.id ?? null }, c ? `mudou o cliente para ${c.nome}` : "removeu o cliente");
                     const escopo = await carregarDocsDoEscopo(c?.id ?? null);
                     setExpandidos(new Set(ancestrais(escopo, id)));
                   }}
@@ -270,13 +355,42 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
                 Atualizado em {formatarQuando(doc.updated_at)}
                 {doc.atualizado_por && colegas[doc.atualizado_por] && ` por ${colegas[doc.atualizado_por]}`}
               </p>
+              <div className="relative ml-auto">
+                <button
+                  onClick={() => setHistoricoAberto((v) => !v)}
+                  className="text-ink/25 hover:text-ink/60 transition-colors text-xs"
+                  title="Histórico de alterações"
+                >
+                  🕐
+                </button>
+                {historicoAberto && (
+                  <div
+                    className="absolute z-20 top-6 right-0 w-72 max-h-80 overflow-y-auto rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+                    onMouseLeave={() => setHistoricoAberto(false)}
+                  >
+                    <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Histórico</p>
+                    {historico.length === 0 ? (
+                      <p className="text-xs text-ink/40">Nenhuma alteração registrada ainda.</p>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {historico.map((h) => (
+                          <div key={h.id} className="text-xs text-ink/60 border-l-2 border-black/10 pl-2.5 py-0.5">
+                            <span className="font-semibold text-ink">{(h.autor_id && colegas[h.autor_id]) || "Alguém"}</span> {h.descricao}
+                            <span className="block text-[10px] text-ink/40 mt-0.5">{formatarQuando(h.created_at)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="rounded-2xl bg-white p-5 shadow-sm">
               <RichTextEditor
                 valorHtml={conteudo}
                 onChange={setConteudo}
-                onSalvar={() => salvarCampo({ conteudo: conteudo || null })}
+                onSalvar={() => salvarCampo({ conteudo: conteudo || null }, "atualizou o conteúdo")}
                 placeholder="Escreva aqui... anotações de reunião, links importantes, entregáveis, inspirações..."
               />
             </div>
@@ -331,7 +445,7 @@ function ItemArvoreDoc({
           <span className="w-4 shrink-0" />
         )}
         <span className={`flex-1 text-sm truncate flex items-center gap-1.5 ${ativo ? "font-semibold text-forest" : "text-ink"}`}>
-          📄 {node.titulo}
+          {node.emoji || "📄"} {node.titulo}
         </span>
         <button
           onClick={(e) => {
