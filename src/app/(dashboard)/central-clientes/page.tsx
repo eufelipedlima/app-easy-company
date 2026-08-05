@@ -8,6 +8,7 @@ import { normalizar } from "@/lib/normalizar";
 interface ClienteResumo {
   id: string;
   nome: string;
+  fotoUrl: string | null;
   segmento: string | null;
 }
 
@@ -35,13 +36,18 @@ export default function CentralClientesPage() {
 
       const { data } = await supabase
         .from("clientes")
-        .select("id, papeis ( pessoas ( nome, segmentos ( nome ) ) )");
+        .select("id, papeis ( pessoas ( nome, foto_url, segmentos ( nome ) ) )");
       const lista = ((data ?? []) as unknown as {
         id: string;
-        papeis: { pessoas: { nome: string; segmentos: { nome: string } | null } | null } | null;
+        papeis: { pessoas: { nome: string; foto_url: string | null; segmentos: { nome: string } | null } | null } | null;
       }[])
         .filter((c) => idsAtivos.has(c.id))
-        .map((c) => ({ id: c.id, nome: c.papeis?.pessoas?.nome ?? "—", segmento: c.papeis?.pessoas?.segmentos?.nome ?? null }))
+        .map((c) => ({
+          id: c.id,
+          nome: c.papeis?.pessoas?.nome ?? "—",
+          fotoUrl: c.papeis?.pessoas?.foto_url ?? null,
+          segmento: c.papeis?.pessoas?.segmentos?.nome ?? null,
+        }))
         .sort((a, b) => a.nome.localeCompare(b.nome));
       setClientes(lista);
       setLoading(false);
@@ -77,9 +83,14 @@ export default function CentralClientesPage() {
               onClick={() => router.push(`/central-clientes/${c.id}`)}
               className="flex items-center gap-3 rounded-2xl bg-card border border-black/5 p-4 hover:shadow-md hover:border-forest/20 transition-all text-left"
             >
-              <div className={`h-11 w-11 rounded-full ${corAvatar(c.nome)} text-white flex items-center justify-center font-bold shrink-0`}>
-                {c.nome.slice(0, 2).toUpperCase()}
-              </div>
+              {c.fotoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={c.fotoUrl} alt={c.nome} className="h-11 w-11 rounded-full object-cover shrink-0" />
+              ) : (
+                <div className={`h-11 w-11 rounded-full ${corAvatar(c.nome)} text-white flex items-center justify-center font-bold shrink-0`}>
+                  {c.nome.slice(0, 2).toUpperCase()}
+                </div>
+              )}
               <div className="min-w-0">
                 <p className="text-sm font-bold text-ink truncate">{c.nome}</p>
                 {c.segmento && <p className="text-xs text-ink/50 truncate">{c.segmento}</p>}

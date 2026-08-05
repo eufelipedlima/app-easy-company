@@ -16,6 +16,7 @@ interface Canal {
 interface CanalComInfo extends Canal {
   nomeExibicao: string;
   subtitulo: string | null;
+  fotoUrl: string | null;
   ultimaMensagem: string | null;
   ultimaMensagemHora: string | null;
   naoLidas: number;
@@ -41,6 +42,7 @@ interface Colega {
   authUserId: string;
   nome: string;
   cargo: string | null;
+  fotoUrl: string | null;
 }
 
 const EMOJIS = [
@@ -101,7 +103,18 @@ function iniciais(nome: string) {
   return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
 }
 
-function Avatar({ nome, tamanho = 36 }: { nome: string; tamanho?: number }) {
+function Avatar({ nome, fotoUrl, tamanho = 36 }: { nome: string; fotoUrl?: string | null; tamanho?: number }) {
+  if (fotoUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return (
+      <img
+        src={fotoUrl}
+        alt={nome}
+        className="rounded-full object-cover shrink-0 ring-2 ring-white"
+        style={{ height: tamanho, width: tamanho }}
+      />
+    );
+  }
   return (
     <div
       className={`rounded-full ${corAvatar(nome)} text-white flex items-center justify-center text-xs font-bold shrink-0 ring-2 ring-white`}
@@ -139,6 +152,7 @@ function renderizarMensagem(texto: string, todosOsNomes: string[]) {
 export default function ChatPage() {
   const [meuId, setMeuId] = useState<string | null>(null);
   const [meuNome, setMeuNome] = useState<string>("Você");
+  const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
   const [canais, setCanais] = useState<CanalComInfo[]>([]);
   const [canalAtivoId, setCanalAtivoId] = useState<string | null>(null);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
@@ -173,6 +187,11 @@ export default function ChatPage() {
   const cargoDoParticipante = useCallback(
     (authUserId: string) => colegas.find((c) => c.authUserId === authUserId)?.cargo ?? null,
     [colegas]
+  );
+
+  const fotoDoParticipante = useCallback(
+    (authUserId: string) => (authUserId === meuId ? meuFotoUrl : colegas.find((c) => c.authUserId === authUserId)?.fotoUrl ?? null),
+    [colegas, meuId, meuFotoUrl]
   );
 
   const carregarCanais = useCallback(async () => {
@@ -225,21 +244,23 @@ export default function ChatPage() {
     // Nomes/apelidos/cargos de todos os funcionários com acesso
     const { data: func } = await supabase
       .from("funcionarios")
-      .select("auth_user_id, cargo, cargos ( nome ), papeis ( pessoas ( nome, apelido ) )")
+      .select("auth_user_id, cargo, cargos ( nome ), papeis ( pessoas ( nome, apelido, foto_url ) )")
       .not("auth_user_id", "is", null);
     const todosComNome = ((func ?? []) as unknown as {
       auth_user_id: string;
       cargo: string | null;
       cargos: { nome: string } | null;
-      papeis: { pessoas: { nome: string; apelido: string | null } | null } | null;
+      papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null;
     }[]).map((f) => ({
       authUserId: f.auth_user_id,
       nome: f.papeis?.pessoas?.apelido || f.papeis?.pessoas?.nome || "Colega",
       cargo: f.cargos?.nome ?? f.cargo ?? null,
+      fotoUrl: f.papeis?.pessoas?.foto_url ?? null,
     }));
     const listaColegas = todosComNome.filter((c) => c.authUserId !== user.id);
     setColegas(listaColegas);
     setMeuNome(todosComNome.find((c) => c.authUserId === user.id)?.nome ?? "Você");
+    setMeuFotoUrl(todosComNome.find((c) => c.authUserId === user.id)?.fotoUrl ?? null);
 
     const canaisComInfo: CanalComInfo[] = await Promise.all(
       lista.map(async (c) => {
@@ -261,11 +282,13 @@ export default function ChatPage() {
 
         let nomeExibicao = c.nome ?? "";
         let subtitulo: string | null = null;
+        let fotoUrl: string | null = null;
         if (c.tipo === "dm") {
           const outroId = outroParticipantePorCanal.get(c.id);
           const colega = outroId ? listaColegas.find((cl) => cl.authUserId === outroId) : null;
           nomeExibicao = colega?.nome ?? "Colega";
           subtitulo = colega?.cargo ?? null;
+          fotoUrl = colega?.fotoUrl ?? null;
         } else if (c.tipo === "cliente") {
           nomeExibicao = (c.cliente_id && nomesClientes.get(c.cliente_id)) || c.nome || "Cliente";
           subtitulo = c.descricao ?? null;
@@ -277,6 +300,7 @@ export default function ChatPage() {
           ...c,
           nomeExibicao,
           subtitulo,
+          fotoUrl,
           ultimaMensagem: ultima?.texto ?? null,
           ultimaMensagemHora: ultima?.created_at ?? null,
           naoLidas: count ?? 0,
@@ -545,7 +569,7 @@ export default function ChatPage() {
                 }`}
               >
                 {c.tipo === "dm" ? (
-                  <Avatar nome={c.nomeExibicao} tamanho={32} />
+                  <Avatar nome={c.nomeExibicao} fotoUrl={c.fotoUrl} tamanho={32} />
                 ) : (
                   <span className="h-8 w-8 rounded-full bg-surface flex items-center justify-center text-sm shrink-0">
                     {c.tipo === "cliente" ? "🏢" : "#"}
@@ -581,7 +605,7 @@ export default function ChatPage() {
                 className="flex items-center gap-3 text-left"
               >
                 {canalAtivo.tipo === "dm" ? (
-                  <Avatar nome={canalAtivo.nomeExibicao} tamanho={34} />
+                  <Avatar nome={canalAtivo.nomeExibicao} fotoUrl={canalAtivo.fotoUrl} tamanho={34} />
                 ) : (
                   <span className="h-8 w-8 rounded-full bg-surface flex items-center justify-center text-sm shrink-0">
                     {canalAtivo.tipo === "cliente" ? "🏢" : "#"}
@@ -620,6 +644,7 @@ export default function ChatPage() {
                 const mesmoAutorSeguido = anterior && anterior.autor_id === m.autor_id && !novoDia;
                 const nomeAutor = nomeDoParticipante(m.autor_id);
                 const cargoAutor = m.autor_id === meuId ? null : cargoDoParticipante(m.autor_id);
+                const fotoAutor = fotoDoParticipante(m.autor_id);
                 const todosOsNomes = [meuNome, ...colegas.map((c) => c.nome)];
                 const original = m.resposta_a_id ? mensagens.find((x) => x.id === m.resposta_a_id) : null;
                 const reacoesDaMensagem = reacoes.filter((r) => r.mensagem_id === m.id);
@@ -647,7 +672,7 @@ export default function ChatPage() {
                         setSeletorReacaoAberto(null);
                       }}
                     >
-                      <div className="w-9 shrink-0">{!mesmoAutorSeguido && <Avatar nome={nomeAutor} />}</div>
+                      <div className="w-9 shrink-0">{!mesmoAutorSeguido && <Avatar nome={nomeAutor} fotoUrl={fotoAutor} />}</div>
                       <div className="flex-1 min-w-0">
                         {!mesmoAutorSeguido && (
                           <div className="flex items-baseline gap-2 mb-0.5">
@@ -954,7 +979,7 @@ function ConfigCanalModal({
 }) {
   const [nome, setNome] = useState(canal.nome ?? "");
   const [descricao, setDescricao] = useState(canal.descricao ?? "");
-  const [membros, setMembros] = useState<{ authUserId: string; nome: string; cargo: string | null }[]>([]);
+  const [membros, setMembros] = useState<{ authUserId: string; nome: string; cargo: string | null; fotoUrl: string | null }[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState(false);
@@ -965,9 +990,9 @@ function ConfigCanalModal({
     const ids = (data ?? []).map((p) => p.auth_user_id);
     setMembros(
       ids.map((id) => {
-        if (id === meuId) return { authUserId: id, nome: "Você", cargo: null };
+        if (id === meuId) return { authUserId: id, nome: "Você", cargo: null, fotoUrl: null };
         const colega = colegas.find((c) => c.authUserId === id);
-        return { authUserId: id, nome: colega?.nome ?? "Alguém", cargo: colega?.cargo ?? null };
+        return { authUserId: id, nome: colega?.nome ?? "Alguém", cargo: colega?.cargo ?? null, fotoUrl: colega?.fotoUrl ?? null };
       })
     );
   }, [canal.id, colegas, meuId]);
@@ -1060,7 +1085,7 @@ function ConfigCanalModal({
             {membros.map((m) => (
               <div key={m.authUserId} className="flex items-center justify-between px-4 py-2.5 border-b border-black/5 last:border-0">
                 <div className="flex items-center gap-2">
-                  <Avatar nome={m.nome} tamanho={28} />
+                  <Avatar nome={m.nome} fotoUrl={m.fotoUrl} tamanho={28} />
                   <div>
                     <p className="text-sm font-semibold text-ink">{m.nome}</p>
                     {m.cargo && <p className="text-xs text-ink/40">{m.cargo}</p>}

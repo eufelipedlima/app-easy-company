@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { normalizar } from "@/lib/normalizar";
+import { DndContext, useDraggable, useDroppable, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 
 interface Responsavel {
   id: string;
@@ -115,16 +116,23 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
   const router = useRouter();
 
   const [nomeCliente, setNomeCliente] = useState("");
+  const [pessoaIdCliente, setPessoaIdCliente] = useState<string | null>(null);
+  const [fotoCliente, setFotoCliente] = useState<string | null>(null);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const inputFotoRef = useRef<HTMLInputElement>(null);
   const [aba, setAba] = useState<Aba>("geral");
   const [loading, setLoading] = useState(true);
 
   const [tarefas, setTarefas] = useState<TarefaResumo[]>([]);
   const [responsaveisPorTarefa, setResponsaveisPorTarefa] = useState<Record<string, Responsavel[]>>({});
+  const [visualizacaoTarefas, setVisualizacaoTarefas] = useState<"lista" | "kanban">("lista");
   const [posts, setPosts] = useState<PostResumo[]>([]);
   const [responsaveisPorPost, setResponsaveisPorPost] = useState<Record<string, Responsavel[]>>({});
+  const [visualizacaoConteudo, setVisualizacaoConteudo] = useState<"lista" | "kanban">("lista");
   const [mostrarSubconteudos, setMostrarSubconteudos] = useState(false);
   const [docs, setDocs] = useState<DocResumo[]>([]);
   const [nomesPorAutor, setNomesPorAutor] = useState<Record<string, string>>({});
+  const [statusList, setStatusList] = useState<{ id: string; nome: string; cor: string; ordem: number }[]>([]);
 
   const [canalChatId, setCanalChatId] = useState<string | null>(null);
   const [mensagens, setMensagens] = useState<MensagemChat[]>([]);
@@ -140,9 +148,9 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       data: { user },
     } = await supabase.auth.getUser();
 
-    const [{ data: clienteData }, { data: tarefasData }, { data: postsData }, { data: docsData }, { data: canalData }, { data: funcData }] =
+    const [{ data: clienteData }, { data: tarefasData }, { data: postsData }, { data: docsData }, { data: canalData }, { data: funcData }, { data: statusData }] =
       await Promise.all([
-        supabase.from("clientes").select("papeis ( pessoas ( nome ) )").eq("id", id).maybeSingle(),
+        supabase.from("clientes").select("papeis ( pessoa_id, pessoas ( nome, foto_url ) )").eq("id", id).maybeSingle(),
         supabase
           .from("tarefas")
           .select("id, titulo, status_id, prazo, descricao, status_conteudo ( nome, cor )")
@@ -160,9 +168,16 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
         supabase.from("docs").select("id, titulo, emoji, conteudo, criado_por, created_at, doc_pai_id").eq("cliente_id", id).order("created_at", { ascending: false }),
         supabase.from("chat_canais").select("id").eq("tipo", "cliente").eq("cliente_id", id).maybeSingle(),
         supabase.from("funcionarios").select("id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )").not("auth_user_id", "is", null),
+        supabase.from("status_conteudo").select("id, nome, cor, ordem").order("ordem"),
       ]);
+    setStatusList(statusData ?? []);
 
-    const nomeC = (clienteData as unknown as { papeis: { pessoas: { nome: string } | null } | null } | null)?.papeis?.pessoas?.nome ?? "—";
+    const clienteInfo = clienteData as unknown as {
+      papeis: { pessoa_id: string; pessoas: { nome: string; foto_url: string | null } | null } | null;
+    } | null;
+    const nomeC = clienteInfo?.papeis?.pessoas?.nome ?? "—";
+    setPessoaIdCliente(clienteInfo?.papeis?.pessoa_id ?? null);
+    setFotoCliente(clienteInfo?.papeis?.pessoas?.foto_url ?? null);
     setNomeCliente(nomeC);
     if (user) {
       setMeuId(user.id);
@@ -306,6 +321,35 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
     };
   }, [canalChatId]);
 
+  async function enviarFotoCliente(e: React.ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = "";
+    if (!arquivo || !pessoaIdCliente) return;
+    setEnviandoFoto(true);
+    const supabase = createClient();
+    const extensao = arquivo.name.split(".").pop();
+    const caminho = `cliente-${pessoaIdCliente}-${Date.now()}.${extensao}`;
+    const { error } = await supabase.storage.from("perfis").upload(caminho, arquivo, { upsert: true });
+    if (!error) {
+      const { data } = supabase.storage.from("perfis").getPublicUrl(caminho);
+      await supabase.from("pessoas").update({ foto_url: data.publicUrl }).eq("id", pessoaIdCliente);
+      setFotoCliente(data.publicUrl);
+    }
+    setEnviandoFoto(false);
+  }
+
+  async function moverTarefaStatus(tarefaId: string, novoStatusId: string) {
+    setTarefas((atual) => atual.map((t) => (t.id === tarefaId ? { ...t, status_id: novoStatusId } : t)));
+    const supabase = createClient();
+    await supabase.from("tarefas").update({ status_id: novoStatusId }).eq("id", tarefaId);
+  }
+
+  async function moverPostStatus(postId: string, novoStatusId: string) {
+    setPosts((atual) => atual.map((p) => (p.id === postId ? { ...p, status_id: novoStatusId } : p)));
+    const supabase = createClient();
+    await supabase.from("posts_conteudo").update({ status_id: novoStatusId }).eq("id", postId);
+  }
+
   async function criarCanalCliente() {
     const supabase = createClient();
     const {
@@ -406,8 +450,24 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       </button>
 
       <div className="flex items-center gap-4 mb-6">
-        <div className={`h-14 w-14 rounded-full ${corAvatar(nomeCliente)} text-white flex items-center justify-center font-bold text-lg shrink-0`}>
-          {nomeCliente.slice(0, 2).toUpperCase()}
+        <div className="relative group/avatar">
+          {fotoCliente ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={fotoCliente} alt={nomeCliente} className="h-14 w-14 rounded-full object-cover" />
+          ) : (
+            <div className={`h-14 w-14 rounded-full ${corAvatar(nomeCliente)} text-white flex items-center justify-center font-bold text-lg shrink-0`}>
+              {nomeCliente.slice(0, 2).toUpperCase()}
+            </div>
+          )}
+          <button
+            onClick={() => inputFotoRef.current?.click()}
+            disabled={enviandoFoto}
+            className="absolute inset-0 rounded-full bg-black/50 text-white opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-[10px] font-semibold"
+            title="Trocar foto do cliente"
+          >
+            {enviandoFoto ? "..." : "Trocar"}
+          </button>
+          <input ref={inputFotoRef} type="file" accept="image/*" onChange={enviarFotoCliente} className="hidden" />
         </div>
         <h1 className="text-2xl font-extrabold text-ink">{nomeCliente}</h1>
       </div>
@@ -478,13 +538,45 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
 
       {aba === "tarefas" && (
         <div>
-          <div className="flex justify-end mb-3">
+          <div className="flex justify-between items-center mb-3">
+            <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+              <button
+                onClick={() => setVisualizacaoTarefas("lista")}
+                className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
+                  visualizacaoTarefas === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                }`}
+              >
+                Lista
+              </button>
+              <button
+                onClick={() => setVisualizacaoTarefas("kanban")}
+                className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
+                  visualizacaoTarefas === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                }`}
+              >
+                Kanban
+              </button>
+            </div>
             <button onClick={novaTarefaRapida} className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors">
               + Nova tarefa
             </button>
           </div>
           {tarefas.length === 0 ? (
             <p className="text-sm text-ink/50">Nenhuma tarefa ainda.</p>
+          ) : visualizacaoTarefas === "kanban" ? (
+            <MiniKanban
+              statusList={statusList}
+              itens={tarefas.map((t) => ({
+                id: t.id,
+                titulo: t.titulo,
+                status_id: t.status_id,
+                subtitulo: t.prazo ? formatarData(t.prazo) : "",
+                responsaveis: responsaveisPorTarefa[t.id] ?? [],
+                temDescricao: !!t.descricao,
+              }))}
+              onMover={moverTarefaStatus}
+              onAbrir={(itemId) => router.push(`/tarefas/${itemId}`)}
+            />
           ) : (
             <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
               <div className="grid grid-cols-[1fr_90px_100px_110px_100px] gap-2 px-5 py-2 text-[11px] font-bold uppercase tracking-wide text-ink/40 bg-surface/60">
@@ -514,22 +606,57 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
 
       {aba === "conteudo" && (
         <div>
-          <div className="flex justify-between items-center mb-3">
-            <label className="flex items-center gap-2 text-sm text-ink/60 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={mostrarSubconteudos}
-                onChange={(e) => setMostrarSubconteudos(e.target.checked)}
-                className="h-4 w-4 rounded accent-forest"
-              />
-              Mostrar sub-conteúdos
-            </label>
+          <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+                <button
+                  onClick={() => setVisualizacaoConteudo("lista")}
+                  className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
+                    visualizacaoConteudo === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                  }`}
+                >
+                  Lista
+                </button>
+                <button
+                  onClick={() => setVisualizacaoConteudo("kanban")}
+                  className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
+                    visualizacaoConteudo === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                  }`}
+                >
+                  Kanban
+                </button>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-ink/60 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={mostrarSubconteudos}
+                  onChange={(e) => setMostrarSubconteudos(e.target.checked)}
+                  className="h-4 w-4 rounded accent-forest"
+                />
+                Mostrar sub-conteúdos
+              </label>
+            </div>
             <button onClick={novoPostRapido} className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors">
               + Novo post
             </button>
           </div>
           {postsVisiveis.length === 0 ? (
             <p className="text-sm text-ink/50">Nenhum conteúdo ainda.</p>
+          ) : visualizacaoConteudo === "kanban" ? (
+            <MiniKanban
+              statusList={statusList}
+              itens={postsVisiveis.map((p) => ({
+                id: p.id,
+                titulo: p.titulo || "Sem título",
+                status_id: p.status_id,
+                subtitulo: formatarData(p.data_publicacao),
+                responsaveis: responsaveisPorPost[p.id] ?? [],
+                temDescricao: !!p.observacoes_internas,
+                prefixo: p.post_pai_id ? "↳" : undefined,
+              }))}
+              onMover={moverPostStatus}
+              onAbrir={(itemId) => router.push(`/conteudo/calendario/post/${itemId}`)}
+            />
           ) : (
             <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
               <div className="grid grid-cols-[1fr_90px_100px_110px_100px] gap-2 px-5 py-2 text-[11px] font-bold uppercase tracking-wide text-ink/40 bg-surface/60">
@@ -657,5 +784,110 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
         </div>
       )}
     </main>
+  );
+}
+
+interface ItemKanban {
+  id: string;
+  titulo: string;
+  status_id: string;
+  subtitulo: string;
+  responsaveis: Responsavel[];
+  temDescricao: boolean;
+  prefixo?: string;
+}
+
+function MiniKanban({
+  statusList,
+  itens,
+  onMover,
+  onAbrir,
+}: {
+  statusList: { id: string; nome: string; cor: string }[];
+  itens: ItemKanban[];
+  onMover: (itemId: string, novoStatusId: string) => void;
+  onAbrir: (itemId: string) => void;
+}) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (over && active.data.current?.statusAtual !== over.id) {
+      onMover(active.id as string, over.id as string);
+    }
+  }
+
+  return (
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <div className="flex gap-4 overflow-x-auto pb-4">
+        {statusList.map((coluna) => (
+          <MiniKanbanColuna
+            key={coluna.id}
+            coluna={coluna}
+            itens={itens.filter((i) => i.status_id === coluna.id)}
+            onAbrir={onAbrir}
+          />
+        ))}
+      </div>
+    </DndContext>
+  );
+}
+
+function MiniKanbanColuna({
+  coluna,
+  itens,
+  onAbrir,
+}: {
+  coluna: { id: string; nome: string; cor: string };
+  itens: ItemKanban[];
+  onAbrir: (itemId: string) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: coluna.id });
+  const cor = corDoStatus(coluna.cor);
+  return (
+    <div
+      ref={setNodeRef}
+      className={`w-64 shrink-0 rounded-3xl border-2 p-3 min-h-[50vh] transition-all duration-150 ${cor.colBg} ${
+        isOver ? `${cor.colBorder} scale-[1.02] shadow-lg` : "border-transparent"
+      }`}
+    >
+      <div className="flex items-center gap-2 mb-3 px-1">
+        <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${cor.dot}`} />
+        <p className="text-sm font-bold text-ink truncate">{coluna.nome}</p>
+        <span className={`ml-auto text-xs font-bold rounded-full px-2 py-0.5 shrink-0 ${cor.cor}`}>{itens.length}</span>
+      </div>
+      <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+        {itens.map((item) => (
+          <MiniKanbanCard key={item.id} item={item} statusAtual={coluna.id} onAbrir={onAbrir} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MiniKanbanCard({ item, statusAtual, onAbrir }: { item: ItemKanban; statusAtual: string; onAbrir: (itemId: string) => void }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: item.id, data: { statusAtual } });
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      onClick={() => !isDragging && onAbrir(item.id)}
+      className={`touch-none rounded-2xl bg-white p-3 border border-black/5 shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing transition-opacity ${
+        isDragging ? "opacity-30" : "opacity-100"
+      }`}
+    >
+      <p className="text-sm font-semibold text-ink truncate">
+        {item.prefixo && <span className="text-forest">{item.prefixo} </span>}
+        {item.titulo}
+      </p>
+      <div className="flex items-center justify-between mt-2">
+        <span className="flex items-center gap-1.5 text-ink/40">
+          {item.temDescricao && <span className="text-xs">☰</span>}
+          <span className="text-[11px]">{item.subtitulo}</span>
+        </span>
+        <AvatarStack pessoas={item.responsaveis} tamanho={18} />
+      </div>
+    </div>
   );
 }
