@@ -199,6 +199,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   const [mostrarSubconteudos, setMostrarSubconteudos] = useState(true);
   const [responsaveisPorPost, setResponsaveisPorPost] = useState<Record<string, Responsavel[]>>({});
   const [contagemSubconteudos, setContagemSubconteudos] = useState<Record<string, number>>({});
+  const [tituloPaiPorPost, setTituloPaiPorPost] = useState<Record<string, string>>({});
   const [loadingKanban, setLoadingKanban] = useState(false);
   const [mesKanban, setMesKanban] = useState(hoje.getMonth());
   const [anoKanban, setAnoKanban] = useState(hoje.getFullYear());
@@ -219,19 +220,23 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     return () => el.removeEventListener("wheel", onWheel);
   }, [visualizacao]);
 
-  const carregarExtras = useCallback(async (ids: string[]) => {
+  const carregarExtras = useCallback(async (lista: Post[]) => {
+    const ids = lista.map((p) => p.id);
     if (ids.length === 0) {
       setResponsaveisPorPost({});
       setContagemSubconteudos({});
+      setTituloPaiPorPost({});
       return;
     }
     const supabase = createClient();
-    const [{ data: respData }, { data: filhos }] = await Promise.all([
+    const idsPais = [...new Set(lista.map((p) => p.post_pai_id).filter((x): x is string => !!x))];
+    const [{ data: respData }, { data: filhos }, { data: paisData }] = await Promise.all([
       supabase
         .from("posts_conteudo_responsaveis")
         .select("post_id, funcionarios ( id, papeis ( pessoas ( nome, apelido, foto_url ) ) )")
         .in("post_id", ids),
       supabase.from("posts_conteudo").select("post_pai_id").in("post_pai_id", ids),
+      idsPais.length > 0 ? supabase.from("posts_conteudo").select("id, titulo").in("id", idsPais) : Promise.resolve({ data: [] }),
     ]);
     const mapa: Record<string, Responsavel[]> = {};
     for (const r of (respData ?? []) as unknown as {
@@ -250,6 +255,16 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
       if (f.post_pai_id) contFilhos[f.post_pai_id] = (contFilhos[f.post_pai_id] ?? 0) + 1;
     }
     setContagemSubconteudos(contFilhos);
+
+    const mapaPais: Record<string, string> = {};
+    for (const pai of (paisData ?? []) as { id: string; titulo: string | null }[]) {
+      mapaPais[pai.id] = pai.titulo || "Sem título";
+    }
+    const tituloPorPost: Record<string, string> = {};
+    for (const p of lista) {
+      if (p.post_pai_id && mapaPais[p.post_pai_id]) tituloPorPost[p.id] = mapaPais[p.post_pai_id];
+    }
+    setTituloPaiPorPost(tituloPorPost);
   }, []);
 
   const carregarKanban = useCallback(async () => {
@@ -273,7 +288,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     const lista = (data as unknown as Post[]) ?? [];
     setPostsKanban(lista);
     setLoadingKanban(false);
-    carregarExtras(lista.map((p) => p.id));
+    carregarExtras(lista);
   }, [clienteFiltroId, carregarExtras, mostrarSubconteudos]);
 
   async function moverCardStatus(postId: string, novoStatusId: string) {
@@ -425,7 +440,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     const lista = (data as unknown as Post[]) ?? [];
     setPosts(lista);
     setLoading(false);
-    carregarExtras(lista.map((p) => p.id));
+    carregarExtras(lista);
   }, [mes, ano, clienteFiltroId, carregarExtras, mostrarSubconteudos]);
 
   const router = useRouter();
@@ -561,6 +576,15 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
                 onMouseLeave={() => setPainelCamposAberto(false)}
               >
                 <FiltroClienteConteudo clientes={clientes} valorId={clienteFiltroId} onMudar={setClienteFiltroId} />
+                <label className="flex items-center gap-2 px-1 py-1.5 text-sm text-ink cursor-pointer border-b border-black/5 pb-3">
+                  <input
+                    type="checkbox"
+                    checked={mostrarSubconteudos}
+                    onChange={(e) => setMostrarSubconteudos(e.target.checked)}
+                    className="h-4 w-4 rounded accent-forest"
+                  />
+                  Mostrar sub-conteúdos
+                </label>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2 px-1">Campos visíveis</p>
                   {(
@@ -651,6 +675,9 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
                         onClick={() => router.push(`/conteudo/calendario/post/${p.id}`)}
                         className={`w-full text-left rounded-lg px-1.5 py-1 leading-tight ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
                       >
+                        {tituloPaiPorPost[p.id] && (
+                          <p className="text-[9px] text-forest font-semibold truncate">↳ {tituloPaiPorPost[p.id]}</p>
+                        )}
                         <p className="text-[11px] font-semibold truncate">
                           {mostrarTitulo ? p.titulo : p.hora_publicacao?.slice(0, 5) || "Post"}
                         </p>
@@ -741,6 +768,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
                 camposVisiveis={camposVisiveis}
                 responsaveisPorPost={responsaveisPorPost}
                 contagemSubconteudos={contagemSubconteudos}
+                tituloPaiPorPost={tituloPaiPorPost}
                 acoes={{
                   statusList,
                   funcionariosComAcesso,
@@ -1412,6 +1440,7 @@ function KanbanBoard({
   camposVisiveis,
   responsaveisPorPost,
   contagemSubconteudos,
+  tituloPaiPorPost,
   acoes,
 }: {
   statusList: StatusItem[];
@@ -1421,6 +1450,7 @@ function KanbanBoard({
   camposVisiveis: CamposVisiveis;
   responsaveisPorPost: Record<string, Responsavel[]>;
   contagemSubconteudos: Record<string, number>;
+  tituloPaiPorPost: Record<string, string>;
   acoes: AcoesPost;
 }) {
   const [ativoId, setAtivoId] = useState<string | null>(null);
@@ -1451,6 +1481,7 @@ function KanbanBoard({
             camposVisiveis={camposVisiveis}
             responsaveisPorPost={responsaveisPorPost}
             contagemSubconteudos={contagemSubconteudos}
+            tituloPaiPorPost={tituloPaiPorPost}
             acoes={acoes}
           />
         ))}
@@ -1477,6 +1508,7 @@ function KanbanColuna({
   camposVisiveis,
   responsaveisPorPost,
   contagemSubconteudos,
+  tituloPaiPorPost,
   acoes,
 }: {
   coluna: StatusItem;
@@ -1485,6 +1517,7 @@ function KanbanColuna({
   camposVisiveis: CamposVisiveis;
   responsaveisPorPost: Record<string, Responsavel[]>;
   contagemSubconteudos: Record<string, number>;
+  tituloPaiPorPost: Record<string, string>;
   acoes: AcoesPost;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: coluna.id });
@@ -1512,6 +1545,7 @@ function KanbanColuna({
             camposVisiveis={camposVisiveis}
             responsaveis={responsaveisPorPost[p.id] ?? []}
             qtdSubconteudos={contagemSubconteudos[p.id] ?? 0}
+            tituloPai={tituloPaiPorPost[p.id]}
             acoes={acoes}
           />
         ))}
@@ -1527,6 +1561,7 @@ function KanbanCardArrastavel({
   camposVisiveis,
   responsaveis,
   qtdSubconteudos,
+  tituloPai,
   acoes,
 }: {
   post: Post;
@@ -1535,6 +1570,7 @@ function KanbanCardArrastavel({
   camposVisiveis: CamposVisiveis;
   responsaveis: Responsavel[];
   qtdSubconteudos: number;
+  tituloPai?: string;
   acoes: AcoesPost;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -1550,7 +1586,7 @@ function KanbanCardArrastavel({
       onClick={() => !isDragging && onAbrirCard(post)}
       className={`touch-none transition-opacity ${isDragging ? "opacity-30" : "opacity-100"}`}
     >
-      <KanbanCardConteudo post={post} camposVisiveis={camposVisiveis} responsaveis={responsaveis} qtdSubconteudos={qtdSubconteudos} acoes={acoes} />
+      <KanbanCardConteudo post={post} camposVisiveis={camposVisiveis} responsaveis={responsaveis} qtdSubconteudos={qtdSubconteudos} tituloPai={tituloPai} acoes={acoes} />
     </div>
   );
 }
@@ -1820,6 +1856,7 @@ function KanbanCardConteudo({
   camposVisiveis,
   responsaveis = [],
   qtdSubconteudos = 0,
+  tituloPai,
   acoes,
   arrastando,
 }: {
@@ -1827,6 +1864,7 @@ function KanbanCardConteudo({
   camposVisiveis: CamposVisiveis;
   responsaveis?: Responsavel[];
   qtdSubconteudos?: number;
+  tituloPai?: string;
   acoes?: AcoesPost;
   arrastando?: boolean;
 }) {
@@ -1846,6 +1884,11 @@ function KanbanCardConteudo({
         <div className="absolute top-1.5 right-1.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
           <MenuAcoesPost post={post} acoes={acoes} />
         </div>
+      )}
+      {tituloPai && (
+        <p className="text-[10px] text-forest font-semibold truncate mb-0.5 flex items-center gap-1">
+          <span>↳</span> {tituloPai}
+        </p>
       )}
       <p className="text-sm font-semibold text-ink truncate pr-5">
         {mostrarTitulo ? post.titulo : nomeCliente(post) || "Sem título"}

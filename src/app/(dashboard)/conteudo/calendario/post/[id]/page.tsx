@@ -411,6 +411,35 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     registrarHistorico(`adicionou o sub-conteúdo "${novoSubConteudo.trim()}"`);
   }
 
+  async function salvarCampoSub(subId: string, campo: Record<string, string | null>) {
+    setSubConteudos((atual) => atual.map((s) => (s.id === subId ? { ...s, ...campo } : s)));
+    const supabase = createClient();
+    await supabase.from("posts_conteudo").update(campo).eq("id", subId);
+  }
+
+  async function toggleResponsavelSub(subId: string, funcionarioId: string) {
+    const supabase = createClient();
+    const atuais = responsaveisPorSub[subId] ?? [];
+    const jaTem = atuais.some((r) => r.id === funcionarioId);
+    if (jaTem) {
+      setResponsaveisPorSub((atual) => ({ ...atual, [subId]: atuais.filter((r) => r.id !== funcionarioId) }));
+      await supabase.from("posts_conteudo_responsaveis").delete().eq("post_id", subId).eq("funcionario_id", funcionarioId);
+    } else {
+      const pessoa = funcionariosComAcesso.find((f) => f.id === funcionarioId);
+      if (pessoa) setResponsaveisPorSub((atual) => ({ ...atual, [subId]: [...atuais, pessoa] }));
+      await supabase.from("posts_conteudo_responsaveis").insert({ post_id: subId, funcionario_id: funcionarioId });
+      if (pessoa?.authUserId) {
+        await supabase.from("notificacoes").insert({
+          destinatario_id: pessoa.authUserId,
+          tipo: "atribuicao_conteudo",
+          titulo: "Você foi atribuído a um sub-conteúdo",
+          descricao: subConteudos.find((s) => s.id === subId)?.titulo ?? null,
+          link: `/conteudo/calendario/post/${subId}`,
+        });
+      }
+    }
+  }
+
   function nomeDoAutor(authUserId: string) {
     return authUserId === meuId ? meuNome : colegas.find((c) => c.id === authUserId)?.nome ?? "Alguém";
   }
@@ -704,27 +733,20 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
               </div>
             )}
             <div className="space-y-1.5 mb-2">
-              {subConteudos.map((s) => {
-                const statusSub = statusList.find((st) => st.id === s.status_id);
-                const respSub = responsaveisPorSub[s.id] ?? [];
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => router.push(`/conteudo/calendario/post/${s.id}`)}
-                    className="w-full grid grid-cols-[1fr_110px_90px_110px] items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors text-left"
-                  >
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
-                      <span className="text-sm text-ink truncate">{s.titulo || "Sem título"}</span>
-                    </span>
-                    <span>{respSub.length > 0 ? <AvatarStack pessoas={respSub} tamanho={20} /> : <span className="text-xs text-ink/30">—</span>}</span>
-                    <span className="text-xs text-ink/40">{formatarDataCurta(s.data_publicacao)}</span>
-                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
-                      {statusSub?.nome ?? "—"}
-                    </span>
-                  </button>
-                );
-              })}
+              {subConteudos.map((s) => (
+                <LinhaSubConteudoEditavel
+                  key={s.id}
+                  sub={s}
+                  statusList={statusList}
+                  funcionariosComAcesso={funcionariosComAcesso}
+                  responsaveis={responsaveisPorSub[s.id] ?? []}
+                  onAbrir={() => router.push(`/conteudo/calendario/post/${s.id}`)}
+                  onSalvarNome={(novoNome) => salvarCampoSub(s.id, { titulo: novoNome })}
+                  onSalvarData={(novaData) => salvarCampoSub(s.id, { data_publicacao: novaData })}
+                  onSalvarStatus={(novoStatusId) => salvarCampoSub(s.id, { status_id: novoStatusId })}
+                  onToggleResponsavel={(funcionarioId) => toggleResponsavelSub(s.id, funcionarioId)}
+                />
+              ))}
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -862,5 +884,149 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
         )}
       </div>
     </main>
+  );
+}
+
+function LinhaSubConteudoEditavel({
+  sub,
+  statusList,
+  funcionariosComAcesso,
+  responsaveis,
+  onAbrir,
+  onSalvarNome,
+  onSalvarData,
+  onSalvarStatus,
+  onToggleResponsavel,
+}: {
+  sub: SubConteudo;
+  statusList: StatusItem[];
+  funcionariosComAcesso: Responsavel[];
+  responsaveis: Responsavel[];
+  onAbrir: () => void;
+  onSalvarNome: (v: string) => void;
+  onSalvarData: (v: string) => void;
+  onSalvarStatus: (v: string) => void;
+  onToggleResponsavel: (funcionarioId: string) => void;
+}) {
+  const [campoEditando, setCampoEditando] = useState<null | "nome" | "responsavel" | "data" | "status">(null);
+  const [nomeTemp, setNomeTemp] = useState(sub.titulo ?? "");
+  const statusSub = statusList.find((st) => st.id === sub.status_id);
+
+  return (
+    <div
+      onClick={() => campoEditando === null && onAbrir()}
+      className="group/row w-full grid grid-cols-[1fr_110px_90px_110px] items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors cursor-pointer"
+    >
+      <div className="flex items-center gap-2 min-w-0" onClick={(e) => e.stopPropagation()}>
+        <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
+        {campoEditando === "nome" ? (
+          <input
+            autoFocus
+            value={nomeTemp}
+            onChange={(e) => setNomeTemp(e.target.value)}
+            onBlur={() => {
+              if (nomeTemp.trim()) onSalvarNome(nomeTemp.trim());
+              setCampoEditando(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+              if (e.key === "Escape") setCampoEditando(null);
+            }}
+            className="input py-1 text-sm flex-1"
+          />
+        ) : (
+          <>
+            <span className="text-sm text-ink truncate flex-1">{sub.titulo || "Sem título"}</span>
+            <button
+              onClick={() => setCampoEditando("nome")}
+              className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs shrink-0"
+              title="Editar nome"
+            >
+              ✏️
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="relative" onClick={(e) => e.stopPropagation()}>
+        {campoEditando === "responsavel" ? (
+          <div
+            className="absolute z-30 top-0 left-0 w-56 rounded-2xl bg-white border border-black/10 shadow-lg p-2.5"
+            onMouseLeave={() => setCampoEditando(null)}
+          >
+            <div className="grid grid-cols-5 gap-2">
+              {funcionariosComAcesso.map((f) => {
+                const marcado = responsaveis.some((r) => r.id === f.id);
+                return (
+                  <button key={f.id} onClick={() => onToggleResponsavel(f.id)} className="relative" title={f.nome}>
+                    <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={26} />
+                    {marcado && (
+                      <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-forest text-white text-[8px] flex items-center justify-center ring-2 ring-white">
+                        ✓
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setCampoEditando("responsavel")} className="flex items-center gap-1">
+            {responsaveis.length > 0 ? <AvatarStack pessoas={responsaveis} tamanho={20} /> : <span className="text-xs text-ink/30">—</span>}
+            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs">✏️</span>
+          </button>
+        )}
+      </div>
+
+      <div onClick={(e) => e.stopPropagation()}>
+        {campoEditando === "data" ? (
+          <input
+            autoFocus
+            type="date"
+            defaultValue={sub.data_publicacao}
+            onBlur={(e) => {
+              if (e.target.value) onSalvarData(e.target.value);
+              setCampoEditando(null);
+            }}
+            className="input py-1 text-xs"
+          />
+        ) : (
+          <button onClick={() => setCampoEditando("data")} className="flex items-center gap-1">
+            <span className="text-xs text-ink/50">{formatarDataCurta(sub.data_publicacao)}</span>
+            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs">✏️</span>
+          </button>
+        )}
+      </div>
+
+      <div className="relative" onClick={(e) => e.stopPropagation()}>
+        {campoEditando === "status" ? (
+          <div
+            className="absolute z-30 top-0 left-0 w-48 rounded-2xl bg-white border border-black/10 shadow-lg p-1.5"
+            onMouseLeave={() => setCampoEditando(null)}
+          >
+            {statusList.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => {
+                  onSalvarStatus(s.id);
+                  setCampoEditando(null);
+                }}
+                className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-xl text-sm font-medium hover:bg-surface"
+              >
+                <span className={`h-2 w-2 rounded-full ${corDoStatus(s.cor).dot}`} />
+                {s.nome}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <button onClick={() => setCampoEditando("status")} className="flex items-center gap-1">
+            <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
+              {statusSub?.nome ?? "—"}
+            </span>
+            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs">✏️</span>
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
