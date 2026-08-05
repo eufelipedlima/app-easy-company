@@ -16,6 +16,12 @@ import {
 const SECOES = [
   { href: "/configuracoes/cargos", label: "Cargos", desc: "Cargos usados no cadastro de funcionários", icon: <Briefcase size={18} /> },
   {
+    href: "/configuracoes/calendario-conteudo",
+    label: "Calendário de Conteúdo",
+    desc: "Como o Calendário e o Kanban exibem os posts",
+    icon: <Calendar size={18} />,
+  },
+  {
     href: "/configuracoes/motivos-encerramento",
     label: "Motivos de encerramento",
     desc: "Usados ao encerrar um contrato recorrente",

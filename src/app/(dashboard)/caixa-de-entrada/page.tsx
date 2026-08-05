@@ -16,7 +16,13 @@ interface Notificacao {
 
 const ICONE_POR_TIPO: Record<string, string> = {
   mencao_chat: "💬",
+  mencao_tarefa: "💬",
+  mencao_conteudo: "💬",
   comentario_cliente: "📅",
+  atribuicao_tarefa: "👤",
+  atribuicao_conteudo: "👤",
+  mudanca_tarefa: "✏️",
+  mudanca_conteudo: "✏️",
 };
 
 function formatarQuando(iso: string) {

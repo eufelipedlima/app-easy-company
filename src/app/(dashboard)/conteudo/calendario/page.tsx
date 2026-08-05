@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import {
   DndContext,
@@ -45,6 +47,7 @@ interface Post {
   status_id: string;
   responsavel_id: string | null;
   post_pai_id: string | null;
+  arquivado: boolean;
   observacoes_internas: string | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
   funcionarios: { papeis: { pessoas: { nome: string } | null } | null } | null;
@@ -56,6 +59,7 @@ interface Responsavel {
   id: string;
   nome: string;
   fotoUrl: string | null;
+  authUserId?: string | null;
 }
 
 interface CamposVisiveis {
@@ -168,6 +172,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   const [ano, setAno] = useState(hoje.getFullYear());
   const [clienteFiltroId, setClienteFiltroId] = useState("");
   const [clientes, setClientes] = useState<ClienteOpcao[]>([]);
+  const [funcionariosComAcesso, setFuncionariosComAcesso] = useState<Responsavel[]>([]);
   const [statusList, setStatusList] = useState<StatusItem[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,6 +196,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
   const [visualizacao, setVisualizacao] = useState<"calendario" | "kanban">(viewInicial);
   const [postsKanban, setPostsKanban] = useState<Post[]>([]);
+  const [mostrarSubconteudos, setMostrarSubconteudos] = useState(true);
   const [responsaveisPorPost, setResponsaveisPorPost] = useState<Record<string, Responsavel[]>>({});
   const [contagemSubconteudos, setContagemSubconteudos] = useState<Record<string, number>>({});
   const [loadingKanban, setLoadingKanban] = useState(false);
@@ -252,14 +258,15 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     let query = supabase
       .from("posts_conteudo")
       .select(
-        `id, cliente_id, titulo, data_publicacao, data_inicio, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, post_pai_id, observacoes_internas,
+        `id, cliente_id, titulo, data_publicacao, data_inicio, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, post_pai_id, arquivado, observacoes_internas,
          clientes ( papeis ( pessoas ( nome ) ) ),
          funcionarios!responsavel_id ( papeis ( pessoas ( nome ) ) ),
          posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
          status_conteudo ( nome, cor )`
       )
-      .is("post_pai_id", null)
+      .eq("arquivado", false)
       .order("data_publicacao");
+    if (!mostrarSubconteudos) query = query.is("post_pai_id", null);
     if (clienteFiltroId) query = query.eq("cliente_id", clienteFiltroId);
     const { data, error } = await query;
     if (error) console.error("Erro ao carregar kanban:", error);
@@ -267,13 +274,113 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     setPostsKanban(lista);
     setLoadingKanban(false);
     carregarExtras(lista.map((p) => p.id));
-  }, [clienteFiltroId, carregarExtras]);
+  }, [clienteFiltroId, carregarExtras, mostrarSubconteudos]);
 
   async function moverCardStatus(postId: string, novoStatusId: string) {
     setPostsKanban((atual) => atual.map((p) => (p.id === postId ? { ...p, status_id: novoStatusId } : p)));
     const supabase = createClient();
     await supabase.from("posts_conteudo").update({ status_id: novoStatusId }).eq("id", postId);
     carregarKanban();
+  }
+
+  const carregarFuncionariosComAcesso = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("funcionarios")
+      .select("id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )")
+      .not("auth_user_id", "is", null);
+    const lista = ((data ?? []) as unknown as {
+      id: string;
+      auth_user_id: string | null;
+      papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null;
+    }[])
+      .map((f) => ({
+        id: f.id,
+        nome: f.papeis?.pessoas?.apelido || f.papeis?.pessoas?.nome || "Colega",
+        fotoUrl: f.papeis?.pessoas?.foto_url ?? null,
+        authUserId: f.auth_user_id,
+      }))
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+    setFuncionariosComAcesso(lista);
+  }, []);
+
+  function recarregarTudo() {
+    carregarPosts();
+    carregarKanban();
+  }
+
+  async function renomearPost(post: Post) {
+    const novoTitulo = window.prompt("Novo título:", post.titulo ?? "");
+    if (novoTitulo === null || novoTitulo.trim() === (post.titulo ?? "")) return;
+    const supabase = createClient();
+    await supabase.from("posts_conteudo").update({ titulo: novoTitulo.trim() || null }).eq("id", post.id);
+    recarregarTudo();
+  }
+
+  async function duplicarPost(post: Post) {
+    const supabase = createClient();
+    const { data: novo } = await supabase
+      .from("posts_conteudo")
+      .insert({
+        titulo: post.titulo ? `${post.titulo} (cópia)` : null,
+        cliente_id: post.cliente_id,
+        data_publicacao: post.data_publicacao,
+        data_inicio: post.data_inicio,
+        hora_publicacao: post.hora_publicacao,
+        legenda: post.legenda,
+        objetivo: post.objetivo,
+        formato: post.formato,
+        status_id: post.status_id,
+        observacoes_internas: post.observacoes_internas,
+      })
+      .select("id")
+      .single();
+    const respAtuais = responsaveisPorPost[post.id] ?? [];
+    if (novo && respAtuais.length > 0) {
+      await supabase.from("posts_conteudo_responsaveis").insert(respAtuais.map((r) => ({ post_id: novo.id, funcionario_id: r.id })));
+    }
+    recarregarTudo();
+  }
+
+  async function excluirPostMenu(post: Post) {
+    if (!window.confirm(`Excluir "${post.titulo || "esse post"}"? Isso também exclui os sub-conteúdos dele.`)) return;
+    const supabase = createClient();
+    await supabase.from("posts_conteudo").delete().eq("id", post.id);
+    recarregarTudo();
+  }
+
+  async function arquivarPostMenu(post: Post) {
+    const supabase = createClient();
+    await supabase.from("posts_conteudo").update({ arquivado: true }).eq("id", post.id);
+    recarregarTudo();
+  }
+
+  async function atribuirPostMenu(post: Post, funcionarioId: string) {
+    const supabase = createClient();
+    const jaTem = (responsaveisPorPost[post.id] ?? []).some((r) => r.id === funcionarioId);
+    if (jaTem) {
+      setResponsaveisPorPost((atual) => ({ ...atual, [post.id]: (atual[post.id] ?? []).filter((r) => r.id !== funcionarioId) }));
+      await supabase.from("posts_conteudo_responsaveis").delete().eq("post_id", post.id).eq("funcionario_id", funcionarioId);
+    } else {
+      const pessoa = funcionariosComAcesso.find((f) => f.id === funcionarioId);
+      if (pessoa) {
+        setResponsaveisPorPost((atual) => ({ ...atual, [post.id]: [...(atual[post.id] ?? []), pessoa] }));
+        if (pessoa.authUserId) {
+          await supabase.from("notificacoes").insert({
+            destinatario_id: pessoa.authUserId,
+            tipo: "atribuicao_conteudo",
+            titulo: "Você foi atribuído a um conteúdo",
+            descricao: post.titulo,
+            link: `/conteudo/calendario/post/${post.id}`,
+          });
+        }
+      }
+      await supabase.from("posts_conteudo_responsaveis").insert({ post_id: post.id, funcionario_id: funcionarioId });
+    }
+  }
+
+  function copiarLinkPost(post: Post) {
+    navigator.clipboard.writeText(`${window.location.origin}/conteudo/calendario/post/${post.id}`);
   }
 
   const carregarClientes = useCallback(async () => {
@@ -297,16 +404,17 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     let query = supabase
       .from("posts_conteudo")
       .select(
-        `id, cliente_id, titulo, data_publicacao, data_inicio, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, post_pai_id, observacoes_internas,
+        `id, cliente_id, titulo, data_publicacao, data_inicio, hora_publicacao, legenda, objetivo, formato, status_id, responsavel_id, post_pai_id, arquivado, observacoes_internas,
          clientes ( papeis ( pessoas ( nome ) ) ),
          funcionarios!responsavel_id ( papeis ( pessoas ( nome ) ) ),
          posts_conteudo_midias ( id, arquivo_path, arquivo_nome, arquivo_tipo, ordem ),
          status_conteudo ( nome, cor )`
       )
-      .is("post_pai_id", null)
       .gte("data_publicacao", inicio)
       .lte("data_publicacao", fim)
+      .eq("arquivado", false)
       .order("data_publicacao");
+    if (!mostrarSubconteudos) query = query.is("post_pai_id", null);
     if (clienteFiltroId) query = query.eq("cliente_id", clienteFiltroId);
 
     const { data, error } = await query;
@@ -318,14 +426,21 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     setPosts(lista);
     setLoading(false);
     carregarExtras(lista.map((p) => p.id));
-  }, [mes, ano, clienteFiltroId, carregarExtras]);
+  }, [mes, ano, clienteFiltroId, carregarExtras, mostrarSubconteudos]);
 
   const router = useRouter();
 
   useEffect(() => {
     carregarClientes();
     carregarStatus();
-  }, [carregarClientes, carregarStatus]);
+    carregarFuncionariosComAcesso();
+    async function carregarConfig() {
+      const supabase = createClient();
+      const { data } = await supabase.from("configuracoes_conteudo").select("mostrar_subconteudos_no_calendario").eq("id", true).maybeSingle();
+      if (data) setMostrarSubconteudos(data.mostrar_subconteudos_no_calendario);
+    }
+    carregarConfig();
+  }, [carregarClientes, carregarStatus, carregarFuncionariosComAcesso]);
 
   useEffect(() => {
     carregarPosts();
@@ -358,66 +473,9 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-extrabold text-ink mb-1">Calendário de Conteúdo</h1>
-          <p className="text-sm text-ink/60">Planejamento e produção das postagens dos clientes.</p>
-        </div>
-
-        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner shrink-0">
-          <button
-            onClick={() => router.push("/conteudo/calendario")}
-            className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
-              visualizacao === "calendario" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
-            }`}
-          >
-            Calendário
-          </button>
-          <button
-            onClick={() => router.push("/conteudo/calendario/kanban")}
-            className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
-              visualizacao === "kanban" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
-            }`}
-          >
-            Kanban
-          </button>
-        </div>
-
-        <div className="relative shrink-0">
-          <button
-            onClick={() => setPainelCamposAberto((v) => !v)}
-            className="rounded-full h-10 w-10 flex items-center justify-center border-2 border-black/10 text-ink/50 hover:text-ink hover:bg-surface transition-colors"
-            title="Escolher quais campos aparecem nos cards"
-          >
-            ⚙
-          </button>
-          {painelCamposAberto && (
-            <div
-              className="absolute z-20 right-0 mt-1 w-60 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
-              onMouseLeave={() => setPainelCamposAberto(false)}
-            >
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2 px-1">Campos visíveis</p>
-              {(
-                [
-                  ["titulo", "Título"],
-                  ["cliente", "Cliente"],
-                  ["formato", "Formato"],
-                  ["responsavel", "Responsável"],
-                ] as [keyof CamposVisiveis, string][]
-              ).map(([campo, label]) => (
-                <label key={campo} className="flex items-center gap-2 px-1 py-1.5 text-sm text-ink cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={camposVisiveis[campo]}
-                    onChange={() => alternarCampoVisivel(campo)}
-                    className="h-4 w-4 rounded accent-forest"
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-extrabold text-ink mb-1">Calendário de Conteúdo</h1>
+        <p className="text-sm text-ink/60">Planejamento e produção das postagens dos clientes.</p>
       </div>
 
       {erroCarregamento && (
@@ -428,7 +486,26 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner shrink-0">
+            <button
+              onClick={() => router.push("/conteudo/calendario")}
+              className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
+                visualizacao === "calendario" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
+              }`}
+            >
+              Calendário
+            </button>
+            <button
+              onClick={() => router.push("/conteudo/calendario/kanban")}
+              className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
+                visualizacao === "kanban" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
+              }`}
+            >
+              Kanban
+            </button>
+          </div>
+
           {visualizacao === "calendario" && (
             <>
               <button
@@ -460,7 +537,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
               >
                 →
               </button>
-              <h2 className="text-lg font-bold text-ink ml-2">
+              <h2 className="text-lg font-bold text-ink">
                 {MESES[mes]} {ano}
               </h2>
             </>
@@ -468,18 +545,46 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
         </div>
 
         <div className="flex items-center gap-2">
-          <select
-            value={clienteFiltroId}
-            onChange={(e) => setClienteFiltroId(e.target.value)}
-            className="input py-2 !w-auto"
-          >
-            <option value="">Todos os clientes</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
-            ))}
-          </select>
+          <div className="relative shrink-0">
+            <button
+              onClick={() => setPainelCamposAberto((v) => !v)}
+              className={`rounded-full h-10 w-10 flex items-center justify-center border-2 transition-colors ${
+                clienteFiltroId ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/50 hover:text-ink hover:bg-surface"
+              }`}
+              title="Filtrar e escolher quais campos aparecem nos cards"
+            >
+              ⚙
+            </button>
+            {painelCamposAberto && (
+              <div
+                className="absolute z-20 right-0 mt-1 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3 space-y-4"
+                onMouseLeave={() => setPainelCamposAberto(false)}
+              >
+                <FiltroClienteConteudo clientes={clientes} valorId={clienteFiltroId} onMudar={setClienteFiltroId} />
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2 px-1">Campos visíveis</p>
+                  {(
+                    [
+                      ["titulo", "Título"],
+                      ["cliente", "Cliente"],
+                      ["formato", "Formato"],
+                      ["responsavel", "Responsável"],
+                    ] as [keyof CamposVisiveis, string][]
+                  ).map(([campo, label]) => (
+                    <label key={campo} className="flex items-center gap-2 px-1 py-1.5 text-sm text-ink cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={camposVisiveis[campo]}
+                        onChange={() => alternarCampoVisivel(campo)}
+                        className="h-4 w-4 rounded accent-forest"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setLinkPublicoAberto(true)}
             className="rounded-full border-2 border-ink/15 text-ink px-4 py-2 text-sm font-semibold hover:bg-surface transition-colors"
@@ -513,7 +618,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
             return (
               <div
                 key={iso}
-                className={`min-h-[110px] border-b border-r border-black/5 p-2 ${doMes ? "bg-white" : "bg-surface/40"}`}
+                className={`min-h-[150px] border-b border-r border-black/5 p-2 ${doMes ? "bg-white" : "bg-surface/40"}`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span
@@ -544,21 +649,19 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
                       <button
                         key={p.id}
                         onClick={() => router.push(`/conteudo/calendario/post/${p.id}`)}
-                        className={`w-full text-left rounded-lg px-1.5 py-1 leading-tight flex items-start gap-1 ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
+                        className={`w-full text-left rounded-lg px-1.5 py-1 leading-tight ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
                       >
-                        <span className="flex-1 min-w-0">
-                          <p className="text-[11px] font-semibold truncate">
-                            {mostrarTitulo ? p.titulo : p.hora_publicacao?.slice(0, 5) || "Post"}
-                          </p>
-                          {(mostrarCliente || mostrarFormato) && (
-                            <p className="text-[10px] opacity-70 truncate">
-                              {[mostrarCliente ? nomeCliente(p) : null, mostrarFormato ? FORMATO_CONFIG[p.formato!]?.label : null]
-                                .filter(Boolean)
-                                .join(" · ")}
-                            </p>
-                          )}
-                        </span>
-                        {mostrarResponsavel && <AvatarStackPost pessoas={respDoPost} tamanho={16} />}
+                        <p className="text-[11px] font-semibold truncate">
+                          {mostrarTitulo ? p.titulo : p.hora_publicacao?.slice(0, 5) || "Post"}
+                        </p>
+                        {mostrarCliente && <p className="text-[10px] opacity-70 truncate">{nomeCliente(p)}</p>}
+                        {mostrarFormato && <p className="text-[10px] opacity-70 truncate">{FORMATO_CONFIG[p.formato!]?.label}</p>}
+                        {(p.observacoes_internas || mostrarResponsavel) && (
+                          <div className="flex items-center justify-between mt-0.5">
+                            <span className="text-[10px] opacity-60">{p.observacoes_internas ? "☰" : ""}</span>
+                            {mostrarResponsavel && <AvatarStackPost pessoas={respDoPost} tamanho={14} />}
+                          </div>
+                        )}
                       </button>
                     );
                   })}
@@ -638,6 +741,18 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
                 camposVisiveis={camposVisiveis}
                 responsaveisPorPost={responsaveisPorPost}
                 contagemSubconteudos={contagemSubconteudos}
+                acoes={{
+                  statusList,
+                  funcionariosComAcesso,
+                  responsaveisPorPost,
+                  onRenomear: renomearPost,
+                  onMover: moverCardStatus,
+                  onDuplicar: duplicarPost,
+                  onExcluir: excluirPostMenu,
+                  onArquivar: arquivarPostMenu,
+                  onAtribuir: atribuirPostMenu,
+                  onCopiarLink: copiarLinkPost,
+                }}
               />
             )}
           </div>
@@ -1297,6 +1412,7 @@ function KanbanBoard({
   camposVisiveis,
   responsaveisPorPost,
   contagemSubconteudos,
+  acoes,
 }: {
   statusList: StatusItem[];
   posts: Post[];
@@ -1305,6 +1421,7 @@ function KanbanBoard({
   camposVisiveis: CamposVisiveis;
   responsaveisPorPost: Record<string, Responsavel[]>;
   contagemSubconteudos: Record<string, number>;
+  acoes: AcoesPost;
 }) {
   const [ativoId, setAtivoId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -1334,6 +1451,7 @@ function KanbanBoard({
             camposVisiveis={camposVisiveis}
             responsaveisPorPost={responsaveisPorPost}
             contagemSubconteudos={contagemSubconteudos}
+            acoes={acoes}
           />
         ))}
       </div>
@@ -1359,6 +1477,7 @@ function KanbanColuna({
   camposVisiveis,
   responsaveisPorPost,
   contagemSubconteudos,
+  acoes,
 }: {
   coluna: StatusItem;
   cards: Post[];
@@ -1366,6 +1485,7 @@ function KanbanColuna({
   camposVisiveis: CamposVisiveis;
   responsaveisPorPost: Record<string, Responsavel[]>;
   contagemSubconteudos: Record<string, number>;
+  acoes: AcoesPost;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: coluna.id });
   const cor = corDoStatus(coluna.cor);
@@ -1392,6 +1512,7 @@ function KanbanColuna({
             camposVisiveis={camposVisiveis}
             responsaveis={responsaveisPorPost[p.id] ?? []}
             qtdSubconteudos={contagemSubconteudos[p.id] ?? 0}
+            acoes={acoes}
           />
         ))}
       </div>
@@ -1406,6 +1527,7 @@ function KanbanCardArrastavel({
   camposVisiveis,
   responsaveis,
   qtdSubconteudos,
+  acoes,
 }: {
   post: Post;
   statusAtual: string;
@@ -1413,6 +1535,7 @@ function KanbanCardArrastavel({
   camposVisiveis: CamposVisiveis;
   responsaveis: Responsavel[];
   qtdSubconteudos: number;
+  acoes: AcoesPost;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: post.id,
@@ -1427,7 +1550,7 @@ function KanbanCardArrastavel({
       onClick={() => !isDragging && onAbrirCard(post)}
       className={`touch-none transition-opacity ${isDragging ? "opacity-30" : "opacity-100"}`}
     >
-      <KanbanCardConteudo post={post} camposVisiveis={camposVisiveis} responsaveis={responsaveis} qtdSubconteudos={qtdSubconteudos} />
+      <KanbanCardConteudo post={post} camposVisiveis={camposVisiveis} responsaveis={responsaveis} qtdSubconteudos={qtdSubconteudos} acoes={acoes} />
     </div>
   );
 }
@@ -1480,17 +1603,231 @@ function AvatarStackPost({ pessoas, tamanho = 20 }: { pessoas: Responsavel[]; ta
   );
 }
 
+interface AcoesPost {
+  statusList: StatusItem[];
+  funcionariosComAcesso: Responsavel[];
+  responsaveisPorPost: Record<string, Responsavel[]>;
+  onRenomear: (p: Post) => void;
+  onMover: (postId: string, novoStatusId: string) => void;
+  onDuplicar: (p: Post) => void;
+  onExcluir: (p: Post) => void;
+  onArquivar: (p: Post) => void;
+  onAtribuir: (p: Post, funcionarioId: string) => void;
+  onCopiarLink: (p: Post) => void;
+}
+
+function FiltroClienteConteudo({
+  clientes,
+  valorId,
+  onMudar,
+}: {
+  clientes: ClienteOpcao[];
+  valorId: string;
+  onMudar: (id: string) => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const [aberto, setAberto] = useState(false);
+  const selecionado = clientes.find((c) => c.id === valorId);
+  const sugestoes = clientes.filter((c) => normalizar(c.nome).includes(normalizar(busca)));
+
+  return (
+    <div>
+      <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2 px-1">Cliente</p>
+      {selecionado ? (
+        <div className="flex items-center justify-between rounded-xl bg-mint px-3 py-2">
+          <span className="text-sm font-semibold text-forest truncate">{selecionado.nome}</span>
+          <button onClick={() => onMudar("")} className="text-forest hover:text-ink text-xs font-bold shrink-0 ml-2">
+            ✕
+          </button>
+        </div>
+      ) : (
+        <div className="relative">
+          <input
+            value={busca}
+            onChange={(e) => {
+              setBusca(e.target.value);
+              setAberto(true);
+            }}
+            onFocus={() => setAberto(true)}
+            className="input py-1.5 text-sm"
+            placeholder="Todos os clientes — digite pra filtrar..."
+          />
+          {aberto && busca && (
+            <div className="absolute z-30 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-48 overflow-auto">
+              {sugestoes.length > 0 ? (
+                sugestoes.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => {
+                      onMudar(c.id);
+                      setAberto(false);
+                      setBusca("");
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-surface"
+                  >
+                    {c.nome}
+                  </button>
+                ))
+              ) : (
+                <p className="px-3 py-2 text-sm text-ink/40">Nenhum cliente encontrado.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuAcoesPost({ post, acoes }: { post: Post; acoes: AcoesPost }) {
+  const [aberto, setAberto] = useState(false);
+  const [submenu, setSubmenu] = useState<"mover" | "atribuir" | null>(null);
+  const [posicao, setPosicao] = useState({ top: 0, left: 0 });
+  const botaoRef = useRef<HTMLButtonElement>(null);
+  const responsaveisAtuais = acoes.responsaveisPorPost[post.id] ?? [];
+
+  function abrir() {
+    const rect = botaoRef.current?.getBoundingClientRect();
+    if (rect) setPosicao({ top: rect.bottom + 4, left: Math.min(rect.left, window.innerWidth - 210) });
+    setAberto(true);
+  }
+  function fechar() {
+    setAberto(false);
+    setSubmenu(null);
+  }
+
+  return (
+    <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+      <button
+        ref={botaoRef}
+        onClick={() => (aberto ? fechar() : abrir())}
+        className="h-6 w-6 rounded-full bg-white/90 hover:bg-surface flex items-center justify-center text-ink/50 shadow-sm text-xs font-bold"
+      >
+        ⋯
+      </button>
+      {aberto &&
+        createPortal(
+          <>
+            <div className="fixed inset-0 z-40" onClick={fechar} />
+            <div className="fixed z-50 w-52 rounded-xl bg-white border border-black/10 shadow-lg py-1" style={{ top: posicao.top, left: posicao.left }}>
+              {submenu === null && (
+                <>
+                  <button
+                    onClick={() => {
+                      acoes.onRenomear(post);
+                      fechar();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink/70 hover:bg-surface"
+                  >
+                    Renomear
+                  </button>
+                  <button onClick={() => setSubmenu("mover")} className="w-full text-left px-3 py-1.5 text-xs text-ink/70 hover:bg-surface">
+                    Mover para etapa
+                  </button>
+                  <button onClick={() => setSubmenu("atribuir")} className="w-full text-left px-3 py-1.5 text-xs text-ink/70 hover:bg-surface">
+                    Atribuir a
+                  </button>
+                  <button
+                    onClick={() => {
+                      acoes.onDuplicar(post);
+                      fechar();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink/70 hover:bg-surface"
+                  >
+                    Duplicar
+                  </button>
+                  <button
+                    onClick={() => {
+                      acoes.onCopiarLink(post);
+                      fechar();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink/70 hover:bg-surface"
+                  >
+                    Copiar link
+                  </button>
+                  <button
+                    onClick={() => {
+                      acoes.onArquivar(post);
+                      fechar();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink/50 hover:bg-surface"
+                  >
+                    Arquivar
+                  </button>
+                  <button
+                    onClick={() => {
+                      acoes.onExcluir(post);
+                      fechar();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-surface"
+                  >
+                    Excluir
+                  </button>
+                </>
+              )}
+              {submenu === "mover" && (
+                <>
+                  <button onClick={() => setSubmenu(null)} className="w-full text-left px-3 py-1.5 text-[11px] font-bold text-ink/40 hover:bg-surface">
+                    ← Voltar
+                  </button>
+                  {acoes.statusList.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => {
+                        acoes.onMover(post.id, s.id);
+                        fechar();
+                      }}
+                      className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-xs text-ink/70 hover:bg-surface"
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${corDoStatus(s.cor).dot}`} />
+                      {s.nome}
+                    </button>
+                  ))}
+                </>
+              )}
+              {submenu === "atribuir" && (
+                <>
+                  <button onClick={() => setSubmenu(null)} className="w-full text-left px-3 py-1.5 text-[11px] font-bold text-ink/40 hover:bg-surface">
+                    ← Voltar
+                  </button>
+                  <div className="grid grid-cols-5 gap-2 p-2.5">
+                    {acoes.funcionariosComAcesso.map((f) => {
+                      const marcado = responsaveisAtuais.some((r) => r.id === f.id);
+                      return (
+                        <button key={f.id} onClick={() => acoes.onAtribuir(post, f.id)} className="relative" title={f.nome}>
+                          <AvatarPost nome={f.nome} fotoUrl={f.fotoUrl} tamanho={30} />
+                          {marcado && (
+                            <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-forest text-white text-[8px] flex items-center justify-center ring-2 ring-white">
+                              ✓
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </>,
+          document.body
+        )}
+    </div>
+  );
+}
+
 function KanbanCardConteudo({
   post,
   camposVisiveis,
   responsaveis = [],
   qtdSubconteudos = 0,
+  acoes,
   arrastando,
 }: {
   post: Post;
   camposVisiveis: CamposVisiveis;
   responsaveis?: Responsavel[];
   qtdSubconteudos?: number;
+  acoes?: AcoesPost;
   arrastando?: boolean;
 }) {
   const mostrarTitulo = camposVisiveis.titulo && post.titulo;
@@ -1501,11 +1838,16 @@ function KanbanCardConteudo({
 
   return (
     <div
-      className={`rounded-2xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow ${arrastando ? "w-72" : "w-full"} ${
+      className={`relative group/card rounded-2xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow ${arrastando ? "w-72" : "w-full"} ${
         arrastando ? "shadow-2xl rotate-2 border-2 border-forest/30" : "border border-black/5 shadow-sm hover:shadow-md"
       }`}
     >
-      <p className="text-sm font-semibold text-ink truncate">
+      {acoes && !arrastando && (
+        <div className="absolute top-1.5 right-1.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
+          <MenuAcoesPost post={post} acoes={acoes} />
+        </div>
+      )}
+      <p className="text-sm font-semibold text-ink truncate pr-5">
         {mostrarTitulo ? post.titulo : nomeCliente(post) || "Sem título"}
       </p>
       {mostrarCliente && <p className="text-xs text-ink/50 truncate mt-0.5">{nomeCliente(post)}</p>}

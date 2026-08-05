@@ -344,6 +344,19 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       { id: `temp-${Date.now()}`, autor_id: meuId, descricao: descricaoEvento, created_at: new Date().toISOString() },
       ...atual,
     ]);
+
+    const destinatarios = responsaveis.filter((r) => r.authUserId && r.authUserId !== meuId).map((r) => r.authUserId!);
+    if (destinatarios.length > 0) {
+      await supabase.from("notificacoes").insert(
+        destinatarios.map((destId) => ({
+          destinatario_id: destId,
+          tipo: "mudanca_tarefa",
+          titulo: `${meuNome} ${descricaoEvento} numa tarefa sua`,
+          descricao: tarefa?.titulo ?? null,
+          link: `/tarefas/${id}`,
+        }))
+      );
+    }
   }
 
   async function salvarCampo(campo: Record<string, string | null>, eventoHistorico?: string) {
@@ -368,6 +381,15 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       if (pessoa) setResponsaveis((atual) => [...atual, pessoa]);
       await supabase.from("tarefas_responsaveis").insert({ tarefa_id: id, funcionario_id: funcionarioId });
       if (pessoa) registrarHistorico(`atribuiu ${pessoa.nome} como responsável`);
+      if (pessoa?.authUserId && pessoa.authUserId !== meuId) {
+        await supabase.from("notificacoes").insert({
+          destinatario_id: pessoa.authUserId,
+          tipo: "atribuicao_tarefa",
+          titulo: `${meuNome} te atribuiu a uma tarefa`,
+          descricao: tarefa?.titulo ?? null,
+          link: `/tarefas/${id}`,
+        });
+      }
     }
   }
 

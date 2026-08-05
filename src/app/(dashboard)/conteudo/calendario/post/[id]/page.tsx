@@ -169,6 +169,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
 
   const [tituloPostPai, setTituloPostPai] = useState<string | null>(null);
   const [subConteudos, setSubConteudos] = useState<SubConteudo[]>([]);
+  const [responsaveisPorSub, setResponsaveisPorSub] = useState<Record<string, Responsavel[]>>({});
   const [novoSubConteudo, setNovoSubConteudo] = useState("");
   const [criandoSub, setCriandoSub] = useState(false);
 
@@ -244,7 +245,35 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       .select("id, titulo, status_id, data_publicacao")
       .eq("post_pai_id", id)
       .order("data_publicacao");
-    setSubConteudos(data ?? []);
+    const lista = data ?? [];
+    setSubConteudos(lista);
+
+    const ids = lista.map((s) => s.id);
+    if (ids.length > 0) {
+      const { data: respData } = await supabase
+        .from("posts_conteudo_responsaveis")
+        .select("post_id, funcionarios ( id, papeis ( pessoas ( nome, apelido, foto_url ) ) )")
+        .in("post_id", ids);
+      const mapa: Record<string, Responsavel[]> = {};
+      for (const r of (respData ?? []) as unknown as {
+        post_id: string;
+        funcionarios: { id: string; papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null } | null;
+      }[]) {
+        if (!r.funcionarios) continue;
+        const pessoa = r.funcionarios.papeis?.pessoas;
+        const resp: Responsavel = {
+          id: r.funcionarios.id,
+          nome: pessoa?.apelido || pessoa?.nome || "Colega",
+          fotoUrl: pessoa?.foto_url ?? null,
+          authUserId: null,
+        };
+        if (!mapa[r.post_id]) mapa[r.post_id] = [];
+        mapa[r.post_id].push(resp);
+      }
+      setResponsaveisPorSub(mapa);
+    } else {
+      setResponsaveisPorSub({});
+    }
   }, [id]);
 
   useEffect(() => {
@@ -320,6 +349,19 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       { id: `temp-${Date.now()}`, autor_id: meuId, descricao: descricaoEvento, created_at: new Date().toISOString() },
       ...atual,
     ]);
+
+    const destinatarios = responsaveis.filter((r) => r.authUserId && r.authUserId !== meuId).map((r) => r.authUserId!);
+    if (destinatarios.length > 0) {
+      await supabase.from("notificacoes").insert(
+        destinatarios.map((destId) => ({
+          destinatario_id: destId,
+          tipo: "mudanca_conteudo",
+          titulo: `${meuNome} ${descricaoEvento} num conteúdo seu`,
+          descricao: post?.titulo ?? null,
+          link: `/conteudo/calendario/post/${id}`,
+        }))
+      );
+    }
   }
 
   async function salvarCampo(campo: Record<string, string | null>, eventoHistorico?: string) {
@@ -340,6 +382,15 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       if (pessoa) setResponsaveis((atual) => [...atual, pessoa]);
       await supabase.from("posts_conteudo_responsaveis").insert({ post_id: id, funcionario_id: funcionarioId });
       if (pessoa) registrarHistorico(`atribuiu ${pessoa.nome} como responsável`);
+      if (pessoa?.authUserId && pessoa.authUserId !== meuId) {
+        await supabase.from("notificacoes").insert({
+          destinatario_id: pessoa.authUserId,
+          tipo: "atribuicao_conteudo",
+          titulo: `${meuNome} te atribuiu a um conteúdo`,
+          descricao: post?.titulo ?? null,
+          link: `/conteudo/calendario/post/${id}`,
+        });
+      }
     }
   }
 
@@ -644,19 +695,31 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
             <p className="text-xs text-ink/40 mb-3">
               Use isso pra agrupar vários posts dentro de um "pacote" — por exemplo, um post "Conteúdo de Setembro" com um sub-conteúdo pra cada publicação do mês.
             </p>
+            {subConteudos.length > 0 && (
+              <div className="grid grid-cols-[1fr_110px_90px_110px] gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/40">
+                <span>Nome</span>
+                <span>Responsáveis</span>
+                <span>Data</span>
+                <span>Status</span>
+              </div>
+            )}
             <div className="space-y-1.5 mb-2">
               {subConteudos.map((s) => {
                 const statusSub = statusList.find((st) => st.id === s.status_id);
+                const respSub = responsaveisPorSub[s.id] ?? [];
                 return (
                   <button
                     key={s.id}
                     onClick={() => router.push(`/conteudo/calendario/post/${s.id}`)}
-                    className="w-full flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors text-left"
+                    className="w-full grid grid-cols-[1fr_110px_90px_110px] items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors text-left"
                   >
-                    <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
-                    <span className="flex-1 text-sm text-ink truncate">{s.titulo || "Sem título"}</span>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
+                      <span className="text-sm text-ink truncate">{s.titulo || "Sem título"}</span>
+                    </span>
+                    <span>{respSub.length > 0 ? <AvatarStack pessoas={respSub} tamanho={20} /> : <span className="text-xs text-ink/30">—</span>}</span>
                     <span className="text-xs text-ink/40">{formatarDataCurta(s.data_publicacao)}</span>
-                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
+                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
                       {statusSub?.nome ?? "—"}
                     </span>
                   </button>
