@@ -214,12 +214,25 @@ export function RichTextEditor({
           font-weight: 600;
           text-decoration: underline;
         }
+        .rich-text-editor:focus {
+          outline: none;
+        }
         .rich-text-editor--livre {
-          border: none;
-          background: transparent;
-          padding: 0;
+          border: 1px solid rgba(2, 23, 11, 0.08);
+          background: rgba(2, 23, 11, 0.015);
+          border-radius: 1rem;
+          padding: 1.25rem 1.5rem;
           font-size: 0.95rem;
           line-height: 1.7;
+          min-height: 60vh;
+          transition: border-color 0.15s ease, background 0.15s ease;
+        }
+        .rich-text-editor--livre:hover {
+          border-color: rgba(2, 23, 11, 0.14);
+        }
+        .rich-text-editor--livre:focus {
+          border-color: #143421;
+          background: #ffffff;
         }
         .rich-text-editor img {
           max-width: 100%;

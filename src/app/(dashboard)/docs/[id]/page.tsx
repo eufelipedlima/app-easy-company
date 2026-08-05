@@ -372,12 +372,18 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
                 )}
               </div>
               <div className="relative ml-auto">
-                <button onClick={() => setHistoricoAberto((v) => !v)} className="hover:text-ink/70 transition-colors" title="Histórico de alterações">
+                <button
+                  onClick={() => setHistoricoAberto((v) => !v)}
+                  className={`h-8 w-8 rounded-full flex items-center justify-center text-base transition-colors ${
+                    historicoAberto ? "bg-ink text-white" : "bg-surface text-ink/60 hover:bg-black/10 hover:text-ink"
+                  }`}
+                  title="Histórico de alterações"
+                >
                   🕐
                 </button>
                 {historicoAberto && (
                   <div
-                    className="absolute z-20 top-6 right-0 w-72 max-h-80 overflow-y-auto rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+                    className="absolute z-20 top-10 right-0 w-72 max-h-80 overflow-y-auto rounded-2xl bg-white border border-black/10 shadow-lg p-3"
                     onMouseLeave={() => setHistoricoAberto(false)}
                   >
                     <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Histórico</p>
@@ -448,12 +454,12 @@ function ItemArvoreDoc({
               e.stopPropagation();
               onToggleExpandir(node.id);
             }}
-            className="text-ink/40 text-[10px] w-4 shrink-0 text-center"
+            className="h-5 w-5 rounded-md flex items-center justify-center shrink-0 text-ink/50 hover:text-ink hover:bg-black/10 transition-colors text-xs"
           >
             {expandido ? "▾" : "▸"}
           </button>
         ) : (
-          <span className="w-4 shrink-0" />
+          <span className="w-5 shrink-0" />
         )}
         <span className={`flex-1 text-sm truncate flex items-center gap-1.5 ${ativo ? "font-semibold text-forest" : "text-ink"}`}>
           {node.emoji || "📄"} {node.titulo}
