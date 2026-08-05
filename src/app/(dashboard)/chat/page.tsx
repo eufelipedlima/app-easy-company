@@ -36,6 +36,8 @@ interface Mensagem {
   texto: string;
   created_at: string;
   resposta_a_id: string | null;
+  audio_url: string | null;
+  audio_duracao: number | null;
 }
 
 interface Colega {
@@ -125,11 +127,72 @@ function Avatar({ nome, fotoUrl, tamanho = 36 }: { nome: string; fotoUrl?: strin
   );
 }
 
+function formatarDuracao(segundos: number) {
+  const min = Math.floor(segundos / 60);
+  const seg = Math.floor(segundos % 60);
+  return `${min}:${String(seg).padStart(2, "0")}`;
+}
+
+function PlayerAudio({ url, duracao }: { url: string; duracao: number | null }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [tocando, setTocando] = useState(false);
+  const [progresso, setProgresso] = useState(0);
+  const [duracaoReal, setDuracaoReal] = useState(duracao ?? 0);
+
+  function alternarPlay() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (tocando) {
+      audio.pause();
+    } else {
+      audio.play();
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2.5 bg-surface rounded-full pl-1 pr-4 py-1 w-64 max-w-full">
+      <audio
+        ref={audioRef}
+        src={url}
+        preload="metadata"
+        onPlay={() => setTocando(true)}
+        onPause={() => setTocando(false)}
+        onEnded={() => setTocando(false)}
+        onLoadedMetadata={(e) => {
+          const d = e.currentTarget.duration;
+          if (isFinite(d)) setDuracaoReal(d);
+        }}
+        onTimeUpdate={(e) => {
+          const audio = e.currentTarget;
+          if (audio.duration) setProgresso(audio.currentTime / audio.duration);
+        }}
+        className="hidden"
+      />
+      <button
+        onClick={alternarPlay}
+        className="h-8 w-8 rounded-full bg-ink text-white flex items-center justify-center shrink-0 hover:bg-forest transition-colors"
+      >
+        {tocando ? "❚❚" : "▶"}
+      </button>
+      <div className="flex-1 h-1.5 rounded-full bg-black/10 overflow-hidden">
+        <div className="h-full bg-forest rounded-full transition-all" style={{ width: `${progresso * 100}%` }} />
+      </div>
+      <span className="text-[11px] text-ink/40 shrink-0 tabular-nums">{formatarDuracao(duracaoReal)}</span>
+    </div>
+  );
+}
+
 function renderizarMensagem(texto: string, todosOsNomes: string[]) {
-  const partesBold = texto.split(/(\*\*[^*]+\*\*)/g);
-  return partesBold.map((parte, i) => {
+  if (texto.trim() === "---") {
+    return <hr className="border-t border-current/20 my-1" />;
+  }
+  const partesFormatadas = texto.split(/(\*\*[^*]+\*\*|_[^_]+_)/g);
+  return partesFormatadas.map((parte, i) => {
     if (parte.startsWith("**") && parte.endsWith("**") && parte.length > 4) {
       return <strong key={i}>{parte.slice(2, -2)}</strong>;
+    }
+    if (parte.startsWith("_") && parte.endsWith("_") && parte.length > 2) {
+      return <em key={i}>{parte.slice(1, -1)}</em>;
     }
     if (todosOsNomes.length === 0) return <span key={i}>{parte}</span>;
     const nomesEscapados = [...todosOsNomes]
@@ -160,12 +223,19 @@ export default function ChatPage() {
   const [colegas, setColegas] = useState<Colega[]>([]);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [gravando, setGravando] = useState(false);
+  const [tempoGravacao, setTempoGravacao] = useState(0);
+  const [enviandoAudio, setEnviandoAudio] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerGravacaoRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [novaConversaAberta, setNovaConversaAberta] = useState(false);
   const [adicionarParticipanteAberto, setAdicionarParticipanteAberto] = useState(false);
   const [configCanalAberto, setConfigCanalAberto] = useState(false);
   const [mostrarEmoji, setMostrarEmoji] = useState(false);
   const [mencaoBusca, setMencaoBusca] = useState<string | null>(null);
   const [buscaConversa, setBuscaConversa] = useState("");
+  const [filtroConversa, setFiltroConversa] = useState<"tudo" | "nao_lidas" | "canais" | "pessoas">("tudo");
   const [respondendoA, setRespondendoA] = useState<Mensagem | null>(null);
   const [mensagemComMenu, setMensagemComMenu] = useState<string | null>(null);
   const [seletorReacaoAberto, setSeletorReacaoAberto] = useState<string | null>(null);
@@ -335,7 +405,7 @@ export default function ChatPage() {
     const supabase = createClient();
     const { data } = await supabase
       .from("chat_mensagens")
-      .select("id, canal_id, autor_id, texto, created_at, resposta_a_id")
+      .select("id, canal_id, autor_id, texto, created_at, resposta_a_id, audio_url, audio_duracao")
       .eq("canal_id", canalId)
       .order("created_at", { ascending: true });
     setMensagens(data ?? []);
@@ -468,6 +538,69 @@ export default function ChatPage() {
     setEnviando(false);
   }
 
+  async function iniciarGravacao() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setGravando(true);
+      setTempoGravacao(0);
+      timerGravacaoRef.current = setInterval(() => setTempoGravacao((t) => t + 1), 1000);
+    } catch {
+      alert("Não foi possível acessar o microfone. Verifique as permissões do navegador.");
+    }
+  }
+
+  function pararStreamGravacao() {
+    mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
+    if (timerGravacaoRef.current) clearInterval(timerGravacaoRef.current);
+    setGravando(false);
+  }
+
+  function cancelarGravacao() {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+    }
+    pararStreamGravacao();
+    audioChunksRef.current = [];
+  }
+
+  async function pararEEnviarGravacao() {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || !canalAtivoId || !meuId) return;
+    const duracaoFinal = tempoGravacao;
+    recorder.onstop = async () => {
+      pararStreamGravacao();
+      const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+      audioChunksRef.current = [];
+      if (blob.size === 0) return;
+      setEnviandoAudio(true);
+      const supabase = createClient();
+      const caminho = `${canalAtivoId}/${Date.now()}.webm`;
+      const { error: uploadError } = await supabase.storage.from("chat-audio").upload(caminho, blob);
+      if (!uploadError) {
+        const { data } = supabase.storage.from("chat-audio").getPublicUrl(caminho);
+        await supabase.from("chat_mensagens").insert({
+          canal_id: canalAtivoId,
+          autor_id: meuId,
+          texto: "",
+          audio_url: data.publicUrl,
+          audio_duracao: duracaoFinal,
+          resposta_a_id: respondendoA?.id ?? null,
+        });
+        setRespondendoA(null);
+      }
+      setEnviandoAudio(false);
+    };
+    recorder.stop();
+  }
+
   async function alternarReacao(mensagemId: string, emoji: string) {
     if (!meuId) return;
     const supabase = createClient();
@@ -506,6 +639,32 @@ export default function ChatPage() {
     });
   }
 
+  function aplicarFormatacao(marcador: string) {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const inicio = textarea.selectionStart ?? texto.length;
+    const fim = textarea.selectionEnd ?? texto.length;
+    const selecionado = texto.slice(inicio, fim);
+    const textoFinal = selecionado || (marcador === "**" ? "negrito" : "itálico");
+    const novoTexto = `${texto.slice(0, inicio)}${marcador}${textoFinal}${marcador}${texto.slice(fim)}`;
+    setTexto(novoTexto);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.selectionStart = inicio + marcador.length;
+      textarea.selectionEnd = inicio + marcador.length + textoFinal.length;
+    });
+  }
+
+  function inserirDivisoria() {
+    const textarea = textareaRef.current;
+    const sufixo = texto && !texto.endsWith("\n") ? "\n" : "";
+    const novoTexto = `${texto}${sufixo}---\n`;
+    setTexto(novoTexto);
+    requestAnimationFrame(() => {
+      textarea?.focus();
+    });
+  }
+
   const colegasParaMencao = colegas.filter((c) => mencaoBusca !== null && normalizar(c.nome).includes(normalizar(mencaoBusca)));
 
   function selecionarMencao(nome: string) {
@@ -525,16 +684,23 @@ export default function ChatPage() {
   }
 
   const totalNaoLidas = canais.reduce((s, c) => s + c.naoLidas, 0);
-  const canaisFiltrados = canais.filter((c) => normalizar(c.nomeExibicao).includes(normalizar(buscaConversa)));
+  const canaisFiltrados = canais
+    .filter((c) => normalizar(c.nomeExibicao).includes(normalizar(buscaConversa)))
+    .filter((c) => {
+      if (filtroConversa === "nao_lidas") return c.naoLidas > 0;
+      if (filtroConversa === "canais") return c.tipo === "grupo" || c.tipo === "cliente";
+      if (filtroConversa === "pessoas") return c.tipo === "dm";
+      return true;
+    });
   const mensagemRespondida = respondendoA;
 
   return (
     <main className="h-screen flex bg-white">
-      <div className="w-80 shrink-0 border-r border-black/5 bg-card flex flex-col">
-        <div className="p-4 border-b border-black/5">
+      <div className="w-80 shrink-0 bg-ink text-white flex flex-col">
+        <div className="p-4 border-b border-white/10">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-extrabold text-ink">Chat</h1>
+              <h1 className="text-xl font-extrabold text-white">💬 Chat</h1>
               {totalNaoLidas > 0 && (
                 <span className="rounded-full bg-red-500 text-white text-xs font-bold px-2 py-0.5">{totalNaoLidas}</span>
               )}
@@ -542,7 +708,7 @@ export default function ChatPage() {
             <button
               onClick={() => setNovaConversaAberta(true)}
               title="Nova conversa"
-              className="h-8 w-8 rounded-full bg-ink text-white flex items-center justify-center text-lg font-semibold hover:bg-forest transition-colors"
+              className="h-8 w-8 rounded-full bg-forest text-white flex items-center justify-center text-lg font-semibold hover:brightness-110 transition-colors"
             >
               +
             </button>
@@ -551,15 +717,35 @@ export default function ChatPage() {
             value={buscaConversa}
             onChange={(e) => setBuscaConversa(e.target.value)}
             placeholder="Buscar conversa..."
-            className="input py-2 text-sm"
+            className="w-full rounded-xl bg-white/10 border border-white/10 text-white placeholder:text-white/40 text-sm py-2 px-3 outline-none focus:border-white/30 transition-colors"
           />
+          <div className="flex items-center gap-1 mt-2.5 overflow-x-auto">
+            {(
+              [
+                ["tudo", "Tudo"],
+                ["nao_lidas", "Não lidas"],
+                ["canais", "Canais"],
+                ["pessoas", "Pessoas"],
+              ] as [typeof filtroConversa, string][]
+            ).map(([valor, label]) => (
+              <button
+                key={valor}
+                onClick={() => setFiltroConversa(valor)}
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                  filtroConversa === valor ? "bg-white text-ink" : "text-white/50 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto py-2">
           {loading ? (
-            <p className="p-4 text-sm text-ink/50">Carregando...</p>
+            <p className="p-4 text-sm text-white/40">Carregando...</p>
           ) : canaisFiltrados.length === 0 ? (
-            <p className="p-4 text-sm text-ink/50">
+            <p className="p-4 text-sm text-white/40">
               {canais.length === 0 ? "Nenhuma conversa ainda. Comece uma nova!" : "Nenhuma conversa encontrada."}
             </p>
           ) : (
@@ -567,27 +753,28 @@ export default function ChatPage() {
               <button
                 key={c.id}
                 onClick={() => abrirCanal(c.id)}
-                className={`w-full text-left px-4 py-3 border-b border-black/5 hover:bg-surface transition-colors flex items-start gap-2.5 ${
-                  canalAtivoId === c.id ? "bg-surface" : ""
+                className={`w-full text-left mx-2 mb-0.5 px-3 py-2.5 rounded-xl transition-colors flex items-start gap-2.5 ${
+                  canalAtivoId === c.id ? "bg-white/15" : "hover:bg-white/5"
                 }`}
+                style={{ width: "calc(100% - 1rem)" }}
               >
                 {c.tipo === "dm" ? (
                   <Avatar nome={c.nomeExibicao} fotoUrl={c.fotoUrl} tamanho={32} />
                 ) : (
-                  <span className="h-8 w-8 rounded-full bg-surface flex items-center justify-center text-sm shrink-0">
+                  <span className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center text-sm shrink-0">
                     {c.tipo === "cliente" ? "🏢" : "#"}
                   </span>
                 )}
                 <span className="flex-1 min-w-0">
                   <span className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-ink truncate">{c.nomeExibicao}</span>
+                    <span className="text-sm font-semibold text-white truncate">{c.nomeExibicao}</span>
                     {c.naoLidas > 0 && (
                       <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">
                         {c.naoLidas}
                       </span>
                     )}
                   </span>
-                  {c.ultimaMensagem && <span className="block text-xs text-ink/50 truncate mt-0.5">{c.ultimaMensagem}</span>}
+                  {c.ultimaMensagem && <span className="block text-xs text-white/50 truncate mt-0.5">{c.ultimaMensagem}</span>}
                 </span>
               </button>
             ))
@@ -595,7 +782,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col bg-gradient-to-b from-surface/40 to-white">
+      <div className="flex-1 flex flex-col bg-surface/50">
         {!canalAtivo ? (
           <div className="flex-1 flex items-center justify-center text-sm text-ink/40">
             Escolha uma conversa ao lado, ou comece uma nova.
@@ -692,9 +879,13 @@ export default function ChatPage() {
                           </div>
                         )}
 
-                        <p className="text-sm text-ink whitespace-pre-wrap break-words leading-relaxed">
-                          {renderizarMensagem(m.texto, todosOsNomes)}
-                        </p>
+                        {m.audio_url ? (
+                          <PlayerAudio url={m.audio_url} duracao={m.audio_duracao} />
+                        ) : (
+                          <p className="text-sm text-ink whitespace-pre-wrap break-words leading-relaxed">
+                            {renderizarMensagem(m.texto, todosOsNomes)}
+                          </p>
+                        )}
 
                         {reacoesAgrupadas.size > 0 && (
                           <div className="flex flex-wrap items-center gap-1 mt-1.5">
@@ -772,78 +963,141 @@ export default function ChatPage() {
               </div>
             )}
 
-            <form onSubmit={enviarMensagem} className="p-4 border-t border-black/5 bg-card flex items-center gap-2">
-              <div className="relative shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setMostrarEmoji((v) => !v)}
-                  className="rounded-full h-10 w-10 flex items-center justify-center border border-black/10 hover:bg-surface text-lg"
-                >
-                  🙂
-                </button>
-                {mostrarEmoji && (
-                  <div
-                    className="absolute z-20 bottom-12 left-0 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-2 grid grid-cols-8 gap-1"
-                    onMouseLeave={() => setMostrarEmoji(false)}
+            <form onSubmit={enviarMensagem} className="p-4 border-t border-black/5 bg-card">
+              {gravando ? (
+                <div className="flex items-center gap-3 bg-red-50 rounded-full pl-4 pr-2 py-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+                  <span className="text-sm font-semibold text-red-700 tabular-nums">{formatarDuracao(tempoGravacao)}</span>
+                  <span className="text-xs text-red-600/70 flex-1">Gravando áudio...</span>
+                  <button
+                    type="button"
+                    onClick={cancelarGravacao}
+                    className="h-8 w-8 rounded-full hover:bg-red-100 flex items-center justify-center text-red-600 text-sm"
+                    title="Cancelar"
                   >
-                    {EMOJIS.map((e) => (
-                      <button
-                        key={e}
-                        type="button"
-                        onClick={() => inserirEmoji(e)}
-                        className="text-lg hover:bg-surface rounded-lg h-8 w-8 flex items-center justify-center"
-                      >
-                        {e}
-                      </button>
-                    ))}
+                    ✕
+                  </button>
+                  <button
+                    type="button"
+                    onClick={pararEEnviarGravacao}
+                    disabled={enviandoAudio}
+                    className="h-9 w-9 rounded-full bg-forest text-white flex items-center justify-center hover:brightness-110 disabled:opacity-50"
+                    title="Enviar áudio"
+                  >
+                    ➤
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-0.5 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => aplicarFormatacao("**")}
+                      className="h-7 w-7 rounded-lg text-xs font-bold text-ink/50 hover:bg-surface hover:text-ink"
+                      title="Negrito"
+                    >
+                      B
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => aplicarFormatacao("_")}
+                      className="h-7 w-7 rounded-lg text-xs italic font-bold text-ink/50 hover:bg-surface hover:text-ink"
+                      title="Itálico"
+                    >
+                      I
+                    </button>
+                    <button
+                      type="button"
+                      onClick={inserirDivisoria}
+                      className="h-7 w-7 rounded-lg text-xs font-bold text-ink/50 hover:bg-surface hover:text-ink"
+                      title="Linha divisória"
+                    >
+                      ―
+                    </button>
                   </div>
-                )}
-              </div>
-              <div className="relative flex-1">
-                <textarea
-                  ref={textareaRef}
-                  value={texto}
-                  onChange={(e) => {
-                    const valor = e.target.value;
-                    setTexto(valor);
-                    const posicaoCursor = e.target.selectionStart ?? valor.length;
-                    const antesDoCursor = valor.slice(0, posicaoCursor);
-                    const match = antesDoCursor.match(/@([a-zA-ZÀ-ÿ]*)$/);
-                    setMencaoBusca(match ? match[1] : null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && mencaoBusca === null) {
-                      e.preventDefault();
-                      enviarMensagem(e);
-                    }
-                    if (e.key === "Escape") setMencaoBusca(null);
-                  }}
-                  rows={1}
-                  placeholder="Escreva uma mensagem... (** pra negrito, @ pra mencionar)"
-                  className="input resize-none w-full !py-2.5"
-                />
-                {mencaoBusca !== null && colegasParaMencao.length > 0 && (
-                  <div className="absolute z-20 bottom-14 left-0 w-64 rounded-2xl bg-white border border-black/10 shadow-lg py-1 max-h-48 overflow-y-auto">
-                    {colegasParaMencao.map((c) => (
+                  <div className="flex items-center gap-2">
+                    <div className="relative shrink-0">
                       <button
-                        key={c.authUserId}
                         type="button"
-                        onClick={() => selecionarMencao(c.nome)}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-surface"
+                        onClick={() => setMostrarEmoji((v) => !v)}
+                        className="rounded-full h-10 w-10 flex items-center justify-center border border-black/10 hover:bg-surface text-lg"
                       >
-                        {c.nome}
+                        🙂
                       </button>
-                    ))}
+                      {mostrarEmoji && (
+                        <div
+                          className="absolute z-20 bottom-12 left-0 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-2 grid grid-cols-8 gap-1"
+                          onMouseLeave={() => setMostrarEmoji(false)}
+                        >
+                          {EMOJIS.map((e) => (
+                            <button
+                              key={e}
+                              type="button"
+                              onClick={() => inserirEmoji(e)}
+                              className="text-lg hover:bg-surface rounded-lg h-8 w-8 flex items-center justify-center"
+                            >
+                              {e}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={iniciarGravacao}
+                      className="rounded-full h-10 w-10 flex items-center justify-center border border-black/10 hover:bg-surface text-base shrink-0"
+                      title="Gravar áudio"
+                    >
+                      🎤
+                    </button>
+                    <div className="relative flex-1">
+                      <textarea
+                        ref={textareaRef}
+                        value={texto}
+                        onChange={(e) => {
+                          const valor = e.target.value;
+                          setTexto(valor);
+                          const posicaoCursor = e.target.selectionStart ?? valor.length;
+                          const antesDoCursor = valor.slice(0, posicaoCursor);
+                          const match = antesDoCursor.match(/@([a-zA-ZÀ-ÿ]*)$/);
+                          setMencaoBusca(match ? match[1] : null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey && mencaoBusca === null) {
+                            e.preventDefault();
+                            enviarMensagem(e);
+                          }
+                          if (e.key === "Escape") setMencaoBusca(null);
+                        }}
+                        rows={1}
+                        placeholder="Escreva uma mensagem..."
+                        className="input resize-none w-full !py-2.5"
+                      />
+                      {mencaoBusca !== null && colegasParaMencao.length > 0 && (
+                        <div className="absolute z-20 bottom-14 left-0 w-64 rounded-2xl bg-white border border-black/10 shadow-lg py-1 max-h-48 overflow-y-auto">
+                          {colegasParaMencao.map((c) => (
+                            <button
+                              key={c.authUserId}
+                              type="button"
+                              onClick={() => selecionarMencao(c.nome)}
+                              className="w-full text-left px-4 py-2 text-sm hover:bg-surface"
+                            >
+                              {c.nome}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={enviando || !texto.trim()}
+                      className="shrink-0 rounded-full bg-ink text-white px-5 h-10 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+                    >
+                      Enviar
+                    </button>
                   </div>
-                )}
-              </div>
-              <button
-                type="submit"
-                disabled={enviando || !texto.trim()}
-                className="shrink-0 rounded-full bg-ink text-white px-5 h-10 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
-              >
-                Enviar
-              </button>
+                </>
+              )}
             </form>
           </>
         )}

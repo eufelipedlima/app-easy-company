@@ -12,6 +12,8 @@ interface ItemAgenda {
   clienteNome: string | null;
   statusNome: string;
   statusCor: string;
+  prioridade: string | null;
+  dataInicio: string | null;
   data: string | null;
   link: string;
 }
@@ -24,6 +26,8 @@ interface Notificacao {
   link: string | null;
   lida: boolean;
   created_at: string;
+  autor_nome: string | null;
+  autor_foto_url: string | null;
 }
 
 interface CanalChat {
@@ -37,12 +41,22 @@ const ICONE_NOTIFICACAO: Record<string, string> = {
   mencao_chat: "💬",
   mencao_tarefa: "💬",
   mencao_conteudo: "💬",
-  comentario_cliente: "📅",
+  comentario_cliente: "📢",
   atribuicao_tarefa: "👤",
   atribuicao_conteudo: "👤",
   mudanca_tarefa: "✏️",
   mudanca_conteudo: "✏️",
 };
+
+const FRASES = [
+  ["Arrisque sempre mais do que a maioria; sonhe sempre mais alto do que os outros.", "Howard Schultz"],
+  ["A melhor forma de prever o futuro é criá-lo.", "Peter Drucker"],
+  ["Feito é melhor que perfeito.", "Sheryl Sandberg"],
+  ["Constância vence intensidade.", "Provérbio popular"],
+  ["Grandes equipes fazem grandes empresas.", "Anônimo"],
+  ["Não espere por oportunidades, crie-as.", "Anônimo"],
+  ["Foco é dizer não pra quase tudo.", "Steve Jobs"],
+];
 
 function toISODateLocal(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -66,7 +80,9 @@ export default function InicioPage() {
   const [itens, setItens] = useState<ItemAgenda[]>([]);
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
   const [canaisChat, setCanaisChat] = useState<CanalChat[]>([]);
-  const [grupoAberto, setGrupoAberto] = useState<string | null>("hoje");
+  const [abaTarefas, setAbaTarefas] = useState<
+    "urgentes" | "atraso" | "semana" | "hoje" | "inicia_amanha" | "inicia_hoje"
+  >("atraso");
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -101,14 +117,14 @@ export default function InicioPage() {
         idsTarefas.length > 0
           ? supabase
               .from("tarefas")
-              .select("id, titulo, prazo, status_id, clientes ( papeis ( pessoas ( nome ) ) ), status_conteudo ( nome, cor )")
+              .select("id, titulo, prazo, data_inicio, prioridade, status_id, clientes ( papeis ( pessoas ( nome ) ) ), status_conteudo ( nome, cor )")
               .in("id", idsTarefas)
               .eq("arquivada", false)
           : Promise.resolve({ data: [] }),
         idsPosts.length > 0
           ? supabase
               .from("posts_conteudo")
-              .select("id, titulo, data_publicacao, status_id, clientes ( papeis ( pessoas ( nome ) ) ), status_conteudo ( nome, cor )")
+              .select("id, titulo, data_publicacao, data_inicio, status_id, clientes ( papeis ( pessoas ( nome ) ) ), status_conteudo ( nome, cor )")
               .in("id", idsPosts)
               .eq("arquivado", false)
           : Promise.resolve({ data: [] }),
@@ -118,6 +134,8 @@ export default function InicioPage() {
         id: string;
         titulo: string;
         prazo: string | null;
+        data_inicio: string | null;
+        prioridade: string | null;
         clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
         status_conteudo: { nome: string; cor: string } | null;
       }[]).map((t) => ({
@@ -127,6 +145,8 @@ export default function InicioPage() {
         clienteNome: t.clientes?.papeis?.pessoas?.nome ?? null,
         statusNome: t.status_conteudo?.nome ?? "—",
         statusCor: t.status_conteudo?.cor ?? "cinza",
+        prioridade: t.prioridade,
+        dataInicio: t.data_inicio,
         data: t.prazo,
         link: `/tarefas/${t.id}`,
       }));
@@ -135,6 +155,7 @@ export default function InicioPage() {
         id: string;
         titulo: string | null;
         data_publicacao: string;
+        data_inicio: string | null;
         clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
         status_conteudo: { nome: string; cor: string } | null;
       }[]).map((p) => ({
@@ -144,6 +165,8 @@ export default function InicioPage() {
         clienteNome: p.clientes?.papeis?.pessoas?.nome ?? null,
         statusNome: p.status_conteudo?.nome ?? "—",
         statusCor: p.status_conteudo?.cor ?? "cinza",
+        prioridade: null,
+        dataInicio: p.data_inicio,
         data: p.data_publicacao,
         link: `/conteudo/calendario/post/${p.id}`,
       }));
@@ -153,7 +176,7 @@ export default function InicioPage() {
 
     const { data: notifData } = await supabase
       .from("notificacoes")
-      .select("id, tipo, titulo, descricao, link, lida, created_at")
+      .select("id, tipo, titulo, descricao, link, lida, created_at, autor_nome, autor_foto_url")
       .eq("destinatario_id", user.id)
       .eq("lida", false)
       .order("created_at", { ascending: false })
@@ -230,170 +253,225 @@ export default function InicioPage() {
   }, [carregar]);
 
   const hojeISO = toISODateLocal(new Date());
+  const amanha = new Date();
+  amanha.setDate(amanha.getDate() + 1);
+  const amanhaISO = toISODateLocal(amanha);
   const daqui7Dias = new Date();
   daqui7Dias.setDate(daqui7Dias.getDate() + 7);
   const daqui7ISO = toISODateLocal(daqui7Dias);
 
-  const emAtraso = itens.filter((i) => i.data && i.data < hojeISO);
-  const hoje = itens.filter((i) => i.data === hojeISO);
-  const proximos = itens.filter((i) => i.data && i.data > hojeISO && i.data <= daqui7ISO);
-  const semData = itens.filter((i) => !i.data);
+  const itensAbertos = itens.filter((i) => normalizar(i.statusCor) !== "verde");
 
-  const agenda = itens
-    .filter((i) => i.data && i.data >= hojeISO)
-    .sort((a, b) => (a.data! < b.data! ? -1 : 1))
-    .slice(0, 8);
+  function normalizar(s: string) {
+    return s
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+  }
 
-  const grupos = [
-    { chave: "atraso", label: "Em atraso", lista: emAtraso },
-    { chave: "hoje", label: "Hoje", lista: hoje },
-    { chave: "proximos", label: "Próximos 7 dias", lista: proximos },
-    { chave: "semdata", label: "Sem data", lista: semData },
+  const grupos = {
+    urgentes: itensAbertos.filter((i) => i.prioridade === "alta"),
+    atraso: itensAbertos.filter((i) => i.data && i.data < hojeISO),
+    semana: itensAbertos.filter((i) => i.data && i.data > hojeISO && i.data <= daqui7ISO),
+    hoje: itensAbertos.filter((i) => i.data === hojeISO),
+    inicia_amanha: itensAbertos.filter((i) => i.dataInicio === amanhaISO),
+    inicia_hoje: itensAbertos.filter((i) => i.dataInicio === hojeISO),
+  };
+
+  const ABAS_TAREFAS: { chave: keyof typeof grupos; label: string; icone: string }[] = [
+    { chave: "urgentes", label: "Urgentes", icone: "🔥" },
+    { chave: "atraso", label: "Em atraso", icone: "⏰" },
+    { chave: "semana", label: "Vencem em 7 dias", icone: "📅" },
+    { chave: "hoje", label: "Vencem hoje", icone: "🎯" },
+    { chave: "inicia_amanha", label: "Iniciam amanhã", icone: "🌅" },
+    { chave: "inicia_hoje", label: "Iniciam hoje", icone: "▶️" },
   ];
 
+  const listaAtiva = grupos[abaTarefas];
+
+  const resumo = {
+    total: itensAbertos.length,
+    atraso: grupos.atraso.length,
+    concluidos: itens.filter((i) => normalizar(i.statusCor) === "verde").length,
+    semData: itensAbertos.filter((i) => !i.data).length,
+    hoje: grupos.hoje.length,
+  };
+
+  const frase = FRASES[new Date().getDate() % FRASES.length];
+
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
-      <h1 className="text-3xl font-extrabold text-ink mb-8">
-        {saudacao()}{nome ? `, ${nome}` : ""}
-      </h1>
-
-      {loading ? (
-        <p className="text-sm text-ink/50">Carregando...</p>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="rounded-3xl bg-card border border-black/5 p-5">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-ink/50 mb-3">Minhas tarefas e conteúdos</h2>
-            <div className="space-y-1">
-              {grupos.map((g) => (
-                <div key={g.chave}>
-                  <button
-                    onClick={() => setGrupoAberto(grupoAberto === g.chave ? null : g.chave)}
-                    className="w-full flex items-center justify-between px-2 py-2 rounded-xl hover:bg-surface transition-colors"
-                  >
-                    <span className="flex items-center gap-2 text-sm font-semibold text-ink">
-                      <span className={`text-xs transition-transform ${grupoAberto === g.chave ? "rotate-90" : ""}`}>▶</span>
-                      {g.label}
-                    </span>
-                    <span className="text-xs font-bold text-ink/40">{g.lista.length}</span>
-                  </button>
-                  {grupoAberto === g.chave && (
-                    <div className="pl-6 space-y-1 mb-2">
-                      {g.lista.length === 0 ? (
-                        <p className="text-xs text-ink/40 py-1">Nada por aqui.</p>
-                      ) : (
-                        g.lista.map((item) => (
-                          <button
-                            key={`${item.tipo}-${item.id}`}
-                            onClick={() => router.push(item.link)}
-                            className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-surface transition-colors text-left"
-                          >
-                            <span className="flex items-center gap-2 min-w-0">
-                              <span>{item.tipo === "tarefa" ? "✔️" : "📅"}</span>
-                              <span className="text-sm text-ink truncate">{item.titulo}</span>
-                              {item.clienteNome && <span className="text-xs text-ink/40 shrink-0">· {item.clienteNome}</span>}
-                            </span>
-                            <span className="flex items-center gap-2 shrink-0">
-                              {item.data && <span className="text-xs text-ink/40">{formatarData(item.data)}</span>}
-                              <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${corDoStatus(item.statusCor).cor}`}>
-                                {item.statusNome}
-                              </span>
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-5">
-            <div className="rounded-3xl bg-card border border-black/5 p-5">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-ink/50 mb-3">Agenda — próximos dias</h2>
-              {agenda.length === 0 ? (
-                <p className="text-sm text-ink/40">Nada com data marcada por enquanto.</p>
-              ) : (
-                <div className="space-y-1">
-                  {agenda.map((item) => (
-                    <button
-                      key={`${item.tipo}-${item.id}`}
-                      onClick={() => router.push(item.link)}
-                      className="w-full flex items-center justify-between gap-2 px-2 py-2 rounded-xl hover:bg-surface transition-colors text-left"
-                    >
-                      <span className="flex items-center gap-2 min-w-0">
-                        <span className="text-xs font-bold text-forest w-10 shrink-0">{formatarData(item.data!)}</span>
-                        <span className="text-sm text-ink truncate">{item.titulo}</span>
-                      </span>
-                      <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 shrink-0 ${corDoStatus(item.statusCor).cor}`}>
-                        {item.statusNome}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-3xl bg-card border border-black/5 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-bold uppercase tracking-wide text-ink/50">Caixa de Entrada</h2>
-                <button onClick={() => router.push("/caixa-de-entrada")} className="text-xs font-semibold text-forest hover:text-ink">
-                  Ver tudo →
-                </button>
-              </div>
-              {notificacoes.length === 0 ? (
-                <p className="text-sm text-ink/40">Tudo em dia. 🎉</p>
-              ) : (
-                <div className="space-y-1">
-                  {notificacoes.map((n) => (
-                    <button
-                      key={n.id}
-                      onClick={() => router.push(n.link || "/caixa-de-entrada")}
-                      className="w-full flex items-start gap-2 px-2 py-2 rounded-xl hover:bg-surface transition-colors text-left"
-                    >
-                      <span className="text-base shrink-0">{ICONE_NOTIFICACAO[n.tipo] ?? "🔔"}</span>
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-ink truncate">{n.titulo}</span>
-                        {n.descricao && <span className="block text-xs text-ink/50 truncate">{n.descricao}</span>}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-3xl bg-card border border-black/5 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-bold uppercase tracking-wide text-ink/50">Chat</h2>
-                <button onClick={() => router.push("/chat")} className="text-xs font-semibold text-forest hover:text-ink">
-                  Abrir chat →
-                </button>
-              </div>
-              {canaisChat.length === 0 ? (
-                <p className="text-sm text-ink/40">Nenhuma conversa ainda.</p>
-              ) : (
-                <div className="space-y-1">
-                  {canaisChat.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => router.push("/chat")}
-                      className="w-full flex items-center justify-between gap-2 px-2 py-2 rounded-xl hover:bg-surface transition-colors text-left"
-                    >
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-ink truncate">{c.nome}</span>
-                        {c.ultimaMensagem && <span className="block text-xs text-ink/50 truncate">{c.ultimaMensagem}</span>}
-                      </span>
-                      {c.naoLidas > 0 && (
-                        <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">{c.naoLidas}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+    <main className="min-h-screen bg-gradient-to-b from-mint/20 via-white to-white px-8 py-8">
+      <div className="max-w-[1400px] mx-auto">
+        <div className="flex items-center justify-between mb-1">
+          <h1 className="text-3xl font-extrabold text-ink">
+            {saudacao()}
+            {nome ? `, ${nome}` : ""} 👋
+          </h1>
         </div>
-      )}
+        <p className="text-sm text-ink/50 italic mb-8">
+          &ldquo;{frase[0]}&rdquo; <span className="not-italic text-ink/30">— {frase[1]}</span>
+        </p>
+
+        {loading ? (
+          <p className="text-sm text-ink/50">Carregando...</p>
+        ) : (
+          <div className="space-y-6">
+            <div className="rounded-3xl bg-white border border-black/5 shadow-sm p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-lg">📌</span>
+                <h2 className="text-base font-extrabold text-ink">Tarefas e conteúdos da agência</h2>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 mb-5">
+                {ABAS_TAREFAS.map((a) => (
+                  <button
+                    key={a.chave}
+                    onClick={() => setAbaTarefas(a.chave)}
+                    className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold transition-all ${
+                      abaTarefas === a.chave
+                        ? "bg-ink text-white shadow-md scale-105"
+                        : "bg-surface text-ink/60 hover:bg-black/10"
+                    }`}
+                  >
+                    <span>{a.icone}</span>
+                    {grupos[a.chave].length} {a.label}
+                  </button>
+                ))}
+              </div>
+
+              {listaAtiva.length === 0 ? (
+                <p className="text-sm text-ink/40 py-6 text-center">Nada por aqui. 🎉</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {listaAtiva.map((item) => {
+                    const atrasado = item.data && item.data < hojeISO;
+                    return (
+                      <button
+                        key={`${item.tipo}-${item.id}`}
+                        onClick={() => router.push(item.link)}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-colors ${
+                          atrasado ? "bg-red-50 hover:bg-red-100" : "bg-surface/60 hover:bg-surface"
+                        }`}
+                      >
+                        <span className="text-base shrink-0">{item.tipo === "tarefa" ? "✔️" : "📅"}</span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-semibold text-ink truncate">{item.titulo}</span>
+                          {item.clienteNome && <span className="block text-xs text-ink/40 truncate">{item.clienteNome}</span>}
+                        </span>
+                        <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 shrink-0 ${corDoStatus(item.statusCor).cor}`}>
+                          {item.statusNome}
+                        </span>
+                        {item.data && (
+                          <span className={`text-xs font-semibold shrink-0 ${atrasado ? "text-red-600" : "text-ink/40"}`}>
+                            {atrasado ? "Atrasada" : formatarData(item.data)}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-3xl bg-white border border-black/5 shadow-sm p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-lg">📊</span>
+                <h2 className="text-base font-extrabold text-ink">Resumo</h2>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {[
+                  ["Total em aberto", resumo.total, "bg-surface text-ink", "📋"],
+                  ["Vencem hoje", resumo.hoje, "bg-amber-50 text-amber-700", "🎯"],
+                  ["Em atraso", resumo.atraso, "bg-red-50 text-red-700", "⏰"],
+                  ["Concluídos", resumo.concluidos, "bg-emerald-50 text-emerald-700", "✅"],
+                  ["Sem prazo", resumo.semData, "bg-sky-50 text-sky-700", "🗂️"],
+                ].map(([label, valor, cor, icone]) => (
+                  <div key={label as string} className={`rounded-2xl p-4 ${cor}`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-lg">{icone}</span>
+                      <span className="text-2xl font-extrabold">{valor}</span>
+                    </div>
+                    <p className="text-xs font-semibold opacity-70">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="rounded-3xl bg-white border border-black/5 shadow-sm p-6 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">📥</span>
+                    <h2 className="text-base font-extrabold text-ink">Caixa de Entrada</h2>
+                  </div>
+                  <button onClick={() => router.push("/caixa-de-entrada")} className="text-xs font-semibold text-forest hover:text-ink">
+                    Ver tudo →
+                  </button>
+                </div>
+                {notificacoes.length === 0 ? (
+                  <p className="text-sm text-ink/40 py-4 text-center">Tudo em dia. 🎉</p>
+                ) : (
+                  <div className="space-y-1">
+                    {notificacoes.map((n) => (
+                      <button
+                        key={n.id}
+                        onClick={() => router.push(n.link || "/caixa-de-entrada")}
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-surface transition-colors text-left"
+                      >
+                        {n.autor_foto_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={n.autor_foto_url} alt="" className="h-8 w-8 rounded-full object-cover shrink-0" />
+                        ) : (
+                          <span className="h-8 w-8 rounded-xl bg-surface flex items-center justify-center text-sm shrink-0">
+                            {ICONE_NOTIFICACAO[n.tipo] ?? "🔔"}
+                          </span>
+                        )}
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-ink truncate">{n.titulo}</span>
+                          {n.descricao && <span className="block text-xs text-ink/50 truncate">{n.descricao}</span>}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-3xl bg-white border border-black/5 shadow-sm p-6 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">💬</span>
+                    <h2 className="text-base font-extrabold text-ink">Chat</h2>
+                  </div>
+                  <button onClick={() => router.push("/chat")} className="text-xs font-semibold text-forest hover:text-ink">
+                    Abrir chat →
+                  </button>
+                </div>
+                {canaisChat.length === 0 ? (
+                  <p className="text-sm text-ink/40 py-4 text-center">Nenhuma conversa ainda.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {canaisChat.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => router.push(`/chat?canal=${c.id}`)}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl hover:bg-surface transition-colors text-left"
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-ink truncate">{c.nome}</span>
+                          {c.ultimaMensagem && <span className="block text-xs text-ink/50 truncate">{c.ultimaMensagem}</span>}
+                        </span>
+                        {c.naoLidas > 0 && (
+                          <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">{c.naoLidas}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </main>
   );
 }
