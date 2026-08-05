@@ -30,6 +30,9 @@ export default function CentralClientesPage() {
   useEffect(() => {
     async function carregar() {
       const supabase = createClient();
+      const { data: contratosAtivos } = await supabase.from("contratos").select("cliente_id").eq("status", "ativo");
+      const idsAtivos = new Set((contratosAtivos ?? []).map((c) => c.cliente_id));
+
       const { data } = await supabase
         .from("clientes")
         .select("id, papeis ( pessoas ( nome, segmentos ( nome ) ) )");
@@ -37,6 +40,7 @@ export default function CentralClientesPage() {
         id: string;
         papeis: { pessoas: { nome: string; segmentos: { nome: string } | null } | null } | null;
       }[])
+        .filter((c) => idsAtivos.has(c.id))
         .map((c) => ({ id: c.id, nome: c.papeis?.pessoas?.nome ?? "—", segmento: c.papeis?.pessoas?.segmentos?.nome ?? null }))
         .sort((a, b) => a.nome.localeCompare(b.nome));
       setClientes(lista);
