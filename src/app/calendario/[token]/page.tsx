@@ -22,6 +22,7 @@ interface Post {
   titulo: string | null;
   data_publicacao: string;
   hora_publicacao: string | null;
+  updated_at: string;
   legenda: string | null;
   objetivo: "atracao" | "educacao" | "conversao" | null;
   formato: "estatico" | "carrossel" | "video" | null;
@@ -351,6 +352,7 @@ function PostPublicoModal({
   const comentarios = post.posts_conteudo_comentarios ?? [];
   const idxAtual = listaPendentes.findIndex((p) => p.id === post.id);
   const totalNav = listaPendentes.length;
+  const jaAprovado = /agend/i.test(post.status_conteudo?.nome ?? "");
 
   function irPara(offset: number) {
     const alvo = idxAtual + offset;
@@ -358,42 +360,44 @@ function PostPublicoModal({
   }
 
   return (
-    <div className="fixed inset-0 z-20 bg-black/75 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-20 bg-ink/60 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="w-full max-w-6xl h-[88vh] rounded-2xl bg-[#15151a] text-white shadow-2xl flex flex-col overflow-hidden"
+        className="w-full max-w-6xl h-[88vh] rounded-2xl bg-white text-ink shadow-2xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 shrink-0">
-          <p className="text-xs font-bold uppercase tracking-widest text-white/60">Aprovação de conteúdo</p>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-black/5 shrink-0">
+          <p className="text-xs font-bold uppercase tracking-widest text-ink/40">Aprovação de conteúdo</p>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => enviar("aprovar")}
-              disabled={enviando !== null}
-              className="rounded-full bg-forest text-white px-4 py-1.5 text-sm font-semibold hover:brightness-110 transition disabled:opacity-50"
-            >
-              ✓ Aprovar
-            </button>
+            {!jaAprovado && (
+              <button
+                onClick={() => enviar("aprovar")}
+                disabled={enviando !== null}
+                className="rounded-full bg-forest text-white px-4 py-1.5 text-sm font-semibold hover:brightness-110 transition disabled:opacity-50"
+              >
+                ✓ Aprovar
+              </button>
+            )}
             <button
               onClick={() => {
                 setMostrarCampoAlteracao(true);
                 setComentarioAberto(true);
               }}
               disabled={enviando !== null}
-              className="rounded-full border border-white/20 text-white px-4 py-1.5 text-sm font-semibold hover:bg-white/10 transition disabled:opacity-50"
+              className="rounded-full border-2 border-ink/15 text-ink px-4 py-1.5 text-sm font-semibold hover:bg-surface transition disabled:opacity-50"
             >
-              ✏ Ajustar
+              ✏ Solicitar ajuste
             </button>
-            <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-white/10 flex items-center justify-center text-white/60 ml-1">
+            <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-surface flex items-center justify-center text-ink/40 ml-1">
               ✕
             </button>
           </div>
         </div>
 
         <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 bg-black flex items-center justify-center relative p-6 min-w-0">
+          <div className="flex-1 bg-surface flex items-center justify-center relative p-6 min-w-0">
             {midias.length > 0 ? (
               <div className="w-full max-w-md">
-                <div className="relative rounded-2xl overflow-hidden bg-white/5">
+                <div className="relative rounded-2xl overflow-hidden bg-black/5">
                   {midiaAtual.arquivo_tipo?.startsWith("video") ? (
                     <div className="w-full aspect-square flex flex-col items-center justify-center gap-3">
                       <span className="text-4xl">🎬</span>
@@ -401,7 +405,7 @@ function PostPublicoModal({
                         href={midiaAtual.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="rounded-full bg-white text-ink px-5 py-2.5 text-sm font-semibold hover:bg-white/90 transition-colors"
+                        className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
                       >
                         ▶ Abrir vídeo
                       </a>
@@ -415,14 +419,14 @@ function PostPublicoModal({
                       <button
                         onClick={() => setMidiaIndex((i) => Math.max(i - 1, 0))}
                         disabled={midiaIndex === 0}
-                        className="absolute left-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white/90 flex items-center justify-center disabled:opacity-30 text-ink"
+                        className="absolute left-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white/90 shadow flex items-center justify-center disabled:opacity-30 text-ink"
                       >
                         ←
                       </button>
                       <button
                         onClick={() => setMidiaIndex((i) => Math.min(i + 1, midias.length - 1))}
                         disabled={midiaIndex === midias.length - 1}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white/90 flex items-center justify-center disabled:opacity-30 text-ink"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white/90 shadow flex items-center justify-center disabled:opacity-30 text-ink"
                       >
                         →
                       </button>
@@ -432,25 +436,25 @@ function PostPublicoModal({
                 {midias.length > 1 && (
                   <div className="flex items-center justify-center gap-1.5 mt-3">
                     {midias.map((m, i) => (
-                      <span key={m.id} className={`h-1.5 rounded-full transition-all ${i === midiaIndex ? "w-5 bg-white" : "w-1.5 bg-white/30"}`} />
+                      <span key={m.id} className={`h-1.5 rounded-full transition-all ${i === midiaIndex ? "w-5 bg-ink" : "w-1.5 bg-ink/20"}`} />
                     ))}
                   </div>
                 )}
               </div>
             ) : (
-              <p className="text-sm text-white/40 py-16">Sem mídia anexada</p>
+              <p className="text-sm text-ink/40 py-16">Sem mídia anexada</p>
             )}
           </div>
 
-          <div className="w-[320px] shrink-0 border-l border-white/10 overflow-y-auto p-5">
-            {post.titulo && <h3 className="text-xl font-extrabold text-white mb-2 leading-snug">{post.titulo}</h3>}
+          <div className={`w-[320px] shrink-0 border-l border-black/5 overflow-y-auto p-5 ${comentarioAberto ? "" : "flex-1 max-w-none"}`}>
+            {post.titulo && <h3 className="text-xl font-extrabold text-ink mb-2 leading-snug">{post.titulo}</h3>}
 
             <div className="flex flex-wrap items-center gap-1.5 mb-4">
-              <span className="rounded-full bg-white/10 text-white/70 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide">Post</span>
+              <span className="rounded-full bg-surface text-ink/60 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide">Post</span>
               {post.formato && (
-                <span className="rounded-full bg-white/10 text-white/70 px-2.5 py-1 text-[11px] font-semibold">{FORMATO_LABEL[post.formato]}</span>
+                <span className="rounded-full bg-surface text-ink/60 px-2.5 py-1 text-[11px] font-semibold">{FORMATO_LABEL[post.formato]}</span>
               )}
-              <span className="rounded-full bg-white/10 text-white/70 px-2.5 py-1 text-[11px] font-semibold">
+              <span className="rounded-full bg-surface text-ink/60 px-2.5 py-1 text-[11px] font-semibold">
                 {formatarData(post.data_publicacao)}
                 {post.hora_publicacao && ` · ${post.hora_publicacao.slice(0, 5)}`}
               </span>
@@ -459,46 +463,65 @@ function PostPublicoModal({
               </span>
             </div>
 
-            {post.objetivo && <p className="text-xs text-white/40 mb-3">Objetivo: {OBJETIVO_LABEL[post.objetivo]}</p>}
+            {jaAprovado && (
+              <div className="rounded-xl bg-mint text-forest text-xs font-semibold px-3 py-2 mb-4">
+                ✓ Conteúdo aprovado em {formatarData(post.updated_at.slice(0, 10))} às{" "}
+                {new Date(post.updated_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+              </div>
+            )}
+
+            {post.objetivo && <p className="text-xs text-ink/40 mb-3">Objetivo: {OBJETIVO_LABEL[post.objetivo]}</p>}
 
             {post.legenda && (
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wide text-white/40 mb-1.5">Legenda</p>
-                <p className="text-sm text-white/80 whitespace-pre-wrap leading-relaxed">{post.legenda}</p>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40 mb-1.5">Legenda</p>
+                <p className="text-sm text-ink/80 whitespace-pre-wrap leading-relaxed">{post.legenda}</p>
               </div>
             )}
           </div>
 
-          <div className="w-[300px] shrink-0 border-l border-white/10 flex flex-col">
-            <div className="px-4 py-3 border-b border-white/10 shrink-0">
-              <p className="text-sm font-bold text-white">💬 Comentários</p>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {comentarios.length === 0 ? (
-                <p className="text-xs text-white/30 text-center mt-6">Nenhuma mensagem ainda.</p>
-              ) : (
-                comentarios.map((c) => (
-                  <div key={c.id} className="text-sm">
-                    <span className={`font-semibold ${c.autor === "cliente" ? "text-amber-400" : "text-emerald-400"}`}>
-                      {c.autor === "cliente" ? "Você" : "Equipe Easy Company"}
-                    </span>
-                    <p className="text-white/80 mt-0.5">{c.texto}</p>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="p-3 border-t border-white/10 shrink-0">
-              {erro && <p className="text-xs text-red-400 mb-2">{erro}</p>}
-              {enviado && <p className="text-xs text-emerald-400 font-semibold mb-2">{enviado}</p>}
-              {comentarioAberto ? (
+          {comentarioAberto && (
+            <div className="w-[300px] shrink-0 border-l border-black/5 flex flex-col">
+              <div className="px-4 py-3 border-b border-black/5 shrink-0 flex items-center justify-between">
+                <p className="text-sm font-bold text-ink">💬 Comentários</p>
+                <button
+                  onClick={() => {
+                    setComentarioAberto(false);
+                    setMostrarCampoAlteracao(false);
+                  }}
+                  className="text-ink/30 hover:text-ink text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {comentarios.length === 0 ? (
+                  <p className="text-xs text-ink/30 text-center mt-6">Nenhuma mensagem ainda.</p>
+                ) : (
+                  comentarios.map((c) => (
+                    <div key={c.id} className="text-sm">
+                      <span className={`font-semibold ${c.autor === "cliente" ? "text-amber-700" : "text-forest"}`}>
+                        {c.autor === "cliente" ? "Você" : "Equipe Easy Company"}
+                      </span>
+                      <p className="text-ink/70 mt-0.5">{c.texto}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="p-3 border-t border-black/5 shrink-0">
+                {erro && <p className="text-xs text-red-600 mb-2">{erro}</p>}
+                {enviado && <p className="text-xs text-forest font-semibold mb-2">{enviado}</p>}
                 <div className="space-y-2">
+                  <span className="block text-xs font-medium text-ink/60">
+                    Escreva o que precisa ajustar — ideia, arte, texto, edição, o que for
+                  </span>
                   <textarea
                     autoFocus
                     value={texto}
                     onChange={(e) => setTexto(e.target.value)}
                     rows={3}
-                    placeholder="Escreva o que precisa ajustar — ideia, arte, texto, edição..."
-                    className="w-full rounded-xl bg-white/10 border border-white/10 text-white placeholder:text-white/30 text-sm p-3 outline-none focus:border-white/30 resize-none"
+                    placeholder="Ex: pode trocar a foto de capa? Ou mudar o texto da legenda?"
+                    className="input resize-none text-sm"
                   />
                   <div className="flex items-center gap-2">
                     <button
@@ -515,43 +538,33 @@ function PostPublicoModal({
                         setTexto("");
                         setErro(null);
                       }}
-                      className="text-xs font-semibold text-white/50 hover:text-white"
+                      className="text-xs font-semibold text-ink/50 hover:text-ink"
                     >
                       Cancelar
                     </button>
                   </div>
                 </div>
-              ) : (
-                <button
-                  onClick={() => {
-                    setMostrarCampoAlteracao(true);
-                    setComentarioAberto(true);
-                  }}
-                  className="w-full rounded-xl bg-white/5 border border-white/10 text-white/40 text-sm text-left px-3 py-2.5 hover:bg-white/10 transition-colors"
-                >
-                  Escreva uma mensagem...
-                </button>
-              )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {totalNav > 0 && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-white/10 shrink-0 text-sm">
+          <div className="flex items-center justify-between px-5 py-3 border-t border-black/5 shrink-0 text-sm">
             <button
               onClick={() => irPara(-1)}
               disabled={idxAtual <= 0}
-              className="text-white/60 hover:text-white disabled:opacity-20 font-semibold"
+              className="text-ink/50 hover:text-ink disabled:opacity-20 font-semibold"
             >
               ← Anterior
             </button>
-            <span className="text-white/40 text-xs">
+            <span className="text-ink/40 text-xs">
               {idxAtual >= 0 ? String(idxAtual + 1).padStart(2, "0") : "—"} / {String(totalNav).padStart(2, "0")}
             </span>
             <button
               onClick={() => irPara(1)}
               disabled={idxAtual < 0 || idxAtual >= totalNav - 1}
-              className="text-white/60 hover:text-white disabled:opacity-20 font-semibold"
+              className="text-ink/50 hover:text-ink disabled:opacity-20 font-semibold"
             >
               Próximo →
             </button>
