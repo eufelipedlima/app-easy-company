@@ -86,6 +86,7 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
   const [meuId, setMeuId] = useState<string | null>(null);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
   const [historicoAberto, setHistoricoAberto] = useState(false);
+  const [seletorClienteAberto, setSeletorClienteAberto] = useState(false);
   const [seletorEmojiAberto, setSeletorEmojiAberto] = useState(false);
 
   const [titulo, setTitulo] = useState("");
@@ -337,30 +338,41 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
               className="text-3xl font-extrabold text-ink w-full mb-3 outline-none focus:bg-white rounded-lg px-1 -mx-1 bg-transparent"
             />
 
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-64">
-                <BuscaCliente
-                  clientes={clientes}
-                  valor={clienteSelecionado}
-                  onSelecionar={async (c) => {
-                    setClienteSelecionado(c);
-                    await salvarCampo({ cliente_id: c?.id ?? null }, c ? `mudou o cliente para ${c.nome}` : "removeu o cliente");
-                    const escopo = await carregarDocsDoEscopo(c?.id ?? null);
-                    setExpandidos(new Set(ancestrais(escopo, id)));
-                  }}
-                  placeholder="Digite pra buscar (deixe em branco = interno)..."
-                />
-              </div>
-              <p className="text-xs text-ink/40">
+            <div className="flex items-center gap-3 mb-8 text-xs text-ink/40">
+              <span>
                 Atualizado em {formatarQuando(doc.updated_at)}
                 {doc.atualizado_por && colegas[doc.atualizado_por] && ` por ${colegas[doc.atualizado_por]}`}
-              </p>
-              <div className="relative ml-auto">
+              </span>
+              <span className="text-ink/20">·</span>
+              <div className="relative">
                 <button
-                  onClick={() => setHistoricoAberto((v) => !v)}
-                  className="text-ink/25 hover:text-ink/60 transition-colors text-xs"
-                  title="Histórico de alterações"
+                  onClick={() => setSeletorClienteAberto((v) => !v)}
+                  className="hover:text-ink transition-colors"
                 >
+                  {clienteSelecionado ? clienteSelecionado.nome : "+ Vincular a um cliente"}
+                </button>
+                {seletorClienteAberto && (
+                  <div
+                    className="absolute z-20 top-6 left-0 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+                    onMouseLeave={() => setSeletorClienteAberto(false)}
+                  >
+                    <BuscaCliente
+                      clientes={clientes}
+                      valor={clienteSelecionado}
+                      onSelecionar={async (c) => {
+                        setClienteSelecionado(c);
+                        await salvarCampo({ cliente_id: c?.id ?? null }, c ? `mudou o cliente para ${c.nome}` : "removeu o cliente");
+                        const escopo = await carregarDocsDoEscopo(c?.id ?? null);
+                        setExpandidos(new Set(ancestrais(escopo, id)));
+                        setSeletorClienteAberto(false);
+                      }}
+                      placeholder="Digite pra buscar (deixe em branco = interno)..."
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="relative ml-auto">
+                <button onClick={() => setHistoricoAberto((v) => !v)} className="hover:text-ink/70 transition-colors" title="Histórico de alterações">
                   🕐
                 </button>
                 {historicoAberto && (
@@ -386,14 +398,13 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
               </div>
             </div>
 
-            <div className="rounded-2xl bg-white p-5 shadow-sm">
-              <RichTextEditor
-                valorHtml={conteudo}
-                onChange={setConteudo}
-                onSalvar={() => salvarCampo({ conteudo: conteudo || null }, "atualizou o conteúdo")}
-                placeholder="Escreva aqui... anotações de reunião, links importantes, entregáveis, inspirações..."
-              />
-            </div>
+            <RichTextEditor
+              valorHtml={conteudo}
+              onChange={setConteudo}
+              onSalvar={() => salvarCampo({ conteudo: conteudo || null }, "atualizou o conteúdo")}
+              placeholder="Escreva aqui... anotações de reunião, links importantes, entregáveis, inspirações..."
+              semCaixa
+            />
           </div>
         </div>
       </div>

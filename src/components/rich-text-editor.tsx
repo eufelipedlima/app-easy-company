@@ -10,11 +10,13 @@ export function RichTextEditor({
   onChange,
   onSalvar,
   placeholder,
+  semCaixa,
 }: {
   valorHtml: string;
   onChange: (html: string) => void;
   onSalvar?: () => void;
   placeholder?: string;
+  semCaixa?: boolean;
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const inputArquivoRef = useRef<HTMLInputElement>(null);
@@ -170,7 +172,7 @@ export function RichTextEditor({
         contentEditable
         onInput={handleInput}
         onBlur={onSalvar}
-        className="rich-text-editor input resize-none overflow-hidden"
+        className={`rich-text-editor resize-none overflow-hidden ${semCaixa ? "rich-text-editor--livre" : "input"}`}
         style={recolhido && transborda ? { maxHeight: ALTURA_COLAPSADA, overflow: "hidden" } : undefined}
         data-placeholder={placeholder}
         suppressContentEditableWarning
@@ -211,6 +213,13 @@ export function RichTextEditor({
           color: #143421;
           font-weight: 600;
           text-decoration: underline;
+        }
+        .rich-text-editor--livre {
+          border: none;
+          background: transparent;
+          padding: 0;
+          font-size: 0.95rem;
+          line-height: 1.7;
         }
         .rich-text-editor img {
           max-width: 100%;
