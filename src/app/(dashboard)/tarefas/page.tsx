@@ -48,6 +48,7 @@ interface Tarefa {
   data_inicio: string | null;
   prazo: string | null;
   clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
+  eh_projeto: boolean;
 }
 
 interface CamposVisiveisTarefa {
@@ -171,6 +172,7 @@ export default function TarefasPage() {
   const [contagemComentarios, setContagemComentarios] = useState<Record<string, number>>({});
   const [responsaveisPorTarefa, setResponsaveisPorTarefa] = useState<Record<string, Responsavel[]>>({});
   const [clienteFiltroId, setClienteFiltroId] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState<"tudo" | "tarefas" | "projetos">("tudo");
   const [novaAberta, setNovaAberta] = useState(false);
   const [loading, setLoading] = useState(true);
   const [camposVisiveis, setCamposVisiveis] = useState<CamposVisiveisTarefa>(CAMPOS_PADRAO);
@@ -219,6 +221,8 @@ export default function TarefasPage() {
     if (filtroResponsavelId && !(responsaveisPorTarefa[t.id] ?? []).some((r) => r.id === filtroResponsavelId)) return false;
     if (filtroPrioridade && t.prioridade !== filtroPrioridade) return false;
     if (filtroSoAtrasadas && !(t.prazo && new Date(t.prazo + "T00:00:00") < new Date(new Date().toDateString()))) return false;
+    if (filtroTipo === "tarefas" && t.eh_projeto) return false;
+    if (filtroTipo === "projetos" && !t.eh_projeto) return false;
     return true;
   });
 
@@ -305,11 +309,12 @@ export default function TarefasPage() {
     let query = supabase
       .from("tarefas")
       .select(
-        `id, titulo, descricao, cliente_id, status_id, prioridade, data_inicio, prazo,
+        `id, titulo, descricao, cliente_id, status_id, prioridade, data_inicio, prazo, eh_projeto,
          clientes ( papeis ( pessoas ( nome ) ) )`
       )
       .is("tarefa_pai_id", null)
       .eq("arquivada", false)
+      .eq("eh_modelo_projeto", false)
       .is("excluido_em", null)
       .order("created_at", { ascending: false });
     if (clienteFiltroId === "internas") query = query.is("cliente_id", null);
@@ -622,6 +627,32 @@ export default function TarefasPage() {
               }`}
             >
               Mês
+            </button>
+          </div>
+          <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+            <button
+              onClick={() => setFiltroTipo("tudo")}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                filtroTipo === "tudo" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Tudo
+            </button>
+            <button
+              onClick={() => setFiltroTipo("tarefas")}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                filtroTipo === "tarefas" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              ✔️ Tarefas
+            </button>
+            <button
+              onClick={() => setFiltroTipo("projetos")}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                filtroTipo === "projetos" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              📋 Projetos
             </button>
           </div>
           {filtroResponsavelId === meuFuncionarioId && meuFuncionarioId && (
@@ -1026,7 +1057,9 @@ function TarefaCardConteudo({
           <MenuAcoesTarefa tarefa={tarefa} acoes={acoes} />
         </div>
       )}
-      <p className="text-sm font-semibold text-ink truncate pr-5">{tarefa.titulo}</p>
+      <p className="text-sm font-semibold text-ink truncate pr-5">
+        <span className={tarefa.eh_projeto ? "text-amber-600" : "text-ink/30"}>{tarefa.eh_projeto ? "📋" : "✔️"}</span> {tarefa.titulo}
+      </p>
       {camposVisiveis.cliente && <p className="text-xs text-ink/50 truncate mt-0.5">{cliente ?? "Interna"}</p>}
 
       <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -1309,7 +1342,7 @@ function TarefasMes({
                       onClick={() => onAbrirTarefa(t)}
                       className="w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate bg-surface hover:bg-surface/70"
                     >
-                      {t.titulo}
+                      {t.eh_projeto ? "📋" : "✔️"} {t.titulo}
                     </button>
                   ))}
                   {tarefasDoDia.length > 3 && <p className="text-[10px] text-ink/40 px-1.5">+{tarefasDoDia.length - 3} mais</p>}
@@ -1479,8 +1512,7 @@ function NovaTarefaModal({
 interface ModeloProjeto {
   id: string;
   nome: string;
-  descricao: string | null;
-  etapas: { id: string; titulo: string; ordem: number; etapa_pai_id: string | null }[];
+  etapas: { id: string; titulo: string; tarefa_pai_id: string | null; eh_pasta: boolean }[];
 }
 
 function NovoProjetoModal({
@@ -1502,22 +1534,52 @@ function NovoProjetoModal({
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function carregar() {
-      const supabase = createClient();
-      const [{ data: modelosData }, { data: etapasData }] = await Promise.all([
-        supabase.from("modelos_projeto").select("id, nome, descricao").order("nome"),
-        supabase.from("modelos_projeto_etapas").select("id, modelo_id, titulo, ordem, etapa_pai_id").order("ordem"),
-      ]);
-      const lista = (modelosData ?? []).map((m) => ({
-        ...m,
-        etapas: (etapasData ?? []).filter((e) => e.modelo_id === m.id),
-      }));
-      setModelos(lista);
-      setCarregandoModelos(false);
+  const carregarModelos = useCallback(async () => {
+    setCarregandoModelos(true);
+    const supabase = createClient();
+    const { data: modelosData } = await supabase
+      .from("tarefas")
+      .select("id, titulo")
+      .eq("eh_modelo_projeto", true)
+      .is("excluido_em", null)
+      .order("titulo");
+    const idsModelos = (modelosData ?? []).map((m) => m.id);
+
+    // Busca todas as subtarefas de cada modelo, recursivamente (várias camadas de pasta)
+    let todasEtapas: { id: string; titulo: string; tarefa_pai_id: string | null; eh_pasta: boolean }[] = [];
+    let nivelAtual = idsModelos;
+    for (let i = 0; i < 8 && nivelAtual.length > 0; i++) {
+      const { data } = await supabase.from("tarefas").select("id, titulo, tarefa_pai_id, eh_pasta").in("tarefa_pai_id", nivelAtual).is("excluido_em", null);
+      if (!data || data.length === 0) break;
+      todasEtapas = [...todasEtapas, ...data];
+      nivelAtual = data.map((d) => d.id);
     }
-    carregar();
+
+    const mapaPai = new Map<string, string | null>();
+    for (const e of todasEtapas) mapaPai.set(e.id, e.tarefa_pai_id);
+
+    function pertenceAoModelo(etapaId: string, modeloId: string): boolean {
+      let atual: string | null = etapaId;
+      for (let i = 0; i < 10 && atual; i++) {
+        const pai: string | null = mapaPai.get(atual) ?? null;
+        if (pai === modeloId) return true;
+        atual = pai;
+      }
+      return false;
+    }
+
+    const lista = (modelosData ?? []).map((m) => ({
+      id: m.id,
+      nome: m.titulo,
+      etapas: todasEtapas.filter((e) => pertenceAoModelo(e.id, m.id)),
+    }));
+    setModelos(lista);
+    setCarregandoModelos(false);
   }, []);
+
+  useEffect(() => {
+    carregarModelos();
+  }, [carregarModelos]);
 
   const modeloSelecionado = modelos.find((m) => m.id === modeloId) ?? null;
 
@@ -1547,12 +1609,18 @@ function NovoProjetoModal({
     const etapas = modeloSelecionado?.etapas ?? [];
     if (etapas.length > 0) {
       const mapaAntigoNovo = new Map<string, string>();
-      const porNivel = (paiIdAntigo: string | null) => etapas.filter((et) => et.etapa_pai_id === paiIdAntigo).sort((a, b) => a.ordem - b.ordem);
-      async function criarNivel(paiIdAntigo: string | null, paiIdNovo: string) {
+      const porNivel = (paiIdAntigo: string) => etapas.filter((et) => et.tarefa_pai_id === paiIdAntigo);
+      async function criarNivel(paiIdAntigo: string, paiIdNovo: string) {
         for (const et of porNivel(paiIdAntigo)) {
           const { data: nova } = await supabase
             .from("tarefas")
-            .insert({ titulo: et.titulo, tarefa_pai_id: paiIdNovo, cliente_id: clienteSelecionado?.id ?? null, status_id: statusPadraoId })
+            .insert({
+              titulo: et.titulo,
+              tarefa_pai_id: paiIdNovo,
+              cliente_id: clienteSelecionado?.id ?? null,
+              status_id: statusPadraoId,
+              eh_pasta: et.eh_pasta,
+            })
             .select("id")
             .single();
           if (nova) {
@@ -1561,7 +1629,7 @@ function NovoProjetoModal({
           }
         }
       }
-      await criarNivel(null, projeto.id);
+      await criarNivel(modeloId, projeto.id);
     }
     setSaving(false);
     onCriado(projeto.id);
@@ -1569,16 +1637,17 @@ function NovoProjetoModal({
 
   async function criarModeloRapido() {
     const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
     const { data: modelo, error } = await supabase
-      .from("modelos_projeto")
-      .insert({ nome: "Novo modelo", criado_por: user?.id ?? null })
+      .from("tarefas")
+      .insert({ titulo: "Novo modelo de projeto", eh_modelo_projeto: true, status_id: statusPadraoId })
       .select("id")
       .single();
     if (!error && modelo) {
-      window.open(`/configuracoes/modelos-projeto/${modelo.id}`, "_blank");
+      window.open(`/tarefas/${modelo.id}`, "_blank");
+      window.addEventListener("focus", function aoVoltar() {
+        carregarModelos();
+        window.removeEventListener("focus", aoVoltar);
+      });
     }
   }
 

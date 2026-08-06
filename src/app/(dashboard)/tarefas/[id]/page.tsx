@@ -50,6 +50,8 @@ interface Tarefa {
   timer_iniciado_por: string | null;
   excluido_em: string | null;
   excluido_por: string | null;
+  eh_projeto: boolean;
+  eh_modelo_projeto: boolean;
 }
 
 interface Subtarefa {
@@ -654,6 +656,15 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 overflow-y-auto px-8 py-6 max-w-3xl mx-auto w-full">
+          {tarefa.eh_modelo_projeto ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 text-violet-700 px-3 py-1 text-xs font-bold uppercase tracking-wide mb-3">
+              🗂️ Modelo de Projeto
+            </span>
+          ) : tarefa.eh_projeto ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 text-amber-700 px-3 py-1 text-xs font-bold uppercase tracking-wide mb-3">
+              📋 Projeto
+            </span>
+          ) : null}
           <input
             value={titulo}
             onChange={(e) => setTitulo(e.target.value)}

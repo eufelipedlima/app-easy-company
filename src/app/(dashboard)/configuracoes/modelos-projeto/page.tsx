@@ -6,8 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 
 interface Modelo {
   id: string;
-  nome: string;
-  descricao: string | null;
+  titulo: string;
   qtdEtapas: number;
 }
 
@@ -20,11 +19,20 @@ export default function ModelosProjetoPage() {
   const carregar = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
-    const { data: modelosData } = await supabase.from("modelos_projeto").select("id, nome, descricao").order("nome");
-    const { data: etapasData } = await supabase.from("modelos_projeto_etapas").select("modelo_id");
+    const { data: modelosData } = await supabase
+      .from("tarefas")
+      .select("id, titulo")
+      .eq("eh_modelo_projeto", true)
+      .is("excluido_em", null)
+      .order("titulo");
+    const idsModelos = (modelosData ?? []).map((m) => m.id);
+    const { data: etapasData } =
+      idsModelos.length > 0
+        ? await supabase.from("tarefas").select("tarefa_pai_id").in("tarefa_pai_id", idsModelos).is("excluido_em", null)
+        : { data: [] };
     const contagem = new Map<string, number>();
-    for (const e of etapasData ?? []) contagem.set(e.modelo_id, (contagem.get(e.modelo_id) ?? 0) + 1);
-    setModelos((modelosData ?? []).map((m) => ({ ...m, qtdEtapas: contagem.get(m.id) ?? 0 })));
+    for (const e of etapasData ?? []) contagem.set(e.tarefa_pai_id!, (contagem.get(e.tarefa_pai_id!) ?? 0) + 1);
+    setModelos((modelosData ?? []).map((m) => ({ id: m.id, titulo: m.titulo, qtdEtapas: contagem.get(m.id) ?? 0 })));
     setLoading(false);
   }, []);
 
@@ -35,32 +43,22 @@ export default function ModelosProjetoPage() {
   async function criarModelo() {
     setCriando(true);
     const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: statusList } = await supabase.from("status_conteudo").select("id").order("ordem").limit(1);
     const { data: modelo, error } = await supabase
-      .from("modelos_projeto")
-      .insert({ nome: "Novo modelo", criado_por: user?.id ?? null })
+      .from("tarefas")
+      .insert({ titulo: "Novo modelo de projeto", eh_modelo_projeto: true, status_id: statusList?.[0]?.id })
       .select("id")
       .single();
     setCriando(false);
-    if (!error && modelo) router.push(`/configuracoes/modelos-projeto/${modelo.id}`);
-  }
-
-  async function excluirModelo(id: string, e: React.MouseEvent) {
-    e.stopPropagation();
-    if (!window.confirm("Excluir esse modelo de projeto?")) return;
-    const supabase = createClient();
-    await supabase.from("modelos_projeto").delete().eq("id", id);
-    carregar();
+    if (!error && modelo) router.push(`/tarefas/${modelo.id}`);
   }
 
   return (
     <section>
       <div className="flex items-center justify-between mb-6">
         <p className="text-sm text-ink/60">
-          Modelos reutilizáveis pra criar projetos com etapas (e pastas de etapas) já prontas — ex: &quot;Criação de Site&quot; com
-          Briefing, Wireframe, Design, Desenvolvimento, Entrega.
+          Modelos reutilizáveis pra criar projetos com subtarefas (e pastas) já prontas. Cada modelo abre na mesma tela de
+          tarefa/projeto — com descrição, subtarefas, comentários e histórico.
         </p>
         <button
           onClick={criarModelo}
@@ -80,19 +78,11 @@ export default function ModelosProjetoPage() {
           {modelos.map((m) => (
             <button
               key={m.id}
-              onClick={() => router.push(`/configuracoes/modelos-projeto/${m.id}`)}
+              onClick={() => router.push(`/tarefas/${m.id}`)}
               className="w-full flex items-center justify-between gap-3 px-5 py-4 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
             >
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-ink truncate">🗂️ {m.nome}</p>
-                {m.descricao && <p className="text-xs text-ink/50 truncate mt-0.5">{m.descricao.replace(/<[^>]*>/g, " ")}</p>}
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <span className="text-xs text-ink/40">{m.qtdEtapas} etapas</span>
-                <button onClick={(e) => excluirModelo(m.id, e)} className="text-xs font-semibold text-red-500 hover:text-red-700">
-                  Excluir
-                </button>
-              </div>
+              <p className="text-sm font-bold text-ink truncate">🗂️ {m.titulo}</p>
+              <span className="text-xs text-ink/40 shrink-0">{m.qtdEtapas} subtarefas</span>
             </button>
           ))}
         </div>
