@@ -359,8 +359,15 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   }
 
   async function excluirPostMenu(post: Post) {
-    if (!window.confirm(`Excluir "${post.titulo || "esse post"}"? Isso também exclui os sub-conteúdos dele.`)) return;
+    if (!window.confirm(`Mover "${post.titulo || "esse post"}" pra lixeira? Isso também remove os sub-conteúdos dele (mas eles não ficam salvos na lixeira).`))
+      return;
     const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    await supabase
+      .from("lixeira")
+      .insert({ tipo: "conteudo", item_id_original: post.id, titulo: post.titulo, dados: post, excluido_por: user?.id ?? null });
     await supabase.from("posts_conteudo").delete().eq("id", post.id);
     recarregarTudo();
   }

@@ -11,10 +11,18 @@ import {
   Building2,
   Wrench,
   Calendar,
+  Trash2,
 } from "lucide-react";
 
 const SECOES = [
   { href: "/configuracoes/cargos", label: "Cargos", desc: "Cargos usados no cadastro de funcionários", icon: <Briefcase size={18} /> },
+  {
+    href: "/configuracoes/modelos-projeto",
+    label: "Modelos de Projeto",
+    desc: "Projetos com etapas pré-definidas, prontos pra reusar",
+    icon: <ListTree size={18} />,
+  },
+  { href: "/configuracoes/lixeira", label: "Lixeira", desc: "Tarefas, docs e conteúdos excluídos — restaure em até 30 dias", icon: <Trash2 size={18} /> },
   {
     href: "/configuracoes/calendario-conteudo",
     label: "Calendário de Conteúdo",

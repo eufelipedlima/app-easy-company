@@ -27,7 +27,7 @@ const MENU: Grupo[] = [
     href: "/inicio",
   },
   {
-    label: "Pauta da semana",
+    label: "Pauta",
     icon: <CalendarDays size={18} />,
     href: "/inicio/pauta",
   },
@@ -139,7 +139,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     async function carregarPermissoes() {
       const supabase = createClient();
-      const areas = ["financeiro", "contratos", "conteudo", "pessoas", "configuracoes"];
+      const areas = ["financeiro", "contratos", "conteudo", "pessoas", "configuracoes", "tarefas", "docs"];
       const resultados = await Promise.all(areas.map((slug) => supabase.rpc("meu_nivel_acesso", { area_slug: slug })));
       const mapa: Record<string, "nenhum" | "visualizar" | "completo"> = {};
       areas.forEach((slug, i) => {
@@ -394,30 +394,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </nav>
 
-        <div className="px-3 pb-3 border-t border-white/10 pt-3">
-          <button
-            onClick={() => {
-              if (!expandidoVisual) return;
-              setContasAbertas((v) => !v);
-              carregarContas();
-            }}
-            title="Contas"
-            className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/60 hover:text-white transition-colors ${
-              !expandidoVisual ? "justify-center px-0" : ""
-            }`}
-          >
-            <Wallet size={16} />
-            {expandidoVisual && (
-              <>
-                <span className="flex-1 text-left">Contas</span>
-                {contasAbertas ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-              </>
-            )}
-          </button>
+        {(!permissoes || permissoes.financeiro !== "nenhum") && (
+          <div className="px-3 pb-3 border-t border-white/10 pt-3">
+            <button
+              onClick={() => {
+                if (!expandidoVisual) return;
+                setContasAbertas((v) => !v);
+                carregarContas();
+              }}
+              title="Contas"
+              className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/60 hover:text-white transition-colors ${
+                !expandidoVisual ? "justify-center px-0" : ""
+              }`}
+            >
+              <Wallet size={16} />
+              {expandidoVisual && (
+                <>
+                  <span className="flex-1 text-left">Contas</span>
+                  {contasAbertas ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                </>
+              )}
+            </button>
 
-          {contasAbertas && expandidoVisual && (
-            <div className="mt-1 mb-2 rounded-xl bg-white/5 px-3 py-3 space-y-2">
-              {bancos.length === 0 ? (
+            {contasAbertas && expandidoVisual && (
+              <div className="mt-1 mb-2 rounded-xl bg-white/5 px-3 py-3 space-y-2">
+                {bancos.length === 0 ? (
                 <p className="text-xs text-white/40">Nenhuma conta cadastrada.</p>
               ) : (
                 bancos.map((b, i) => (
@@ -439,6 +440,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           )}
         </div>
+        )}
 
         <div className="px-3 pb-6 space-y-0.5">
           <Link

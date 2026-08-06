@@ -527,8 +527,17 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   }
 
   async function excluirTarefa() {
-    if (!window.confirm("Excluir essa tarefa de vez? Se ela tiver subtarefas, elas também serão excluídas.")) return;
+    if (!window.confirm('Mover essa tarefa pra lixeira? Se ela tiver subtarefas, elas também vão junto (mas não ficam salvas na lixeira). Um administrador pode restaurar em até 30 dias.')) return;
     const supabase = createClient();
+    if (tarefa) {
+      await supabase.from("lixeira").insert({
+        tipo: "tarefa",
+        item_id_original: tarefa.id,
+        titulo: tarefa.titulo,
+        dados: tarefa,
+        excluido_por: meuId,
+      });
+    }
     await supabase.from("tarefas").delete().eq("id", id);
     router.push(tarefa?.tarefa_pai_id ? `/tarefas/${tarefa.tarefa_pai_id}` : "/tarefas");
   }

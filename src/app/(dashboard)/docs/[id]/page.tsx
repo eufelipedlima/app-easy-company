@@ -181,8 +181,14 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
   }
 
   async function excluirDoc() {
-    if (!window.confirm(`Excluir "${doc?.titulo}"? Isso também exclui as sub-páginas dela.`)) return;
+    if (!window.confirm(`Mover "${doc?.titulo}" pra lixeira? Isso também remove as sub-páginas dela (mas elas não ficam salvas na lixeira).`)) return;
     const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (doc) {
+      await supabase.from("lixeira").insert({ tipo: "doc", item_id_original: doc.id, titulo: doc.titulo, dados: doc, excluido_por: user?.id ?? null });
+    }
     await supabase.from("docs").delete().eq("id", id);
     router.push("/docs");
   }

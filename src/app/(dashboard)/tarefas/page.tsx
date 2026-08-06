@@ -164,6 +164,8 @@ export default function TarefasPage() {
   const [clientes, setClientes] = useState<Opcao[]>([]);
   const [funcionariosComAcesso, setFuncionariosComAcesso] = useState<Responsavel[]>([]);
   const [meuFuncionarioId, setMeuFuncionarioId] = useState<string | null>(null);
+  const [souAdmin, setSouAdmin] = useState(false);
+  const [novoProjetoAberto, setNovoProjetoAberto] = useState(false);
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
   const [contagemSubtarefas, setContagemSubtarefas] = useState<Record<string, number>>({});
   const [contagemComentarios, setContagemComentarios] = useState<Record<string, number>>({});
@@ -275,6 +277,14 @@ export default function TarefasPage() {
     if (user) {
       const eu = lista.find((f) => f.authUserId === user.id);
       setMeuFuncionarioId(eu?.id ?? null);
+
+      const { data: perfilData } = await supabase
+        .from("funcionarios")
+        .select("perfil_acesso_id, perfis_acesso ( nome )")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+      const nomePerfil = (perfilData as unknown as { perfis_acesso: { nome: string } | null } | null)?.perfis_acesso?.nome;
+      setSouAdmin(nomePerfil === "Administrador");
 
       const salvo = localStorage.getItem("tarefas-filtro-responsavel");
       if (salvo === null) {
@@ -401,8 +411,12 @@ export default function TarefasPage() {
   }
 
   async function excluirTarefaMenu(t: Tarefa) {
-    if (!window.confirm(`Excluir "${t.titulo}"? Isso também exclui as subtarefas dela.`)) return;
+    if (!window.confirm(`Mover "${t.titulo}" pra lixeira? As subtarefas dela vão junto (mas não ficam salvas na lixeira).`)) return;
     const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    await supabase.from("lixeira").insert({ tipo: "tarefa", item_id_original: t.id, titulo: t.titulo, dados: t, excluido_por: user?.id ?? null });
     await supabase.from("tarefas").delete().eq("id", t.id);
     carregarTarefas();
   }
@@ -602,12 +616,22 @@ export default function TarefasPage() {
             <span className="text-xs text-ink/40">Mostrando suas tarefas</span>
           )}
         </div>
-        <button
-          onClick={() => setNovaAberta(true)}
-          className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors"
-        >
-          + Nova tarefa
-        </button>
+        <div className="flex items-center gap-2">
+          {souAdmin && (
+            <button
+              onClick={() => setNovoProjetoAberto(true)}
+              className="rounded-full border-2 border-ink/15 text-ink px-5 py-2 text-sm font-semibold hover:bg-surface transition-colors"
+            >
+              + Novo projeto
+            </button>
+          )}
+          <button
+            onClick={() => setNovaAberta(true)}
+            className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors"
+          >
+            + Nova tarefa
+          </button>
+        </div>
       </div>
 
       <div ref={scrollRef} className="overflow-x-auto pb-4 min-h-[65vh]">
@@ -652,6 +676,14 @@ export default function TarefasPage() {
           statusPadraoId={statusList[0]?.id ?? ""}
           onClose={() => setNovaAberta(false)}
           onCriada={(id) => router.push(`/tarefas/${id}`)}
+        />
+      )}
+      {novoProjetoAberto && (
+        <NovoProjetoModal
+          clientes={clientes}
+          statusPadraoId={statusList[0]?.id ?? ""}
+          onClose={() => setNovoProjetoAberto(false)}
+          onCriado={(id) => router.push(`/tarefas/${id}`)}
         />
       )}
     </main>
@@ -1427,6 +1459,145 @@ function NovaTarefaModal({
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+interface ModeloProjeto {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  etapas: { id: string; titulo: string; ordem: number }[];
+}
+
+function NovoProjetoModal({
+  clientes,
+  statusPadraoId,
+  onClose,
+  onCriado,
+}: {
+  clientes: Opcao[];
+  statusPadraoId: string;
+  onClose: () => void;
+  onCriado: (id: string) => void;
+}) {
+  const [modelos, setModelos] = useState<ModeloProjeto[]>([]);
+  const [modeloId, setModeloId] = useState("");
+  const [titulo, setTitulo] = useState("");
+  const [clienteSelecionado, setClienteSelecionado] = useState<Opcao | null>(null);
+  const [carregandoModelos, setCarregandoModelos] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function carregar() {
+      const supabase = createClient();
+      const [{ data: modelosData }, { data: etapasData }] = await Promise.all([
+        supabase.from("modelos_projeto").select("id, nome, descricao").order("nome"),
+        supabase.from("modelos_projeto_etapas").select("id, modelo_id, titulo, ordem").order("ordem"),
+      ]);
+      const lista = (modelosData ?? []).map((m) => ({
+        ...m,
+        etapas: (etapasData ?? []).filter((e) => e.modelo_id === m.id),
+      }));
+      setModelos(lista);
+      setCarregandoModelos(false);
+    }
+    carregar();
+  }, []);
+
+  const modeloSelecionado = modelos.find((m) => m.id === modeloId) ?? null;
+
+  async function criar(e: React.FormEvent) {
+    e.preventDefault();
+    if (!modeloId) {
+      setErro("Escolhe um modelo de projeto.");
+      return;
+    }
+    if (!titulo.trim()) {
+      setErro("Dê um nome pro projeto.");
+      return;
+    }
+    setSaving(true);
+    setErro(null);
+    const supabase = createClient();
+    const { data: projeto, error } = await supabase
+      .from("tarefas")
+      .insert({ titulo: titulo.trim(), cliente_id: clienteSelecionado?.id ?? null, status_id: statusPadraoId, eh_projeto: true })
+      .select("id")
+      .single();
+    if (error || !projeto) {
+      setErro(error?.message ?? "Erro ao criar projeto.");
+      setSaving(false);
+      return;
+    }
+    const etapas = modeloSelecionado?.etapas ?? [];
+    if (etapas.length > 0) {
+      await supabase.from("tarefas").insert(
+        etapas.map((et) => ({
+          titulo: et.titulo,
+          tarefa_pai_id: projeto.id,
+          cliente_id: clienteSelecionado?.id ?? null,
+          status_id: statusPadraoId,
+        }))
+      );
+    }
+    setSaving(false);
+    onCriado(projeto.id);
+  }
+
+  return (
+    <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-ink mb-4">Novo projeto</h2>
+        {carregandoModelos ? (
+          <p className="text-sm text-ink/50">Carregando modelos...</p>
+        ) : modelos.length === 0 ? (
+          <p className="text-sm text-ink/50">
+            Nenhum modelo de projeto cadastrado ainda. Cria um em Configurações → Modelos de Projeto primeiro.
+          </p>
+        ) : (
+          <form onSubmit={criar} className="space-y-4">
+            <label className="block">
+              <span className="block text-sm font-medium text-ink/70 mb-1">Modelo *</span>
+              <select value={modeloId} onChange={(e) => setModeloId(e.target.value)} className="input">
+                <option value="">Selecione...</option>
+                {modelos.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.nome} ({m.etapas.length} etapas)
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-sm font-medium text-ink/70 mb-1">Nome do projeto *</span>
+              <input value={titulo} onChange={(e) => setTitulo(e.target.value)} className="input" placeholder="Ex: Site da Boate Morcegão" required />
+            </label>
+            <label className="block">
+              <span className="block text-sm font-medium text-ink/70 mb-1">Cliente</span>
+              <BuscaCliente
+                clientes={clientes}
+                valor={clienteSelecionado}
+                onSelecionar={setClienteSelecionado}
+                placeholder="Digite pra buscar (deixe em branco = interno)..."
+              />
+            </label>
+            {erro && <p className="text-sm text-red-600">{erro}</p>}
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+              >
+                {saving ? "Criando..." : "Criar e abrir"}
+              </button>
+              <button type="button" onClick={onClose} className="text-sm font-semibold text-ink/60 hover:text-ink">
+                Cancelar
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );
