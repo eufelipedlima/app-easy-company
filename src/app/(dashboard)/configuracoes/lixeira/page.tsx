@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 interface ItemLixeira {
@@ -31,6 +32,7 @@ function diasRestantes(iso: string) {
 }
 
 export default function LixeiraPage() {
+  const router = useRouter();
   const [itens, setItens] = useState<ItemLixeira[]>([]);
   const [nomesPorAutor, setNomesPorAutor] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -104,7 +106,10 @@ export default function LixeiraPage() {
                 key={item.id}
                 className="flex items-center justify-between gap-3 px-5 py-4 border-b border-black/5 last:border-0"
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <button
+                  onClick={() => router.push(`/configuracoes/lixeira/${item.id}`)}
+                  className="flex items-center gap-3 min-w-0 text-left hover:opacity-70 transition-opacity"
+                >
                   <span className="text-lg shrink-0">{info.icone}</span>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-ink truncate">{item.titulo || "Sem título"}</p>
@@ -117,7 +122,7 @@ export default function LixeiraPage() {
                       </span>
                     </p>
                   </div>
-                </div>
+                </button>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => restaurar(item)}

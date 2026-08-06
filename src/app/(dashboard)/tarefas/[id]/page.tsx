@@ -819,7 +819,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                       }
                     }}
                     className="input text-sm"
-                    placeholder="Nome da subtarefa... (vira uma tarefa própria — pode virar uma 'pasta' se você adicionar subtarefas dentro dela)"
+                    placeholder="Nome da subtarefa..."
                   />
                   <button
                     onClick={() => adicionarSubtarefa(id)}
@@ -827,6 +827,14 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                     className="shrink-0 text-sm font-semibold text-forest hover:text-ink disabled:opacity-50"
                   >
                     Adicionar
+                  </button>
+                  <button
+                    onClick={() => adicionarSubtarefa(id, "Nova pasta")}
+                    disabled={criandoSubtarefa}
+                    className="shrink-0 text-sm font-semibold text-violet-600 hover:text-violet-800 disabled:opacity-50"
+                    title="Cria uma subtarefa que pode agrupar outras dentro dela"
+                  >
+                    📁 Pasta
                   </button>
                 </div>
               </div>

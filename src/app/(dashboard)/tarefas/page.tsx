@@ -1468,7 +1468,7 @@ interface ModeloProjeto {
   id: string;
   nome: string;
   descricao: string | null;
-  etapas: { id: string; titulo: string; ordem: number }[];
+  etapas: { id: string; titulo: string; ordem: number; etapa_pai_id: string | null }[];
 }
 
 function NovoProjetoModal({
@@ -1495,7 +1495,7 @@ function NovoProjetoModal({
       const supabase = createClient();
       const [{ data: modelosData }, { data: etapasData }] = await Promise.all([
         supabase.from("modelos_projeto").select("id, nome, descricao").order("nome"),
-        supabase.from("modelos_projeto_etapas").select("id, modelo_id, titulo, ordem").order("ordem"),
+        supabase.from("modelos_projeto_etapas").select("id, modelo_id, titulo, ordem, etapa_pai_id").order("ordem"),
       ]);
       const lista = (modelosData ?? []).map((m) => ({
         ...m,
@@ -1534,17 +1534,40 @@ function NovoProjetoModal({
     }
     const etapas = modeloSelecionado?.etapas ?? [];
     if (etapas.length > 0) {
-      await supabase.from("tarefas").insert(
-        etapas.map((et) => ({
-          titulo: et.titulo,
-          tarefa_pai_id: projeto.id,
-          cliente_id: clienteSelecionado?.id ?? null,
-          status_id: statusPadraoId,
-        }))
-      );
+      const mapaAntigoNovo = new Map<string, string>();
+      const porNivel = (paiIdAntigo: string | null) => etapas.filter((et) => et.etapa_pai_id === paiIdAntigo).sort((a, b) => a.ordem - b.ordem);
+      async function criarNivel(paiIdAntigo: string | null, paiIdNovo: string) {
+        for (const et of porNivel(paiIdAntigo)) {
+          const { data: nova } = await supabase
+            .from("tarefas")
+            .insert({ titulo: et.titulo, tarefa_pai_id: paiIdNovo, cliente_id: clienteSelecionado?.id ?? null, status_id: statusPadraoId })
+            .select("id")
+            .single();
+          if (nova) {
+            mapaAntigoNovo.set(et.id, nova.id);
+            await criarNivel(et.id, nova.id);
+          }
+        }
+      }
+      await criarNivel(null, projeto.id);
     }
     setSaving(false);
     onCriado(projeto.id);
+  }
+
+  async function criarModeloRapido() {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data: modelo, error } = await supabase
+      .from("modelos_projeto")
+      .insert({ nome: "Novo modelo", criado_por: user?.id ?? null })
+      .select("id")
+      .single();
+    if (!error && modelo) {
+      window.open(`/configuracoes/modelos-projeto/${modelo.id}`, "_blank");
+    }
   }
 
   return (
@@ -1554,9 +1577,15 @@ function NovoProjetoModal({
         {carregandoModelos ? (
           <p className="text-sm text-ink/50">Carregando modelos...</p>
         ) : modelos.length === 0 ? (
-          <p className="text-sm text-ink/50">
-            Nenhum modelo de projeto cadastrado ainda. Cria um em Configurações → Modelos de Projeto primeiro.
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm text-ink/50">Nenhum modelo de projeto cadastrado ainda.</p>
+            <button
+              onClick={criarModeloRapido}
+              className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+            >
+              + Criar novo modelo
+            </button>
+          </div>
         ) : (
           <form onSubmit={criar} className="space-y-4">
             <label className="block">
@@ -1569,6 +1598,9 @@ function NovoProjetoModal({
                   </option>
                 ))}
               </select>
+              <button type="button" onClick={criarModeloRapido} className="text-xs font-semibold text-forest hover:text-ink mt-1.5">
+                + Criar novo modelo
+              </button>
             </label>
             <label className="block">
               <span className="block text-sm font-medium text-ink/70 mb-1">Nome do projeto *</span>
