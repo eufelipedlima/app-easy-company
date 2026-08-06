@@ -845,7 +845,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                       onSalvarPrazo={(nid, novoPrazo) => salvarCampoSubtarefa(nid, { prazo: novoPrazo || null })}
                       onSalvarStatus={(nid, novoStatusId) => salvarCampoSubtarefa(nid, { status_id: novoStatusId })}
                       onToggleResponsavel={(nid, funcionarioId) => toggleResponsavelSubtarefa(nid, funcionarioId)}
-                      onAdicionarFilho={(nid, nomeNovo) => adicionarSubtarefa(nid, nomeNovo)}
+                      onAdicionarFilho={(nid, nomeNovo, ehPasta) => adicionarSubtarefa(nid, nomeNovo, ehPasta)}
                     />
                   ))}
                 </div>
@@ -1040,7 +1040,7 @@ function NoSubtarefa({
   onSalvarPrazo: (id: string, v: string) => void;
   onSalvarStatus: (id: string, v: string) => void;
   onToggleResponsavel: (id: string, funcionarioId: string) => void;
-  onAdicionarFilho: (id: string, nome: string) => void;
+  onAdicionarFilho: (id: string, nome: string, ehPasta?: boolean) => void;
 }) {
   const temFilhos = no.filhos.length > 0;
   const ehPastaVisual = no.eh_pasta || temFilhos;
@@ -1067,7 +1067,7 @@ function NoSubtarefa({
             statusList={statusList}
             funcionariosComAcesso={funcionariosComAcesso}
             responsaveis={responsaveisPorSubtarefa[no.id] ?? []}
-            onAbrir={() => onAbrir(no.id)}
+            onAbrir={() => (no.eh_pasta ? onTogglePasta(no.id) : onAbrir(no.id))}
             onSalvarNome={(v) => onSalvarNome(no.id, v)}
             onSalvarPrazo={(v) => onSalvarPrazo(no.id, v)}
             onSalvarStatus={(v) => onSalvarStatus(no.id, v)}
@@ -1092,7 +1092,7 @@ function NoSubtarefa({
             onChange={(e) => setNomeFilho(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && nomeFilho.trim()) {
-                onAdicionarFilho(no.id, nomeFilho.trim());
+                onAdicionarFilho(no.id, nomeFilho.trim(), false);
                 setNomeFilho("");
                 setCriandoFilho(false);
               }
@@ -1104,6 +1104,17 @@ function NoSubtarefa({
             className="input py-1 text-xs flex-1"
             placeholder="Nome da subtarefa..."
           />
+          <button
+            onClick={() => {
+              onAdicionarFilho(no.id, nomeFilho.trim() || "Nova pasta", true);
+              setNomeFilho("");
+              setCriandoFilho(false);
+            }}
+            className="shrink-0 text-xs font-semibold text-violet-600 hover:text-violet-800"
+            title="Criar como pasta"
+          >
+            📁 Pasta
+          </button>
         </div>
       )}
       {aberto && temFilhos && (
@@ -1161,6 +1172,43 @@ function LinhaSubtarefaEditavel({
   const [nomeTemp, setNomeTemp] = useState(sub.titulo);
   const statusSub = statusList.find((st) => st.id === sub.status_id);
   const atraso = diasAtraso(sub.prazo);
+
+  if (sub.eh_pasta) {
+    return (
+      <div
+        onClick={onAbrir}
+        className={`w-full flex items-center gap-2 rounded-xl px-3 py-2 cursor-pointer transition-colors ${
+          pastaCompleta ? "bg-emerald-50 hover:bg-emerald-100" : "bg-violet-50 hover:bg-violet-100"
+        }`}
+      >
+        <span className="text-sm shrink-0">{pastaCompleta ? "✅" : "📁"}</span>
+        {campoEditando === "nome" ? (
+          <input
+            autoFocus
+            value={nomeTemp}
+            onChange={(e) => setNomeTemp(e.target.value)}
+            onBlur={() => {
+              if (nomeTemp.trim()) onSalvarNome(nomeTemp.trim());
+              setCampoEditando(null);
+            }}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            onClick={(e) => e.stopPropagation()}
+            className="input py-1 text-sm flex-1"
+          />
+        ) : (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setCampoEditando("nome");
+            }}
+            className="text-sm font-bold text-violet-800 flex-1 text-left"
+          >
+            {sub.titulo}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

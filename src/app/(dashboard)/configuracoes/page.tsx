@@ -12,10 +12,12 @@ import {
   Wrench,
   Calendar,
   Trash2,
+  UserCog,
 } from "lucide-react";
 
 const SECOES = [
   { href: "/configuracoes/cargos", label: "Cargos", desc: "Cargos usados no cadastro de funcionários", icon: <Briefcase size={18} /> },
+  { href: "/configuracoes/usuarios", label: "Usuários", desc: "Quem tem login no sistema, e com qual perfil de acesso", icon: <UserCog size={18} /> },
   {
     href: "/configuracoes/modelos-projeto",
     label: "Modelos de Projeto",

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const ABAS = [
   { href: "/configuracoes/cargos", label: "Cargos" },
+  { href: "/configuracoes/usuarios", label: "Usuários" },
   { href: "/configuracoes/modelos-projeto", label: "Modelos de Projeto" },
   { href: "/configuracoes/lixeira", label: "Lixeira" },
   { href: "/configuracoes/calendario-conteudo", label: "Calendário de Conteúdo" },
