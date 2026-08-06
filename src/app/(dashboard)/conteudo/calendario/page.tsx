@@ -236,7 +236,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
         .from("posts_conteudo_responsaveis")
         .select("post_id, funcionarios ( id, papeis ( pessoas ( nome, apelido, foto_url ) ) )")
         .in("post_id", ids),
-      supabase.from("posts_conteudo").select("post_pai_id").in("post_pai_id", ids),
+      supabase.from("posts_conteudo").select("post_pai_id").in("post_pai_id", ids).is("excluido_em", null),
       idsPais.length > 0 ? supabase.from("posts_conteudo").select("id, titulo").in("id", idsPais) : Promise.resolve({ data: [] }),
     ]);
     const mapa: Record<string, Responsavel[]> = {};
@@ -281,6 +281,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
          status_conteudo ( nome, cor )`
       )
       .eq("arquivado", false)
+      .is("excluido_em", null)
       .order("data_publicacao");
     if (!mostrarSubconteudos) query = query.is("post_pai_id", null);
     if (clienteFiltroId) query = query.eq("cliente_id", clienteFiltroId);
@@ -359,16 +360,15 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   }
 
   async function excluirPostMenu(post: Post) {
-    if (!window.confirm(`Mover "${post.titulo || "esse post"}" pra lixeira? Isso também remove os sub-conteúdos dele (mas eles não ficam salvos na lixeira).`))
+    if (!window.confirm(`Mover "${post.titulo || "esse post"}" (e os sub-conteúdos dele) pra lixeira? Um administrador pode restaurar em até 30 dias.`))
       return;
     const supabase = createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    await supabase
-      .from("lixeira")
-      .insert({ tipo: "conteudo", item_id_original: post.id, titulo: post.titulo, dados: post, excluido_por: user?.id ?? null });
-    await supabase.from("posts_conteudo").delete().eq("id", post.id);
+    const { data: filhos } = await supabase.from("posts_conteudo").select("id").eq("post_pai_id", post.id);
+    const ids = [post.id, ...(filhos ?? []).map((f) => f.id)];
+    await supabase.from("posts_conteudo").update({ excluido_em: new Date().toISOString(), excluido_por: user?.id ?? null }).in("id", ids);
     recarregarTudo();
   }
 
@@ -436,6 +436,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
       .gte("data_publicacao", inicio)
       .lte("data_publicacao", fim)
       .eq("arquivado", false)
+      .is("excluido_em", null)
       .order("data_publicacao");
     if (!mostrarSubconteudos) query = query.is("post_pai_id", null);
     if (clienteFiltroId) query = query.eq("cliente_id", clienteFiltroId);

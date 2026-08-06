@@ -17,6 +17,8 @@ interface Doc {
   atualizado_por: string | null;
   created_at: string;
   updated_at: string;
+  excluido_em: string | null;
+  excluido_por: string | null;
 }
 
 interface HistoricoItem {
@@ -97,7 +99,7 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
 
   const carregarDocsDoEscopo = useCallback(async (clienteId: string | null) => {
     const supabase = createClient();
-    let query = supabase.from("docs").select("id, titulo, doc_pai_id, emoji");
+    let query = supabase.from("docs").select("id, titulo, doc_pai_id, emoji").is("excluido_em", null);
     query = clienteId ? query.eq("cliente_id", clienteId) : query.is("cliente_id", null);
     const { data } = await query.order("created_at");
     setDocsDoEscopo(data ?? []);
@@ -181,16 +183,36 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
   }
 
   async function excluirDoc() {
-    if (!window.confirm(`Mover "${doc?.titulo}" pra lixeira? Isso também remove as sub-páginas dela (mas elas não ficam salvas na lixeira).`)) return;
+    if (!window.confirm(`Mover "${doc?.titulo}" (e as sub-páginas dela) pra lixeira? Um administrador pode restaurar em até 30 dias.`)) return;
     const supabase = createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (doc) {
-      await supabase.from("lixeira").insert({ tipo: "doc", item_id_original: doc.id, titulo: doc.titulo, dados: doc, excluido_por: user?.id ?? null });
+    function descendentes(paiId: string): string[] {
+      const filhos = docsDoEscopo.filter((d) => d.doc_pai_id === paiId);
+      return filhos.flatMap((f) => [f.id, ...descendentes(f.id)]);
     }
-    await supabase.from("docs").delete().eq("id", id);
+    const ids = [id, ...descendentes(id)];
+    await supabase.from("docs").update({ excluido_em: new Date().toISOString(), excluido_por: user?.id ?? null }).in("id", ids);
     router.push("/docs");
+  }
+
+  async function restaurarDoc() {
+    const supabase = createClient();
+    function descendentes(paiId: string): string[] {
+      const filhos = docsDoEscopo.filter((d) => d.doc_pai_id === paiId);
+      return filhos.flatMap((f) => [f.id, ...descendentes(f.id)]);
+    }
+    const ids = [id, ...descendentes(id)];
+    await supabase.from("docs").update({ excluido_em: null, excluido_por: null }).in("id", ids);
+    setDoc((atual) => (atual ? { ...atual, excluido_em: null, excluido_por: null } : atual));
+  }
+
+  async function excluirDocDefinitivo() {
+    if (!window.confirm("Excluir esse doc definitivamente, sem volta nenhuma?")) return;
+    const supabase = createClient();
+    await supabase.from("docs").delete().eq("id", id);
+    router.push("/configuracoes/lixeira");
   }
 
   async function adicionarPagina(docPaiId: string | null) {
@@ -256,11 +278,33 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
         </button>
         <div className="flex items-center gap-3">
           {salvando && <span className="text-xs text-ink/40">Salvando...</span>}
-          <button onClick={excluirDoc} className="text-sm font-semibold text-red-500 hover:text-red-700">
-            Excluir
-          </button>
+          {!doc.excluido_em && (
+            <button onClick={excluirDoc} className="text-sm font-semibold text-red-500 hover:text-red-700">
+              Excluir
+            </button>
+          )}
         </div>
       </div>
+
+      {doc.excluido_em && (
+        <div className="mx-8 mt-4 rounded-2xl bg-red-50 border-2 border-red-200 px-5 py-3.5 flex items-center justify-between flex-wrap gap-3 shrink-0">
+          <p className="text-sm font-bold text-red-700">
+            🗑️ Excluído em {formatarQuando(doc.excluido_em)}
+            {doc.excluido_por && colegas[doc.excluido_por] && ` por ${colegas[doc.excluido_por]}`}
+          </p>
+          <div className="flex items-center gap-2">
+            <button onClick={restaurarDoc} className="rounded-full bg-forest text-white px-4 py-1.5 text-xs font-semibold hover:brightness-110 transition">
+              Restaurar
+            </button>
+            <button
+              onClick={excluirDocDefinitivo}
+              className="rounded-full border-2 border-red-300 text-red-700 px-4 py-1.5 text-xs font-semibold hover:bg-red-100 transition"
+            >
+              Excluir de vez
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         <div className="w-72 shrink-0 border-r border-black/5 bg-card flex flex-col">

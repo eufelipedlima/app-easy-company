@@ -154,11 +154,13 @@ export default function PautaPage() {
         .from("tarefas")
         .select("id, titulo, data_inicio, prazo, status_id, descricao, status_conteudo ( nome, cor )")
         .is("tarefa_pai_id", null)
-        .eq("arquivada", false),
+        .eq("arquivada", false)
+        .is("excluido_em", null),
       supabase
         .from("posts_conteudo")
         .select("id, titulo, data_inicio, data_publicacao, status_id, observacoes_internas, status_conteudo ( nome, cor )")
-        .eq("arquivado", false),
+        .eq("arquivado", false)
+        .is("excluido_em", null),
     ]);
 
     const tarefasNoPeriodo = ((tarefasData ?? []) as unknown as {
@@ -194,10 +196,10 @@ export default function PautaPage() {
         ? supabase.from("posts_conteudo_responsaveis").select("post_id, funcionario_id").in("post_id", idsPosts)
         : Promise.resolve({ data: [] }),
       idsTarefas.length > 0
-        ? supabase.from("tarefas").select("tarefa_pai_id").in("tarefa_pai_id", idsTarefas)
+        ? supabase.from("tarefas").select("tarefa_pai_id").in("tarefa_pai_id", idsTarefas).is("excluido_em", null)
         : Promise.resolve({ data: [] }),
       idsPosts.length > 0
-        ? supabase.from("posts_conteudo").select("post_pai_id").in("post_pai_id", idsPosts)
+        ? supabase.from("posts_conteudo").select("post_pai_id").in("post_pai_id", idsPosts).is("excluido_em", null)
         : Promise.resolve({ data: [] }),
     ]);
 

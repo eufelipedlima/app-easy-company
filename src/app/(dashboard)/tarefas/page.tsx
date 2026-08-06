@@ -310,6 +310,7 @@ export default function TarefasPage() {
       )
       .is("tarefa_pai_id", null)
       .eq("arquivada", false)
+      .is("excluido_em", null)
       .order("created_at", { ascending: false });
     if (clienteFiltroId === "internas") query = query.is("cliente_id", null);
     else if (clienteFiltroId) query = query.eq("cliente_id", clienteFiltroId);
@@ -322,7 +323,7 @@ export default function TarefasPage() {
     const ids = lista.map((t) => t.id);
     if (ids.length > 0) {
       const [{ data: filhas }, { data: comentarios }, { data: responsaveisData }] = await Promise.all([
-        supabase.from("tarefas").select("tarefa_pai_id").in("tarefa_pai_id", ids),
+        supabase.from("tarefas").select("tarefa_pai_id").in("tarefa_pai_id", ids).is("excluido_em", null),
         supabase.from("tarefas_comentarios").select("tarefa_id").in("tarefa_id", ids),
         supabase
           .from("tarefas_responsaveis")
@@ -411,13 +412,24 @@ export default function TarefasPage() {
   }
 
   async function excluirTarefaMenu(t: Tarefa) {
-    if (!window.confirm(`Mover "${t.titulo}" pra lixeira? As subtarefas dela vão junto (mas não ficam salvas na lixeira).`)) return;
+    if (!window.confirm(`Mover "${t.titulo}" (e as subtarefas dela) pra lixeira? Um administrador pode restaurar em até 30 dias.`)) return;
     const supabase = createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    await supabase.from("lixeira").insert({ tipo: "tarefa", item_id_original: t.id, titulo: t.titulo, dados: t, excluido_por: user?.id ?? null });
-    await supabase.from("tarefas").delete().eq("id", t.id);
+    let idsParaExcluir = [t.id];
+    let nivelAtual = [t.id];
+    for (let i = 0; i < 8 && nivelAtual.length > 0; i++) {
+      const { data } = await supabase.from("tarefas").select("id").in("tarefa_pai_id", nivelAtual);
+      if (!data || data.length === 0) break;
+      const novosIds = data.map((d) => d.id);
+      idsParaExcluir = [...idsParaExcluir, ...novosIds];
+      nivelAtual = novosIds;
+    }
+    await supabase
+      .from("tarefas")
+      .update({ excluido_em: new Date().toISOString(), excluido_por: user?.id ?? null })
+      .in("id", idsParaExcluir);
     carregarTarefas();
   }
 

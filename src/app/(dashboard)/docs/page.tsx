@@ -35,6 +35,7 @@ export default function DocsPage() {
       .from("docs")
       .select("id, titulo, emoji, cliente_id, updated_at, clientes ( papeis ( pessoas ( nome ) ) )")
       .is("doc_pai_id", null)
+      .is("excluido_em", null)
       .order("updated_at", { ascending: false });
     if (clienteFiltroId === "internos") query = query.is("cliente_id", null);
     else if (clienteFiltroId) query = query.eq("cliente_id", clienteFiltroId);

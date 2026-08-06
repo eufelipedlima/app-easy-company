@@ -157,15 +157,22 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
           .eq("cliente_id", id)
           .is("tarefa_pai_id", null)
           .eq("arquivada", false)
+          .is("excluido_em", null)
           .order("created_at", { ascending: false }),
         supabase
           .from("posts_conteudo")
           .select("id, titulo, data_publicacao, status_id, post_pai_id, observacoes_internas, status_conteudo ( nome, cor )")
           .eq("cliente_id", id)
           .eq("arquivado", false)
+          .is("excluido_em", null)
           .order("data_publicacao", { ascending: false })
           .limit(60),
-        supabase.from("docs").select("id, titulo, emoji, conteudo, criado_por, created_at, doc_pai_id").eq("cliente_id", id).order("created_at", { ascending: false }),
+        supabase
+          .from("docs")
+          .select("id, titulo, emoji, conteudo, criado_por, created_at, doc_pai_id")
+          .eq("cliente_id", id)
+          .is("excluido_em", null)
+          .order("created_at", { ascending: false }),
         supabase.from("chat_canais").select("id").eq("tipo", "cliente").eq("cliente_id", id).maybeSingle(),
         supabase.from("funcionarios").select("id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )").not("auth_user_id", "is", null),
         supabase.from("status_conteudo").select("id, nome, cor, ordem").order("ordem"),

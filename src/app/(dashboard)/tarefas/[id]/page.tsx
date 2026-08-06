@@ -48,6 +48,8 @@ interface Tarefa {
   tempo_total_segundos: number;
   timer_iniciado_em: string | null;
   timer_iniciado_por: string | null;
+  excluido_em: string | null;
+  excluido_por: string | null;
 }
 
 interface Subtarefa {
@@ -56,6 +58,7 @@ interface Subtarefa {
   status_id: string;
   prazo: string | null;
   tarefa_pai_id: string | null;
+  eh_pasta: boolean;
 }
 
 interface SubtarefaNode extends Subtarefa {
@@ -291,7 +294,12 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     let todas: Subtarefa[] = [];
     let nivelAtual = [id];
     for (let i = 0; i < 8 && nivelAtual.length > 0; i++) {
-      const { data } = await supabase.from("tarefas").select("id, titulo, status_id, prazo, tarefa_pai_id").in("tarefa_pai_id", nivelAtual).order("created_at");
+      const { data } = await supabase
+        .from("tarefas")
+        .select("id, titulo, status_id, prazo, tarefa_pai_id, eh_pasta")
+        .in("tarefa_pai_id", nivelAtual)
+        .is("excluido_em", null)
+        .order("created_at");
       if (!data || data.length === 0) break;
       todas = [...todas, ...data];
       nivelAtual = data.map((d) => d.id);
@@ -447,7 +455,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     return authUserId === meuId ? meuNome : colegas.find((c) => c.id === authUserId)?.nome ?? "Alguém";
   }
 
-  async function adicionarSubtarefa(paiId: string, tituloNovo?: string) {
+  async function adicionarSubtarefa(paiId: string, tituloNovo?: string, ehPasta?: boolean) {
     const nomeFinal = tituloNovo ?? novaSubtarefa;
     if (!nomeFinal.trim() || !tarefa) return;
     setCriandoSubtarefa(true);
@@ -457,6 +465,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       tarefa_pai_id: paiId,
       cliente_id: tarefa.cliente_id,
       status_id: statusList[0]?.id,
+      eh_pasta: ehPasta ?? false,
     });
     if (!tituloNovo) setNovaSubtarefa("");
     setCriandoSubtarefa(false);
@@ -542,19 +551,26 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   }
 
   async function excluirTarefa() {
-    if (!window.confirm('Mover essa tarefa pra lixeira? Se ela tiver subtarefas, elas também vão junto (mas não ficam salvas na lixeira). Um administrador pode restaurar em até 30 dias.')) return;
+    if (!window.confirm("Mover essa tarefa (e as subtarefas dela) pra lixeira? Um administrador pode restaurar tudo em até 30 dias.")) return;
     const supabase = createClient();
-    if (tarefa) {
-      await supabase.from("lixeira").insert({
-        tipo: "tarefa",
-        item_id_original: tarefa.id,
-        titulo: tarefa.titulo,
-        dados: tarefa,
-        excluido_por: meuId,
-      });
-    }
-    await supabase.from("tarefas").delete().eq("id", id);
+    const agora = new Date().toISOString();
+    const ids = [id, ...subtarefas.map((s) => s.id)];
+    await supabase.from("tarefas").update({ excluido_em: agora, excluido_por: meuId }).in("id", ids);
     router.push(tarefa?.tarefa_pai_id ? `/tarefas/${tarefa.tarefa_pai_id}` : "/tarefas");
+  }
+
+  async function restaurarTarefa() {
+    const supabase = createClient();
+    const ids = [id, ...subtarefas.map((s) => s.id)];
+    await supabase.from("tarefas").update({ excluido_em: null, excluido_por: null }).in("id", ids);
+    setTarefa((t) => (t ? { ...t, excluido_em: null, excluido_por: null } : t));
+  }
+
+  async function excluirTarefaDefinitivo() {
+    if (!window.confirm("Excluir essa tarefa definitivamente, sem volta nenhuma?")) return;
+    const supabase = createClient();
+    await supabase.from("tarefas").delete().eq("id", id);
+    router.push("/configuracoes/lixeira");
   }
 
   const colegasParaMencao = colegas.filter((c) => mencaoBusca !== null && normalizar(c.nome).includes(normalizar(mencaoBusca)));
@@ -605,11 +621,36 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             onIniciar={iniciarCronometro}
             onPausar={pausarCronometro}
           />
-          <button onClick={excluirTarefa} className="text-sm font-semibold text-red-500 hover:text-red-700">
-            Excluir tarefa
-          </button>
+          {!tarefa.excluido_em && (
+            <button onClick={excluirTarefa} className="text-sm font-semibold text-red-500 hover:text-red-700">
+              Excluir tarefa
+            </button>
+          )}
         </div>
       </div>
+
+      {tarefa.excluido_em && (
+        <div className="mx-8 mt-4 rounded-2xl bg-red-50 border-2 border-red-200 px-5 py-3.5 flex items-center justify-between flex-wrap gap-3 shrink-0">
+          <p className="text-sm font-bold text-red-700">
+            🗑️ Excluída em {formatarQuando(tarefa.excluido_em)}
+            {tarefa.excluido_por && ` por ${nomeDoAutor(tarefa.excluido_por)}`}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={restaurarTarefa}
+              className="rounded-full bg-forest text-white px-4 py-1.5 text-xs font-semibold hover:brightness-110 transition"
+            >
+              Restaurar
+            </button>
+            <button
+              onClick={excluirTarefaDefinitivo}
+              className="rounded-full border-2 border-red-300 text-red-700 px-4 py-1.5 text-xs font-semibold hover:bg-red-100 transition"
+            >
+              Excluir de vez
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 overflow-y-auto px-8 py-6 max-w-3xl mx-auto w-full">
@@ -829,7 +870,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                     Adicionar
                   </button>
                   <button
-                    onClick={() => adicionarSubtarefa(id, "Nova pasta")}
+                    onClick={() => adicionarSubtarefa(id, "Nova pasta", true)}
                     disabled={criandoSubtarefa}
                     className="shrink-0 text-sm font-semibold text-violet-600 hover:text-violet-800 disabled:opacity-50"
                     title="Cria uma subtarefa que pode agrupar outras dentro dela"
@@ -1002,6 +1043,8 @@ function NoSubtarefa({
   onAdicionarFilho: (id: string, nome: string) => void;
 }) {
   const temFilhos = no.filhos.length > 0;
+  const ehPastaVisual = no.eh_pasta || temFilhos;
+  const pastaCompleta = temFilhos && no.filhos.every((f) => statusList.find((s) => s.id === f.status_id)?.cor === "verde");
   const aberto = pastasAbertas.has(no.id);
   const [criandoFilho, setCriandoFilho] = useState(false);
   const [nomeFilho, setNomeFilho] = useState("");
@@ -1010,16 +1053,17 @@ function NoSubtarefa({
     <div style={{ marginLeft: nivel * 20 }}>
       <div className="flex items-center gap-1">
         <button
-          onClick={() => (temFilhos || criandoFilho ? onTogglePasta(no.id) : setCriandoFilho(true))}
-          className="h-5 w-5 shrink-0 rounded-md flex items-center justify-center text-ink/40 hover:bg-black/10 hover:text-ink text-[10px]"
-          title={temFilhos ? (aberto ? "Recolher" : "Expandir") : "Adicionar subtarefa aqui dentro"}
+          onClick={() => (temFilhos ? onTogglePasta(no.id) : ehPastaVisual ? setCriandoFilho(true) : onTogglePasta(no.id))}
+          className={`h-5 w-5 shrink-0 rounded-md flex items-center justify-center text-ink/40 hover:bg-black/10 hover:text-ink text-[10px] ${!ehPastaVisual && "invisible"}`}
+          title={temFilhos ? (aberto ? "Recolher" : "Expandir") : "Nenhuma subtarefa ainda"}
         >
-          {temFilhos ? (aberto ? "▾" : "▸") : "+"}
+          {temFilhos ? (aberto ? "▾" : "▸") : ""}
         </button>
         <div className="flex-1">
           <LinhaSubtarefaEditavel
             sub={no}
-            comFilhos={temFilhos}
+            comFilhos={ehPastaVisual}
+            pastaCompleta={pastaCompleta}
             statusList={statusList}
             funcionariosComAcesso={funcionariosComAcesso}
             responsaveis={responsaveisPorSubtarefa[no.id] ?? []}
@@ -1030,6 +1074,15 @@ function NoSubtarefa({
             onToggleResponsavel={(fid) => onToggleResponsavel(no.id, fid)}
           />
         </div>
+        {ehPastaVisual && (
+          <button
+            onClick={() => setCriandoFilho(true)}
+            className="shrink-0 h-6 w-6 rounded-full bg-violet-100 text-violet-700 hover:bg-violet-200 flex items-center justify-center text-xs font-bold"
+            title="Adicionar subtarefa dentro dessa pasta"
+          >
+            +
+          </button>
+        )}
       </div>
       {criandoFilho && (
         <div className="flex items-center gap-2 mt-1" style={{ marginLeft: 24 }}>
@@ -1082,6 +1135,7 @@ function NoSubtarefa({
 function LinhaSubtarefaEditavel({
   sub,
   comFilhos,
+  pastaCompleta,
   statusList,
   funcionariosComAcesso,
   responsaveis,
@@ -1093,6 +1147,7 @@ function LinhaSubtarefaEditavel({
 }: {
   sub: Subtarefa;
   comFilhos?: boolean;
+  pastaCompleta?: boolean;
   statusList: StatusItem[];
   funcionariosComAcesso: Responsavel[];
   responsaveis: Responsavel[];
@@ -1110,11 +1165,13 @@ function LinhaSubtarefaEditavel({
   return (
     <div
       onClick={() => campoEditando === null && onAbrir()}
-      className="group/row w-full grid grid-cols-[1fr_110px_150px_110px] items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors cursor-pointer"
+      className={`group/row w-full grid grid-cols-[1fr_110px_150px_110px] items-center gap-2 rounded-xl px-3 py-2.5 transition-colors cursor-pointer ${
+        pastaCompleta ? "bg-emerald-50 hover:bg-emerald-100" : "bg-surface hover:bg-surface/70"
+      }`}
     >
       <div className="flex items-center gap-2 min-w-0" onClick={(e) => e.stopPropagation()}>
         {comFilhos ? (
-          <span className="text-sm shrink-0">📁</span>
+          <span className="text-sm shrink-0">{pastaCompleta ? "✅" : "📁"}</span>
         ) : (
           <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
         )}
@@ -1141,7 +1198,7 @@ function LinhaSubtarefaEditavel({
               className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs shrink-0"
               title="Editar nome"
             >
-              ✏️
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
             </button>
           </>
         )}
@@ -1169,7 +1226,7 @@ function LinhaSubtarefaEditavel({
         ) : (
           <button onClick={() => setCampoEditando("responsavel")} className="flex items-center gap-1 group/resp">
             {responsaveis.length > 0 ? <AvatarStack pessoas={responsaveis} tamanho={20} /> : <span className="text-xs text-ink/30">—</span>}
-            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs">✏️</span>
+            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
           </button>
         )}
       </div>
@@ -1192,7 +1249,7 @@ function LinhaSubtarefaEditavel({
               {sub.prazo ? formatarDataCurta(sub.prazo) : "—"}
               {atraso && ` · ${atraso}d`}
             </span>
-            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs">✏️</span>
+            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
           </button>
         )}
       </div>
@@ -1219,7 +1276,7 @@ function LinhaSubtarefaEditavel({
             <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
               {statusSub?.nome ?? "—"}
             </span>
-            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs">✏️</span>
+            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
           </button>
         )}
       </div>

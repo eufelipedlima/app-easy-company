@@ -120,6 +120,7 @@ export default function InicioPage() {
               .select("id, titulo, prazo, data_inicio, prioridade, status_id, clientes ( papeis ( pessoas ( nome ) ) ), status_conteudo ( nome, cor )")
               .in("id", idsTarefas)
               .eq("arquivada", false)
+              .is("excluido_em", null)
           : Promise.resolve({ data: [] }),
         idsPosts.length > 0
           ? supabase
@@ -127,6 +128,7 @@ export default function InicioPage() {
               .select("id, titulo, data_publicacao, data_inicio, status_id, clientes ( papeis ( pessoas ( nome ) ) ), status_conteudo ( nome, cor )")
               .in("id", idsPosts)
               .eq("arquivado", false)
+              .is("excluido_em", null)
           : Promise.resolve({ data: [] }),
       ]);
 

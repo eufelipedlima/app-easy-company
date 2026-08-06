@@ -7,17 +7,16 @@ import { createClient } from "@/lib/supabase/client";
 interface ItemLixeira {
   id: string;
   tipo: "tarefa" | "doc" | "conteudo";
-  item_id_original: string;
   titulo: string | null;
-  dados: Record<string, unknown>;
   excluido_por: string | null;
   excluido_em: string;
+  link: string;
 }
 
-const LABEL_TIPO: Record<string, { label: string; icone: string; tabela: string }> = {
-  tarefa: { label: "Tarefa", icone: "✔️", tabela: "tarefas" },
-  doc: { label: "Doc", icone: "📄", tabela: "docs" },
-  conteudo: { label: "Conteúdo", icone: "📅", tabela: "posts_conteudo" },
+const LABEL_TIPO: Record<string, { label: string; icone: string }> = {
+  tarefa: { label: "Tarefa", icone: "✔️" },
+  doc: { label: "Doc", icone: "📄" },
+  conteudo: { label: "Conteúdo", icone: "📅" },
 };
 
 function formatarQuando(iso: string) {
@@ -36,19 +35,40 @@ export default function LixeiraPage() {
   const [itens, setItens] = useState<ItemLixeira[]>([]);
   const [nomesPorAutor, setNomesPorAutor] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [processando, setProcessando] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
 
-    // Limpa da lixeira (de verdade) o que já passou de 30 dias
+    // Apaga de vez (definitivamente) o que já passou de 30 dias
     const limite = new Date();
     limite.setDate(limite.getDate() - 30);
-    await supabase.from("lixeira").delete().lt("excluido_em", limite.toISOString());
+    await Promise.all([
+      supabase.from("tarefas").delete().not("excluido_em", "is", null).lt("excluido_em", limite.toISOString()),
+      supabase.from("docs").delete().not("excluido_em", "is", null).lt("excluido_em", limite.toISOString()),
+      supabase.from("posts_conteudo").delete().not("excluido_em", "is", null).lt("excluido_em", limite.toISOString()),
+    ]);
 
-    const { data } = await supabase.from("lixeira").select("*").order("excluido_em", { ascending: false });
-    setItens(data ?? []);
+    const [{ data: tarefas }, { data: docs }, { data: posts }] = await Promise.all([
+      supabase.from("tarefas").select("id, titulo, excluido_por, excluido_em").not("excluido_em", "is", null),
+      supabase.from("docs").select("id, titulo, excluido_por, excluido_em").not("excluido_em", "is", null),
+      supabase.from("posts_conteudo").select("id, titulo, excluido_por, excluido_em").not("excluido_em", "is", null),
+    ]);
+
+    const lista: ItemLixeira[] = [
+      ...(tarefas ?? []).map((t) => ({ id: t.id, tipo: "tarefa" as const, titulo: t.titulo, excluido_por: t.excluido_por, excluido_em: t.excluido_em!, link: `/tarefas/${t.id}` })),
+      ...(docs ?? []).map((d) => ({ id: d.id, tipo: "doc" as const, titulo: d.titulo, excluido_por: d.excluido_por, excluido_em: d.excluido_em!, link: `/docs/${d.id}` })),
+      ...(posts ?? []).map((p) => ({
+        id: p.id,
+        tipo: "conteudo" as const,
+        titulo: p.titulo,
+        excluido_por: p.excluido_por,
+        excluido_em: p.excluido_em!,
+        link: `/conteudo/calendario/post/${p.id}`,
+      })),
+    ].sort((a, b) => (a.excluido_em < b.excluido_em ? 1 : -1));
+
+    setItens(lista);
 
     const { data: func } = await supabase.from("funcionarios").select("auth_user_id, papeis ( pessoas ( nome, apelido ) )").not("auth_user_id", "is", null);
     const mapa: Record<string, string> = {};
@@ -63,33 +83,11 @@ export default function LixeiraPage() {
     carregar();
   }, [carregar]);
 
-  async function restaurar(item: ItemLixeira) {
-    setProcessando(item.id);
-    const supabase = createClient();
-    const tabela = LABEL_TIPO[item.tipo].tabela;
-    const { error } = await supabase.from(tabela).insert(item.dados);
-    if (!error) {
-      await supabase.from("lixeira").delete().eq("id", item.id);
-      setItens((atual) => atual.filter((i) => i.id !== item.id));
-    } else {
-      alert("Não foi possível restaurar: " + error.message);
-    }
-    setProcessando(null);
-  }
-
-  async function excluirDefinitivo(item: ItemLixeira) {
-    if (!window.confirm(`Excluir "${item.titulo || "esse item"}" definitivamente? Não tem mais volta.`)) return;
-    setProcessando(item.id);
-    const supabase = createClient();
-    await supabase.from("lixeira").delete().eq("id", item.id);
-    setItens((atual) => atual.filter((i) => i.id !== item.id));
-    setProcessando(null);
-  }
-
   return (
     <section>
       <p className="text-xs text-ink/50 bg-surface rounded-full px-4 py-2 inline-flex items-center gap-1.5 w-fit mb-6">
-        🗑️ Itens ficam aqui por até 30 dias antes de serem apagados de vez. Só administradores veem essa página.
+        🗑️ Itens ficam aqui por até 30 dias antes de serem apagados de vez. Clique num item pra abrir a tela completa dele (com
+        descrição, subtarefas, comentários — tudo). Só administradores veem essa página.
       </p>
 
       {loading ? (
@@ -102,44 +100,25 @@ export default function LixeiraPage() {
             const info = LABEL_TIPO[item.tipo];
             const restantes = diasRestantes(item.excluido_em);
             return (
-              <div
-                key={item.id}
-                className="flex items-center justify-between gap-3 px-5 py-4 border-b border-black/5 last:border-0"
+              <button
+                key={`${item.tipo}-${item.id}`}
+                onClick={() => router.push(item.link)}
+                className="w-full flex items-center justify-between gap-3 px-5 py-4 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
               >
-                <button
-                  onClick={() => router.push(`/configuracoes/lixeira/${item.id}`)}
-                  className="flex items-center gap-3 min-w-0 text-left hover:opacity-70 transition-opacity"
-                >
+                <div className="flex items-center gap-3 min-w-0">
                   <span className="text-lg shrink-0">{info.icone}</span>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-ink truncate">{item.titulo || "Sem título"}</p>
                     <p className="text-xs text-ink/40">
                       {info.label} · Excluído em {formatarQuando(item.excluido_em)}
                       {item.excluido_por && nomesPorAutor[item.excluido_por] && ` por ${nomesPorAutor[item.excluido_por]}`}
-                      {" · "}
-                      <span className={restantes <= 5 ? "text-red-600 font-semibold" : ""}>
-                        {restantes === 0 ? "some hoje" : `some em ${restantes}d`}
-                      </span>
                     </p>
                   </div>
-                </button>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => restaurar(item)}
-                    disabled={processando === item.id}
-                    className="rounded-full bg-forest text-white px-4 py-1.5 text-xs font-semibold hover:brightness-110 transition disabled:opacity-50"
-                  >
-                    Restaurar
-                  </button>
-                  <button
-                    onClick={() => excluirDefinitivo(item)}
-                    disabled={processando === item.id}
-                    className="rounded-full border-2 border-red-200 text-red-600 px-4 py-1.5 text-xs font-semibold hover:bg-red-50 transition disabled:opacity-50"
-                  >
-                    Excluir de vez
-                  </button>
                 </div>
-              </div>
+                <span className={`text-xs font-semibold shrink-0 ${restantes <= 5 ? "text-red-600" : "text-ink/40"}`}>
+                  {restantes === 0 ? "some hoje" : `some em ${restantes}d`}
+                </span>
+              </button>
             );
           })}
         </div>

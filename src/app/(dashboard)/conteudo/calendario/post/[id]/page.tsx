@@ -55,6 +55,8 @@ interface Post {
   tempo_total_segundos: number;
   timer_iniciado_em: string | null;
   timer_iniciado_por: string | null;
+  excluido_em: string | null;
+  excluido_por: string | null;
 }
 
 interface Midia {
@@ -286,6 +288,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       .from("posts_conteudo")
       .select("id, titulo, status_id, data_publicacao")
       .eq("post_pai_id", id)
+      .is("excluido_em", null)
       .order("data_publicacao");
     const lista = data ?? [];
     setSubConteudos(lista);
@@ -468,6 +471,28 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     setMidias(novaOrdem);
     const supabase = createClient();
     await Promise.all(novaOrdem.map((m, i) => supabase.from("posts_conteudo_midias").update({ ordem: i }).eq("id", m.id)));
+  }
+
+  async function excluirPost() {
+    if (!window.confirm("Mover esse conteúdo (e os sub-conteúdos dele) pra lixeira? Um administrador pode restaurar em até 30 dias.")) return;
+    const supabase = createClient();
+    const ids = [id, ...subConteudos.map((s) => s.id)];
+    await supabase.from("posts_conteudo").update({ excluido_em: new Date().toISOString(), excluido_por: meuId }).in("id", ids);
+    router.push(post?.post_pai_id ? `/conteudo/calendario/post/${post.post_pai_id}` : "/conteudo/calendario");
+  }
+
+  async function restaurarPost() {
+    const supabase = createClient();
+    const ids = [id, ...subConteudos.map((s) => s.id)];
+    await supabase.from("posts_conteudo").update({ excluido_em: null, excluido_por: null }).in("id", ids);
+    setPost((p) => (p ? { ...p, excluido_em: null, excluido_por: null } : p));
+  }
+
+  async function excluirPostDefinitivo() {
+    if (!window.confirm("Excluir esse conteúdo definitivamente, sem volta nenhuma?")) return;
+    const supabase = createClient();
+    await supabase.from("posts_conteudo").delete().eq("id", id);
+    router.push("/configuracoes/lixeira");
   }
 
   async function iniciarCronometro() {
@@ -656,15 +681,42 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
             </>
           )}
         </div>
-        <Cronometro
-          tempoTotalSegundos={post.tempo_total_segundos}
-          timerIniciadoEm={post.timer_iniciado_em}
-          nomeQuemIniciou={post.timer_iniciado_por ? nomeDoAutor(post.timer_iniciado_por) : null}
-          souEuQuemIniciou={post.timer_iniciado_por === meuId}
-          onIniciar={iniciarCronometro}
-          onPausar={pausarCronometro}
-        />
+        <div className="flex items-center gap-3">
+          <Cronometro
+            tempoTotalSegundos={post.tempo_total_segundos}
+            timerIniciadoEm={post.timer_iniciado_em}
+            nomeQuemIniciou={post.timer_iniciado_por ? nomeDoAutor(post.timer_iniciado_por) : null}
+            souEuQuemIniciou={post.timer_iniciado_por === meuId}
+            onIniciar={iniciarCronometro}
+            onPausar={pausarCronometro}
+          />
+          {!post.excluido_em && (
+            <button onClick={excluirPost} className="text-sm font-semibold text-red-500 hover:text-red-700">
+              Excluir
+            </button>
+          )}
+        </div>
       </div>
+
+      {post.excluido_em && (
+        <div className="mx-8 mt-4 rounded-2xl bg-red-50 border-2 border-red-200 px-5 py-3.5 flex items-center justify-between flex-wrap gap-3 shrink-0">
+          <p className="text-sm font-bold text-red-700">
+            🗑️ Excluído em {formatarQuando(post.excluido_em)}
+            {post.excluido_por && ` por ${nomeDoAutor(post.excluido_por)}`}
+          </p>
+          <div className="flex items-center gap-2">
+            <button onClick={restaurarPost} className="rounded-full bg-forest text-white px-4 py-1.5 text-xs font-semibold hover:brightness-110 transition">
+              Restaurar
+            </button>
+            <button
+              onClick={excluirPostDefinitivo}
+              className="rounded-full border-2 border-red-300 text-red-700 px-4 py-1.5 text-xs font-semibold hover:bg-red-100 transition"
+            >
+              Excluir de vez
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 overflow-y-auto px-8 py-6 max-w-3xl mx-auto w-full">
