@@ -172,6 +172,13 @@ export function RichTextEditor({
         contentEditable
         onInput={handleInput}
         onBlur={onSalvar}
+        onClick={(e) => {
+          const alvo = (e.target as HTMLElement).closest("a");
+          if (alvo) {
+            e.preventDefault();
+            window.open(alvo.getAttribute("href") ?? "#", "_blank", "noopener,noreferrer");
+          }
+        }}
         className={`rich-text-editor resize-none overflow-hidden ${semCaixa ? "rich-text-editor--livre" : "input"}`}
         style={recolhido && transborda ? { maxHeight: ALTURA_COLAPSADA, overflow: "hidden" } : undefined}
         data-placeholder={placeholder}
@@ -210,9 +217,13 @@ export function RichTextEditor({
           margin: 0.2em 0;
         }
         .rich-text-editor a {
-          color: #143421;
-          font-weight: 600;
+          color: #2563eb;
+          font-weight: 500;
           text-decoration: underline;
+          cursor: pointer;
+        }
+        .rich-text-editor a:hover {
+          color: #1d4ed8;
         }
         .rich-text-editor:focus {
           outline: none;

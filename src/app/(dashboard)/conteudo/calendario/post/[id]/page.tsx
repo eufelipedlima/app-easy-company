@@ -51,9 +51,19 @@ interface Post {
   data_inicio: string | null;
   hora_publicacao: string | null;
   post_pai_id: string | null;
+  link_video: string | null;
   tempo_total_segundos: number;
   timer_iniciado_em: string | null;
   timer_iniciado_por: string | null;
+}
+
+interface Midia {
+  id: string;
+  arquivo_path: string;
+  arquivo_nome: string | null;
+  arquivo_tipo: string | null;
+  ordem: number;
+  url: string;
 }
 
 interface SubConteudo {
@@ -171,13 +181,18 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   const [painelRecolhido, setPainelRecolhido] = useState(false);
 
   const [titulo, setTitulo] = useState("");
+  const [legenda, setLegenda] = useState("");
   const [observacoes, setObservacoes] = useState("");
   const [clienteSelecionado, setClienteSelecionado] = useState<Opcao | null>(null);
   const [objetivo, setObjetivo] = useState("");
   const [formato, setFormato] = useState("");
+  const [linkVideo, setLinkVideo] = useState("");
   const [dataInicio, setDataInicio] = useState("");
   const [dataPublicacao, setDataPublicacao] = useState("");
   const [horaPublicacao, setHoraPublicacao] = useState("");
+  const [midias, setMidias] = useState<Midia[]>([]);
+  const [enviandoMidia, setEnviandoMidia] = useState(false);
+  const inputMidiaRef = useRef<HTMLInputElement>(null);
 
   const [tituloPostPai, setTituloPostPai] = useState<string | null>(null);
   const [subConteudos, setSubConteudos] = useState<SubConteudo[]>([]);
@@ -233,10 +248,12 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     if (p) {
       setPost(p);
       setTitulo(p.titulo ?? "");
+      setLegenda(p.legenda ?? "");
       setObservacoes(p.observacoes_internas ?? "");
       setClienteSelecionado(listaClientes.find((c) => c.id === p.cliente_id) ?? null);
       setObjetivo(p.objetivo ?? "");
       setFormato(p.formato ?? "");
+      setLinkVideo(p.link_video ?? "");
       setDataInicio(p.data_inicio ?? "");
       setDataPublicacao(p.data_publicacao ?? "");
       setHoraPublicacao(p.hora_publicacao ?? "");
@@ -247,6 +264,18 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       } else {
         setTituloPostPai(null);
       }
+
+      const { data: midiasData } = await supabase
+        .from("posts_conteudo_midias")
+        .select("id, arquivo_path, arquivo_nome, arquivo_tipo, ordem")
+        .eq("post_id", p.id)
+        .order("ordem");
+      setMidias(
+        (midiasData ?? []).map((m) => ({
+          ...m,
+          url: supabase.storage.from("conteudo-midia").getPublicUrl(m.arquivo_path).data.publicUrl,
+        }))
+      );
     }
     setLoading(false);
   }, [id]);
@@ -397,6 +426,48 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     const supabase = createClient();
     await supabase.from("posts_conteudo").update(campo).eq("id", id);
     if (eventoHistorico) registrarHistorico(eventoHistorico);
+  }
+
+  async function adicionarMidias(arquivos: FileList | null) {
+    if (!arquivos || arquivos.length === 0) return;
+    setEnviandoMidia(true);
+    const supabase = createClient();
+    let proximaOrdem = midias.length;
+    for (const arquivo of Array.from(arquivos)) {
+      const extensao = arquivo.name.split(".").pop();
+      const caminho = `${id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${extensao}`;
+      const { error } = await supabase.storage.from("conteudo-midia").upload(caminho, arquivo);
+      if (!error) {
+        const { data: nova } = await supabase
+          .from("posts_conteudo_midias")
+          .insert({ post_id: id, arquivo_path: caminho, arquivo_nome: arquivo.name, arquivo_tipo: arquivo.type, ordem: proximaOrdem })
+          .select("id, arquivo_path, arquivo_nome, arquivo_tipo, ordem")
+          .single();
+        if (nova) {
+          const url = supabase.storage.from("conteudo-midia").getPublicUrl(nova.arquivo_path).data.publicUrl;
+          setMidias((atual) => [...atual, { ...nova, url }]);
+        }
+        proximaOrdem++;
+      }
+    }
+    registrarHistorico(`adicionou ${arquivos.length > 1 ? `${arquivos.length} artes` : "uma arte"}`);
+    setEnviandoMidia(false);
+  }
+
+  async function removerMidia(midiaId: string) {
+    const supabase = createClient();
+    await supabase.from("posts_conteudo_midias").delete().eq("id", midiaId);
+    setMidias((atual) => atual.filter((m) => m.id !== midiaId));
+  }
+
+  async function moverMidia(index: number, direcao: -1 | 1) {
+    const alvo = index + direcao;
+    if (alvo < 0 || alvo >= midias.length) return;
+    const novaOrdem = [...midias];
+    [novaOrdem[index], novaOrdem[alvo]] = [novaOrdem[alvo], novaOrdem[index]];
+    setMidias(novaOrdem);
+    const supabase = createClient();
+    await Promise.all(novaOrdem.map((m, i) => supabase.from("posts_conteudo_midias").update({ ordem: i }).eq("id", m.id)));
   }
 
   async function iniciarCronometro() {
@@ -772,6 +843,84 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
           </div>
 
           <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
+            <span className="block text-sm font-bold text-ink mb-2">Legenda</span>
+            <textarea
+              value={legenda}
+              onChange={(e) => setLegenda(e.target.value)}
+              onBlur={() => salvarCampo({ legenda: legenda || null }, "atualizou a legenda")}
+              className="input resize-none"
+              rows={3}
+              placeholder="Texto que vai junto com o post — é isso que o cliente vê na aprovação..."
+            />
+          </div>
+
+          <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
+            <span className="block text-sm font-bold text-ink mb-2">Mídia</span>
+            {formato === "video" ? (
+              <label className="block">
+                <span className="block text-xs text-ink/50 mb-1">Link do vídeo (Google Drive, etc.)</span>
+                <input
+                  value={linkVideo}
+                  onChange={(e) => setLinkVideo(e.target.value)}
+                  onBlur={() => salvarCampo({ link_video: linkVideo.trim() || null }, "atualizou o link do vídeo")}
+                  className="input"
+                  placeholder="https://drive.google.com/..."
+                />
+                <span className="block text-xs text-ink/40 mt-1">
+                  Vídeos não ficam hospedados aqui — deixa o arquivo no Drive e cola o link de acesso.
+                </span>
+              </label>
+            ) : (
+              <div>
+                <input
+                  ref={inputMidiaRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => adicionarMidias(e.target.files)}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => inputMidiaRef.current?.click()}
+                  disabled={enviandoMidia}
+                  className="rounded-full border-2 border-ink/15 text-ink px-4 py-2 text-xs font-semibold hover:bg-surface transition-colors disabled:opacity-50"
+                >
+                  {enviandoMidia ? "Enviando..." : "+ Adicionar arquivos"}
+                </button>
+                {midias.length > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    {midias.map((m, i) => (
+                      <div key={m.id} className="flex items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2 text-sm">
+                        <span className="truncate">
+                          {i + 1}. {m.arquivo_nome ?? "arquivo"}
+                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button type="button" onClick={() => moverMidia(i, -1)} disabled={i === 0} className="text-ink/40 hover:text-ink disabled:opacity-20 px-1">
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moverMidia(i, 1)}
+                            disabled={i === midias.length - 1}
+                            className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                          >
+                            ↓
+                          </button>
+                          <button type="button" onClick={() => removerMidia(m.id)} className="text-ink/40 hover:text-red-600 px-1">
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <span className="block text-xs text-ink/40 mt-2">Sobe as artes na ordem certa — usa as setinhas pra reordenar (importante nos carrosséis).</span>
+              </div>
+            )}
+          </div>
+
+          <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
             <span className="block text-sm font-bold text-ink mb-2">Observações internas</span>
             <RichTextEditor
               valorHtml={observacoes}
@@ -779,9 +928,6 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
               onSalvar={() => salvarCampo({ observacoes_internas: observacoes || null }, "atualizou as observações internas")}
               placeholder="Anotações da equipe sobre esse conteúdo..."
             />
-            <p className="text-xs text-ink/40 mt-2">
-              A legenda que o cliente vê continua sendo editada no formulário rápido do calendário.
-            </p>
           </div>
 
           <div className="rounded-2xl bg-white p-4 shadow-sm">

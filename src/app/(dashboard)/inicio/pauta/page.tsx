@@ -21,6 +21,8 @@ interface ItemPauta {
   dataExibicao: string;
   link: string;
   responsavelIds: string[];
+  temDescricao: boolean;
+  qtdSubitens: number;
 }
 
 const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -60,6 +62,27 @@ function Avatar({ nome, fotoUrl, tamanho = 26 }: { nome: string; fotoUrl?: strin
       style={{ height: tamanho, width: tamanho, fontSize: Math.max(9, tamanho * 0.36) }}
     >
       {iniciais(nome)}
+    </div>
+  );
+}
+
+function AvatarStack({ pessoas, tamanho = 16 }: { pessoas: Responsavel[]; tamanho?: number }) {
+  if (pessoas.length === 0) return null;
+  const visiveis = pessoas.slice(0, 3);
+  const resto = pessoas.length - visiveis.length;
+  return (
+    <div className="flex items-center -space-x-1.5">
+      {visiveis.map((p) => (
+        <Avatar key={p.id} nome={p.nome} fotoUrl={p.fotoUrl} tamanho={tamanho} />
+      ))}
+      {resto > 0 && (
+        <div
+          className="rounded-full bg-surface ring-1 ring-white text-ink/60 font-bold flex items-center justify-center shrink-0"
+          style={{ height: tamanho, width: tamanho, fontSize: Math.max(7, tamanho * 0.32) }}
+        >
+          +{resto}
+        </div>
+      )}
     </div>
   );
 }
@@ -129,12 +152,12 @@ export default function PautaPage() {
     const [{ data: tarefasData }, { data: postsData }] = await Promise.all([
       supabase
         .from("tarefas")
-        .select("id, titulo, data_inicio, prazo, status_id, status_conteudo ( nome, cor )")
+        .select("id, titulo, data_inicio, prazo, status_id, descricao, status_conteudo ( nome, cor )")
         .is("tarefa_pai_id", null)
         .eq("arquivada", false),
       supabase
         .from("posts_conteudo")
-        .select("id, titulo, data_inicio, data_publicacao, status_id, status_conteudo ( nome, cor )")
+        .select("id, titulo, data_inicio, data_publicacao, status_id, observacoes_internas, status_conteudo ( nome, cor )")
         .eq("arquivado", false),
     ]);
 
@@ -143,6 +166,7 @@ export default function PautaPage() {
       titulo: string;
       data_inicio: string | null;
       prazo: string | null;
+      descricao: string | null;
       status_conteudo: { nome: string; cor: string } | null;
     }[])
       .map((t) => ({ ...t, dataExibicao: t.data_inicio ?? t.prazo }))
@@ -153,6 +177,7 @@ export default function PautaPage() {
       titulo: string | null;
       data_inicio: string | null;
       data_publicacao: string;
+      observacoes_internas: string | null;
       status_conteudo: { nome: string; cor: string } | null;
     }[])
       .map((p) => ({ ...p, dataExibicao: p.data_inicio ?? p.data_publicacao }))
@@ -161,12 +186,18 @@ export default function PautaPage() {
     const idsTarefas = tarefasNoPeriodo.map((t) => t.id);
     const idsPosts = postsNoPeriodo.map((p) => p.id);
 
-    const [{ data: respTarefas }, { data: respPosts }] = await Promise.all([
+    const [{ data: respTarefas }, { data: respPosts }, { data: subtarefasData }, { data: subpostsData }] = await Promise.all([
       idsTarefas.length > 0
         ? supabase.from("tarefas_responsaveis").select("tarefa_id, funcionario_id").in("tarefa_id", idsTarefas)
         : Promise.resolve({ data: [] }),
       idsPosts.length > 0
         ? supabase.from("posts_conteudo_responsaveis").select("post_id, funcionario_id").in("post_id", idsPosts)
+        : Promise.resolve({ data: [] }),
+      idsTarefas.length > 0
+        ? supabase.from("tarefas").select("tarefa_pai_id").in("tarefa_pai_id", idsTarefas)
+        : Promise.resolve({ data: [] }),
+      idsPosts.length > 0
+        ? supabase.from("posts_conteudo").select("post_pai_id").in("post_pai_id", idsPosts)
         : Promise.resolve({ data: [] }),
     ]);
 
@@ -178,6 +209,14 @@ export default function PautaPage() {
     for (const r of respPosts ?? []) {
       mapaRespP.set(r.post_id, [...(mapaRespP.get(r.post_id) ?? []), r.funcionario_id]);
     }
+    const mapaSubT = new Map<string, number>();
+    for (const s of subtarefasData ?? []) {
+      if (s.tarefa_pai_id) mapaSubT.set(s.tarefa_pai_id, (mapaSubT.get(s.tarefa_pai_id) ?? 0) + 1);
+    }
+    const mapaSubP = new Map<string, number>();
+    for (const s of subpostsData ?? []) {
+      if (s.post_pai_id) mapaSubP.set(s.post_pai_id, (mapaSubP.get(s.post_pai_id) ?? 0) + 1);
+    }
 
     const itensT: ItemPauta[] = tarefasNoPeriodo.map((t) => ({
       id: t.id,
@@ -188,6 +227,8 @@ export default function PautaPage() {
       dataExibicao: t.dataExibicao!,
       link: `/tarefas/${t.id}?from=pauta`,
       responsavelIds: mapaRespT.get(t.id) ?? [],
+      temDescricao: !!t.descricao,
+      qtdSubitens: mapaSubT.get(t.id) ?? 0,
     }));
     const itensP: ItemPauta[] = postsNoPeriodo.map((p) => ({
       id: p.id,
@@ -198,6 +239,8 @@ export default function PautaPage() {
       dataExibicao: p.dataExibicao!,
       link: `/conteudo/calendario/post/${p.id}?from=pauta`,
       responsavelIds: mapaRespP.get(p.id) ?? [],
+      temDescricao: !!p.observacoes_internas,
+      qtdSubitens: mapaSubP.get(p.id) ?? 0,
     }));
 
     setItens([...itensT, ...itensP]);
@@ -388,15 +431,42 @@ export default function PautaPage() {
                           </button>
                         </div>
                         <div className="space-y-1">
-                          {itensCelula.slice(0, visualizacao === "mes" ? 3 : undefined).map((item) => (
-                            <button
-                              key={`${item.tipo}-${item.id}`}
-                              onClick={() => router.push(item.link)}
-                              className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(item.statusCor).cor}`}
-                            >
-                              {item.tipo === "tarefa" ? "✔️" : "📅"} {item.titulo}
-                            </button>
-                          ))}
+                          {itensCelula.slice(0, visualizacao === "mes" ? 3 : undefined).map((item) => {
+                            const respItem = item.responsavelIds
+                              .map((rid) => funcionarios.find((f) => f.id === rid))
+                              .filter((f): f is Responsavel => !!f);
+                            if (visualizacao === "mes") {
+                              return (
+                                <button
+                                  key={`${item.tipo}-${item.id}`}
+                                  onClick={() => router.push(item.link)}
+                                  className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(item.statusCor).cor}`}
+                                >
+                                  {item.tipo === "tarefa" ? "✔️" : "📅"} {item.titulo}
+                                </button>
+                              );
+                            }
+                            return (
+                              <button
+                                key={`${item.tipo}-${item.id}`}
+                                onClick={() => router.push(item.link)}
+                                className={`w-full text-left rounded-lg px-2 py-1.5 ${corDoStatus(item.statusCor).cor}`}
+                              >
+                                <p className="text-[11px] font-semibold truncate">
+                                  {item.tipo === "tarefa" ? "✔️" : "📅"} {item.titulo}
+                                </p>
+                                {(item.temDescricao || item.qtdSubitens > 0 || respItem.length > 0) && (
+                                  <div className="flex items-center justify-between mt-1">
+                                    <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
+                                      {item.temDescricao && <span title="Tem descrição">☰</span>}
+                                      {item.qtdSubitens > 0 && <span title="Subitens">🔗 {item.qtdSubitens}</span>}
+                                    </span>
+                                    <AvatarStack pessoas={respItem} tamanho={16} />
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
                           {visualizacao === "mes" && itensCelula.length > 3 && (
                             <p className="text-[10px] text-ink/40 px-1">+{itensCelula.length - 3} mais</p>
                           )}

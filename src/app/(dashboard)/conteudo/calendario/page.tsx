@@ -453,6 +453,20 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
 
   const router = useRouter();
 
+  async function criarPostRapido(dataISO: string) {
+    const supabase = createClient();
+    const { data: novo, error } = await supabase
+      .from("posts_conteudo")
+      .insert({
+        cliente_id: clienteFiltroId && clienteFiltroId !== "internas" ? clienteFiltroId : clientes[0]?.id ?? null,
+        data_publicacao: dataISO,
+        status_id: statusList[0]?.id,
+      })
+      .select("id")
+      .single();
+    if (!error && novo) router.push(`/conteudo/calendario/post/${novo.id}`);
+  }
+
   useEffect(() => {
     carregarClientes();
     carregarStatus();
@@ -624,7 +638,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
             🔗 Link público
           </button>
           <button
-            onClick={() => setNovoEmData(hojeISO)}
+            onClick={() => criarPostRapido(hojeISO)}
             className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors"
           >
             + Novo post
@@ -665,7 +679,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
                     {dia.getDate()}
                   </span>
                   {doMes && (
-                    <button onClick={() => setNovoEmData(iso)} className="text-ink/20 hover:text-forest text-sm leading-none">
+                    <button onClick={() => criarPostRapido(iso)} className="text-ink/20 hover:text-forest text-sm leading-none">
                       +
                     </button>
                   )}
@@ -939,8 +953,8 @@ function PostModal({
   const [clientes, setClientes] = useState<ClienteOpcao[]>([]);
   const [clienteId, setClienteId] = useState(post?.cliente_id ?? clienteFixoId ?? "");
   const [titulo, setTitulo] = useState(post?.titulo ?? "");
-  const [funcionarios, setFuncionarios] = useState<ClienteOpcao[]>([]);
-  const [responsavelId, setResponsavelId] = useState(post?.responsavel_id ?? "");
+  const [funcionarios, setFuncionarios] = useState<{ id: string; nome: string; fotoUrl: string | null }[]>([]);
+  const [responsaveisSelecionados, setResponsaveisSelecionados] = useState<string[]>([]);
   const [dataPublicacao, setDataPublicacao] = useState(post?.data_publicacao ?? dataInicial ?? "");
   const [horaPublicacao, setHoraPublicacao] = useState(post?.hora_publicacao?.slice(0, 5) ?? "");
   const [legenda, setLegenda] = useState(post?.legenda ?? "");
@@ -974,14 +988,27 @@ function PostModal({
       const supabase = createClient();
       const { data } = await supabase
         .from("funcionarios")
-        .select("id, papeis ( pessoas ( nome ) )")
-        .eq("ativo", true);
-      const lista = ((data ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[])
-        .map((f) => ({ id: f.id, nome: f.papeis?.pessoas?.nome ?? "—" }))
+        .select("id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )")
+        .not("auth_user_id", "is", null);
+      const lista = ((data ?? []) as unknown as {
+        id: string;
+        auth_user_id: string | null;
+        papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null;
+      }[])
+        .map((f) => ({ id: f.id, nome: f.papeis?.pessoas?.apelido || f.papeis?.pessoas?.nome || "Colega", fotoUrl: f.papeis?.pessoas?.foto_url ?? null }))
         .sort((a, b) => a.nome.localeCompare(b.nome));
       setFuncionarios(lista);
     }
     carregarFuncionarios();
+
+    if (post) {
+      async function carregarResponsaveisExistentes() {
+        const supabase = createClient();
+        const { data } = await supabase.from("posts_conteudo_responsaveis").select("funcionario_id").eq("post_id", post!.id);
+        setResponsaveisSelecionados((data ?? []).map((r) => r.funcionario_id));
+      }
+      carregarResponsaveisExistentes();
+    }
 
     if (post) {
       async function carregarComentarios() {
@@ -1060,7 +1087,6 @@ function PostModal({
       const payload = {
         cliente_id: clienteId,
         titulo: titulo.trim() || null,
-        responsavel_id: responsavelId || null,
         data_publicacao: dataPublicacao,
         hora_publicacao: horaPublicacao || null,
         legenda: legenda || null,
@@ -1081,6 +1107,13 @@ function PostModal({
         postId = data.id;
       }
       if (!postId) throw new Error("Não foi possível salvar o post.");
+
+      await supabase.from("posts_conteudo_responsaveis").delete().eq("post_id", postId);
+      if (responsaveisSelecionados.length > 0) {
+        await supabase
+          .from("posts_conteudo_responsaveis")
+          .insert(responsaveisSelecionados.map((funcionario_id) => ({ post_id: postId, funcionario_id })));
+      }
 
       const idsOriginais = (post?.posts_conteudo_midias ?? []).map((m) => m.id);
       const idsMantidos = new Set(midiasExistentes.map((m) => m.id));
@@ -1166,17 +1199,45 @@ function PostModal({
                 ))}
               </select>
             </label>
-            <label className="block">
-              <span className="block text-sm font-medium text-ink/70 mb-1">Responsável</span>
-              <select value={responsavelId} onChange={(e) => setResponsavelId(e.target.value)} className="input">
-                <option value="">Sem responsável</option>
-                {funcionarios.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div>
+              <span className="block text-sm font-medium text-ink/70 mb-1">Responsáveis</span>
+              <div className="flex flex-wrap gap-2 rounded-xl bg-surface p-2.5">
+                {funcionarios.length === 0 ? (
+                  <p className="text-xs text-ink/40">Nenhum usuário com acesso ao sistema cadastrado.</p>
+                ) : (
+                  funcionarios.map((f) => {
+                    const marcado = responsaveisSelecionados.includes(f.id);
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() =>
+                          setResponsaveisSelecionados((atual) =>
+                            marcado ? atual.filter((id) => id !== f.id) : [...atual, f.id]
+                          )
+                        }
+                        className="relative"
+                        title={f.nome}
+                      >
+                        {f.fotoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={f.fotoUrl} alt={f.nome} className="h-8 w-8 rounded-full object-cover" />
+                        ) : (
+                          <div className="h-8 w-8 rounded-full bg-ink/20 text-ink flex items-center justify-center text-xs font-bold">
+                            {f.nome.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        {marcado && (
+                          <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-forest text-white text-[8px] flex items-center justify-center ring-2 ring-white">
+                            ✓
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -1305,28 +1366,17 @@ function PostModal({
             </div>
           )}
 
-          <div>
+          <label className="block">
             <span className="block text-sm font-medium text-ink/70 mb-1">Objetivo</span>
-            <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
-              <button
-                type="button"
-                onClick={() => setObjetivo("")}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold ${objetivo === "" ? "bg-ink text-white" : "text-ink/60"}`}
-              >
-                Nenhum
-              </button>
+            <select value={objetivo} onChange={(e) => setObjetivo(e.target.value)} className="input">
+              <option value="">Nenhum</option>
               {Object.entries(OBJETIVO_CONFIG).map(([key, cfg]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setObjetivo(key)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${objetivo === key ? "bg-ink text-white" : "text-ink/60"}`}
-                >
+                <option key={key} value={key}>
                   {cfg.label}
-                </button>
+                </option>
               ))}
-            </div>
-          </div>
+            </select>
+          </label>
 
           <label className="block">
             <span className="block text-sm font-medium text-ink/70 mb-1">Observações internas (a equipe só vê aqui)</span>

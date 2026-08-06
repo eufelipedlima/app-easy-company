@@ -55,6 +55,11 @@ interface Subtarefa {
   titulo: string;
   status_id: string;
   prazo: string | null;
+  tarefa_pai_id: string | null;
+}
+
+interface SubtarefaNode extends Subtarefa {
+  filhos: SubtarefaNode[];
 }
 
 const CORES_AVATAR = [
@@ -172,6 +177,8 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   const [meuNome, setMeuNome] = useState("Você");
   const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
   const [subtarefas, setSubtarefas] = useState<Subtarefa[]>([]);
+  const [pastasAbertas, setPastasAbertas] = useState<Set<string>>(new Set());
+  const [secaoSubtarefasAberta, setSecaoSubtarefasAberta] = useState(true);
   const [responsaveisPorSubtarefa, setResponsaveisPorSubtarefa] = useState<Record<string, Responsavel[]>>({});
   const [responsaveis, setResponsaveis] = useState<Responsavel[]>([]);
   const [seletorResponsavelAberto, setSeletorResponsavelAberto] = useState(false);
@@ -281,11 +288,17 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
   const carregarSubtarefas = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from("tarefas").select("id, titulo, status_id, prazo").eq("tarefa_pai_id", id).order("created_at");
-    const lista = data ?? [];
-    setSubtarefas(lista);
+    let todas: Subtarefa[] = [];
+    let nivelAtual = [id];
+    for (let i = 0; i < 8 && nivelAtual.length > 0; i++) {
+      const { data } = await supabase.from("tarefas").select("id, titulo, status_id, prazo, tarefa_pai_id").in("tarefa_pai_id", nivelAtual).order("created_at");
+      if (!data || data.length === 0) break;
+      todas = [...todas, ...data];
+      nivelAtual = data.map((d) => d.id);
+    }
+    setSubtarefas(todas);
 
-    const ids = lista.map((s) => s.id);
+    const ids = todas.map((s) => s.id);
     if (ids.length > 0) {
       const { data: respData } = await supabase
         .from("tarefas_responsaveis")
@@ -434,18 +447,20 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     return authUserId === meuId ? meuNome : colegas.find((c) => c.id === authUserId)?.nome ?? "Alguém";
   }
 
-  async function adicionarSubtarefa() {
-    if (!novaSubtarefa.trim() || !tarefa) return;
+  async function adicionarSubtarefa(paiId: string, tituloNovo?: string) {
+    const nomeFinal = tituloNovo ?? novaSubtarefa;
+    if (!nomeFinal.trim() || !tarefa) return;
     setCriandoSubtarefa(true);
     const supabase = createClient();
     await supabase.from("tarefas").insert({
-      titulo: novaSubtarefa.trim(),
-      tarefa_pai_id: id,
+      titulo: nomeFinal.trim(),
+      tarefa_pai_id: paiId,
       cliente_id: tarefa.cliente_id,
       status_id: statusList[0]?.id,
     });
-    setNovaSubtarefa("");
+    if (!tituloNovo) setNovaSubtarefa("");
     setCriandoSubtarefa(false);
+    if (paiId !== id) setPastasAbertas((atual) => new Set(atual).add(paiId));
     carregarSubtarefas();
   }
 
@@ -748,52 +763,74 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
           </div>
 
           <div className="rounded-2xl bg-white p-4 shadow-sm">
-            <span className="block text-sm font-bold text-ink mb-2">Subtarefas</span>
-            {subtarefas.length > 0 && (
-              <div className="grid grid-cols-[1fr_110px_150px_110px] gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/40">
-                <span>Nome</span>
-                <span>Responsáveis</span>
-                <span>Prazo</span>
-                <span>Status</span>
+            <button
+              onClick={() => setSecaoSubtarefasAberta((v) => !v)}
+              className="w-full flex items-center gap-2 mb-1 text-left"
+            >
+              <span className={`text-xs text-ink/40 transition-transform ${secaoSubtarefasAberta ? "rotate-90" : ""}`}>▸</span>
+              <span className="text-sm font-bold text-ink">Subtarefas</span>
+              <span className="text-xs font-semibold text-ink/40 bg-surface rounded-full px-2 py-0.5">{subtarefas.length}</span>
+            </button>
+            {secaoSubtarefasAberta && (
+              <div className="mt-2">
+                {subtarefas.length > 0 && (
+                  <div className="grid grid-cols-[1fr_110px_150px_110px] gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/40">
+                    <span>Nome</span>
+                    <span>Responsáveis</span>
+                    <span>Prazo</span>
+                    <span>Status</span>
+                  </div>
+                )}
+                <div className="space-y-1.5 mb-2">
+                  {construirArvoreSubtarefas(subtarefas, id).map((no) => (
+                    <NoSubtarefa
+                      key={no.id}
+                      no={no}
+                      nivel={0}
+                      pastasAbertas={pastasAbertas}
+                      onTogglePasta={(nid) =>
+                        setPastasAbertas((atual) => {
+                          const novo = new Set(atual);
+                          if (novo.has(nid)) novo.delete(nid);
+                          else novo.add(nid);
+                          return novo;
+                        })
+                      }
+                      statusList={statusList}
+                      funcionariosComAcesso={funcionariosComAcesso}
+                      responsaveisPorSubtarefa={responsaveisPorSubtarefa}
+                      onAbrir={(nid) => router.push(`/tarefas/${nid}`)}
+                      onSalvarNome={(nid, novoNome) => salvarCampoSubtarefa(nid, { titulo: novoNome })}
+                      onSalvarPrazo={(nid, novoPrazo) => salvarCampoSubtarefa(nid, { prazo: novoPrazo || null })}
+                      onSalvarStatus={(nid, novoStatusId) => salvarCampoSubtarefa(nid, { status_id: novoStatusId })}
+                      onToggleResponsavel={(nid, funcionarioId) => toggleResponsavelSubtarefa(nid, funcionarioId)}
+                      onAdicionarFilho={(nid, nomeNovo) => adicionarSubtarefa(nid, nomeNovo)}
+                    />
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={novaSubtarefa}
+                    onChange={(e) => setNovaSubtarefa(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        adicionarSubtarefa(id);
+                      }
+                    }}
+                    className="input text-sm"
+                    placeholder="Nome da subtarefa... (vira uma tarefa própria — pode virar uma 'pasta' se você adicionar subtarefas dentro dela)"
+                  />
+                  <button
+                    onClick={() => adicionarSubtarefa(id)}
+                    disabled={criandoSubtarefa}
+                    className="shrink-0 text-sm font-semibold text-forest hover:text-ink disabled:opacity-50"
+                  >
+                    Adicionar
+                  </button>
+                </div>
               </div>
             )}
-            <div className="space-y-1.5 mb-2">
-              {subtarefas.map((s) => (
-                <LinhaSubtarefaEditavel
-                  key={s.id}
-                  sub={s}
-                  statusList={statusList}
-                  funcionariosComAcesso={funcionariosComAcesso}
-                  responsaveis={responsaveisPorSubtarefa[s.id] ?? []}
-                  onAbrir={() => router.push(`/tarefas/${s.id}`)}
-                  onSalvarNome={(novoNome) => salvarCampoSubtarefa(s.id, { titulo: novoNome })}
-                  onSalvarPrazo={(novoPrazo) => salvarCampoSubtarefa(s.id, { prazo: novoPrazo || null })}
-                  onSalvarStatus={(novoStatusId) => salvarCampoSubtarefa(s.id, { status_id: novoStatusId })}
-                  onToggleResponsavel={(funcionarioId) => toggleResponsavelSubtarefa(s.id, funcionarioId)}
-                />
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                value={novaSubtarefa}
-                onChange={(e) => setNovaSubtarefa(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    adicionarSubtarefa();
-                  }
-                }}
-                className="input text-sm"
-                placeholder="Nome da subtarefa... (vira uma tarefa própria)"
-              />
-              <button
-                onClick={adicionarSubtarefa}
-                disabled={criandoSubtarefa}
-                className="shrink-0 text-sm font-semibold text-forest hover:text-ink disabled:opacity-50"
-              >
-                Adicionar
-              </button>
-            </div>
           </div>
         </div>
 
@@ -912,8 +949,131 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   );
 }
 
+function construirArvoreSubtarefas(lista: Subtarefa[], raizId: string): SubtarefaNode[] {
+  const mapa = new Map<string, SubtarefaNode>();
+  lista.forEach((s) => mapa.set(s.id, { ...s, filhos: [] }));
+  const raizes: SubtarefaNode[] = [];
+  lista.forEach((s) => {
+    const no = mapa.get(s.id)!;
+    if (s.tarefa_pai_id && s.tarefa_pai_id !== raizId && mapa.has(s.tarefa_pai_id)) {
+      mapa.get(s.tarefa_pai_id)!.filhos.push(no);
+    } else {
+      raizes.push(no);
+    }
+  });
+  return raizes;
+}
+
+function NoSubtarefa({
+  no,
+  nivel,
+  pastasAbertas,
+  onTogglePasta,
+  statusList,
+  funcionariosComAcesso,
+  responsaveisPorSubtarefa,
+  onAbrir,
+  onSalvarNome,
+  onSalvarPrazo,
+  onSalvarStatus,
+  onToggleResponsavel,
+  onAdicionarFilho,
+}: {
+  no: SubtarefaNode;
+  nivel: number;
+  pastasAbertas: Set<string>;
+  onTogglePasta: (id: string) => void;
+  statusList: StatusItem[];
+  funcionariosComAcesso: Responsavel[];
+  responsaveisPorSubtarefa: Record<string, Responsavel[]>;
+  onAbrir: (id: string) => void;
+  onSalvarNome: (id: string, v: string) => void;
+  onSalvarPrazo: (id: string, v: string) => void;
+  onSalvarStatus: (id: string, v: string) => void;
+  onToggleResponsavel: (id: string, funcionarioId: string) => void;
+  onAdicionarFilho: (id: string, nome: string) => void;
+}) {
+  const temFilhos = no.filhos.length > 0;
+  const aberto = pastasAbertas.has(no.id);
+  const [criandoFilho, setCriandoFilho] = useState(false);
+  const [nomeFilho, setNomeFilho] = useState("");
+
+  return (
+    <div style={{ marginLeft: nivel * 20 }}>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => (temFilhos || criandoFilho ? onTogglePasta(no.id) : setCriandoFilho(true))}
+          className="h-5 w-5 shrink-0 rounded-md flex items-center justify-center text-ink/40 hover:bg-black/10 hover:text-ink text-[10px]"
+          title={temFilhos ? (aberto ? "Recolher" : "Expandir") : "Adicionar subtarefa aqui dentro"}
+        >
+          {temFilhos ? (aberto ? "▾" : "▸") : "+"}
+        </button>
+        <div className="flex-1">
+          <LinhaSubtarefaEditavel
+            sub={no}
+            comFilhos={temFilhos}
+            statusList={statusList}
+            funcionariosComAcesso={funcionariosComAcesso}
+            responsaveis={responsaveisPorSubtarefa[no.id] ?? []}
+            onAbrir={() => onAbrir(no.id)}
+            onSalvarNome={(v) => onSalvarNome(no.id, v)}
+            onSalvarPrazo={(v) => onSalvarPrazo(no.id, v)}
+            onSalvarStatus={(v) => onSalvarStatus(no.id, v)}
+            onToggleResponsavel={(fid) => onToggleResponsavel(no.id, fid)}
+          />
+        </div>
+      </div>
+      {criandoFilho && (
+        <div className="flex items-center gap-2 mt-1" style={{ marginLeft: 24 }}>
+          <input
+            autoFocus
+            value={nomeFilho}
+            onChange={(e) => setNomeFilho(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && nomeFilho.trim()) {
+                onAdicionarFilho(no.id, nomeFilho.trim());
+                setNomeFilho("");
+                setCriandoFilho(false);
+              }
+              if (e.key === "Escape") setCriandoFilho(false);
+            }}
+            onBlur={() => {
+              if (!nomeFilho.trim()) setCriandoFilho(false);
+            }}
+            className="input py-1 text-xs flex-1"
+            placeholder="Nome da subtarefa..."
+          />
+        </div>
+      )}
+      {aberto && temFilhos && (
+        <div className="mt-1 space-y-1">
+          {no.filhos.map((filho) => (
+            <NoSubtarefa
+              key={filho.id}
+              no={filho}
+              nivel={nivel + 1}
+              pastasAbertas={pastasAbertas}
+              onTogglePasta={onTogglePasta}
+              statusList={statusList}
+              funcionariosComAcesso={funcionariosComAcesso}
+              responsaveisPorSubtarefa={responsaveisPorSubtarefa}
+              onAbrir={onAbrir}
+              onSalvarNome={onSalvarNome}
+              onSalvarPrazo={onSalvarPrazo}
+              onSalvarStatus={onSalvarStatus}
+              onToggleResponsavel={onToggleResponsavel}
+              onAdicionarFilho={onAdicionarFilho}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LinhaSubtarefaEditavel({
   sub,
+  comFilhos,
   statusList,
   funcionariosComAcesso,
   responsaveis,
@@ -924,6 +1084,7 @@ function LinhaSubtarefaEditavel({
   onToggleResponsavel,
 }: {
   sub: Subtarefa;
+  comFilhos?: boolean;
   statusList: StatusItem[];
   funcionariosComAcesso: Responsavel[];
   responsaveis: Responsavel[];
@@ -944,7 +1105,11 @@ function LinhaSubtarefaEditavel({
       className="group/row w-full grid grid-cols-[1fr_110px_150px_110px] items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors cursor-pointer"
     >
       <div className="flex items-center gap-2 min-w-0" onClick={(e) => e.stopPropagation()}>
-        <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
+        {comFilhos ? (
+          <span className="text-sm shrink-0">📁</span>
+        ) : (
+          <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
+        )}
         {campoEditando === "nome" ? (
           <input
             autoFocus
