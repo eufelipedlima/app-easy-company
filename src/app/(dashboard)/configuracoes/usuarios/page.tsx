@@ -7,9 +7,14 @@ import { normalizar } from "@/lib/normalizar";
 interface Usuario {
   id: string;
   nome: string;
+  telefone: string | null;
   fotoUrl: string | null;
   emailAcesso: string | null;
+  authUserId: string | null;
+  pessoaId: string | null;
+  cargoId: string | null;
   cargoNome: string | null;
+  perfilId: string | null;
   perfilNome: string | null;
 }
 
@@ -25,27 +30,38 @@ export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalAberto, setModalAberto] = useState(false);
+  const [usuarioEditando, setUsuarioEditando] = useState<Usuario | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
     const { data } = await supabase
       .from("funcionarios")
-      .select("id, email_acesso, papeis ( pessoas ( nome, foto_url ) ), cargos ( nome ), perfis_acesso ( nome )")
+      .select(
+        "id, email_acesso, auth_user_id, cargo_id, perfil_acesso_id, papeis ( pessoa_id, pessoas ( nome, whatsapp, foto_url ) ), cargos ( nome ), perfis_acesso ( nome )"
+      )
       .eq("tem_acesso_sistema", true);
     const lista = ((data ?? []) as unknown as {
       id: string;
       email_acesso: string | null;
-      papeis: { pessoas: { nome: string; foto_url: string | null } | null } | null;
+      auth_user_id: string | null;
+      cargo_id: string | null;
+      perfil_acesso_id: string | null;
+      papeis: { pessoa_id: string; pessoas: { nome: string; whatsapp: string | null; foto_url: string | null } | null } | null;
       cargos: { nome: string } | null;
       perfis_acesso: { nome: string } | null;
     }[])
       .map((f) => ({
         id: f.id,
         nome: f.papeis?.pessoas?.nome ?? "—",
+        telefone: f.papeis?.pessoas?.whatsapp ?? null,
         fotoUrl: f.papeis?.pessoas?.foto_url ?? null,
         emailAcesso: f.email_acesso,
+        authUserId: f.auth_user_id,
+        pessoaId: f.papeis?.pessoa_id ?? null,
+        cargoId: f.cargo_id,
         cargoNome: f.cargos?.nome ?? null,
+        perfilId: f.perfil_acesso_id,
         perfilNome: f.perfis_acesso?.nome ?? null,
       }))
       .sort((a, b) => a.nome.localeCompare(b.nome));
@@ -76,7 +92,11 @@ export default function UsuariosPage() {
       ) : (
         <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
           {usuarios.map((u) => (
-            <div key={u.id} className="flex items-center gap-3 px-5 py-4 border-b border-black/5 last:border-0">
+            <button
+              key={u.id}
+              onClick={() => setUsuarioEditando(u)}
+              className="w-full flex items-center gap-3 px-5 py-4 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
+            >
               {u.fotoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={u.fotoUrl} alt={u.nome} className="h-9 w-9 rounded-full object-cover shrink-0" />
@@ -95,7 +115,7 @@ export default function UsuariosPage() {
               {u.perfilNome && (
                 <span className="rounded-full bg-surface text-ink/60 px-3 py-1 text-xs font-semibold shrink-0">{u.perfilNome}</span>
               )}
-            </div>
+            </button>
           ))}
         </div>
       )}
@@ -105,6 +125,17 @@ export default function UsuariosPage() {
           onClose={() => setModalAberto(false)}
           onCriado={() => {
             setModalAberto(false);
+            carregar();
+          }}
+        />
+      )}
+
+      {usuarioEditando && (
+        <EditarUsuarioModal
+          usuario={usuarioEditando}
+          onClose={() => setUsuarioEditando(null)}
+          onSalvo={() => {
+            setUsuarioEditando(null);
             carregar();
           }}
         />
@@ -438,6 +469,234 @@ function NovoUsuarioModal({ onClose, onCriado }: { onClose: () => void; onCriado
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function EditarUsuarioModal({
+  usuario,
+  onClose,
+  onSalvo,
+}: {
+  usuario: Usuario;
+  onClose: () => void;
+  onSalvo: () => void;
+}) {
+  const [nome, setNome] = useState(usuario.nome);
+  const [telefone, setTelefone] = useState(usuario.telefone ?? "");
+  const [cargos, setCargos] = useState<{ id: string; nome: string }[]>([]);
+  const [cargoId, setCargoId] = useState(usuario.cargoId ?? "");
+  const [perfisAcesso, setPerfisAcesso] = useState<{ id: string; nome: string }[]>([]);
+  const [perfilId, setPerfilId] = useState(usuario.perfilId ?? "");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [sucesso, setSucesso] = useState(false);
+
+  const [painelSenhaAberto, setPainelSenhaAberto] = useState(false);
+  const [novaSenha, setNovaSenha] = useState(() => Math.random().toString(36).slice(2, 8) + Math.floor(Math.random() * 90 + 10));
+  const [definindoSenha, setDefinindoSenha] = useState(false);
+  const [senhaDefinida, setSenhaDefinida] = useState(false);
+  const [erroSenha, setErroSenha] = useState<string | null>(null);
+
+  const [confirmandoRemocao, setConfirmandoRemocao] = useState(false);
+  const [excluirLogin, setExcluirLogin] = useState(false);
+  const [removendo, setRemovendo] = useState(false);
+
+  useEffect(() => {
+    async function carregar() {
+      const supabase = createClient();
+      const [{ data: cargosData }, { data: perfisData }] = await Promise.all([
+        supabase.from("cargos").select("id, nome").order("nome"),
+        supabase.from("perfis_acesso").select("id, nome").order("ordem"),
+      ]);
+      setCargos(cargosData ?? []);
+      setPerfisAcesso(perfisData ?? []);
+    }
+    carregar();
+  }, []);
+
+  async function salvar(e: React.FormEvent) {
+    e.preventDefault();
+    setSalvando(true);
+    setErro(null);
+    setSucesso(false);
+    try {
+      const supabase = createClient();
+      if (usuario.pessoaId) {
+        const { error } = await supabase.from("pessoas").update({ nome: nome.trim(), whatsapp: telefone.trim() || null }).eq("id", usuario.pessoaId);
+        if (error) throw error;
+      }
+      const { error: erroFunc } = await supabase
+        .from("funcionarios")
+        .update({ cargo_id: cargoId || null, perfil_acesso_id: perfilId || null })
+        .eq("id", usuario.id);
+      if (erroFunc) throw erroFunc;
+      setSucesso(true);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao salvar.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function definirNovaSenha() {
+    if (!usuario.authUserId) return;
+    if (novaSenha.length < 6) {
+      setErroSenha("A senha precisa ter pelo menos 6 caracteres.");
+      return;
+    }
+    setDefinindoSenha(true);
+    setErroSenha(null);
+    try {
+      const res = await fetch("/api/usuarios/definir-senha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ authUserId: usuario.authUserId, novaSenha }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível definir a senha.");
+      setSenhaDefinida(true);
+    } catch (err) {
+      setErroSenha(err instanceof Error ? err.message : "Erro ao definir senha.");
+    } finally {
+      setDefinindoSenha(false);
+    }
+  }
+
+  async function removerAcesso() {
+    setRemovendo(true);
+    try {
+      const res = await fetch("/api/usuarios/remover-acesso", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ funcionarioId: usuario.id, authUserId: usuario.authUserId, excluirContaLogin: excluirLogin }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível remover o acesso.");
+      onSalvo();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao remover acesso.");
+      setRemovendo(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-ink mb-4">Editar usuário</h2>
+
+        <form onSubmit={salvar} className="space-y-4">
+          <label className="block">
+            <span className="block text-sm font-medium text-ink/70 mb-1">Nome</span>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} className="input" />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium text-ink/70 mb-1">Telefone</span>
+            <input value={telefone} onChange={(e) => setTelefone(e.target.value)} className="input" />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium text-ink/70 mb-1">E-mail de acesso</span>
+            <input value={usuario.emailAcesso ?? ""} disabled className="input opacity-60" />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium text-ink/70 mb-1">Cargo</span>
+            <select value={cargoId} onChange={(e) => setCargoId(e.target.value)} className="input">
+              <option value="">Sem cargo</option>
+              {cargos.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium text-ink/70 mb-1">Perfil de acesso</span>
+            <select value={perfilId} onChange={(e) => setPerfilId(e.target.value)} className="input">
+              <option value="">Sem perfil definido</option>
+              {perfisAcesso.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {erro && <p className="text-sm text-red-600">{erro}</p>}
+          {sucesso && <p className="text-sm text-forest font-semibold">Salvo!</p>}
+
+          <button
+            type="submit"
+            disabled={salvando}
+            className="w-full rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+          >
+            {salvando ? "Salvando..." : "Salvar alterações"}
+          </button>
+        </form>
+
+        <div className="mt-5 pt-5 border-t border-black/5">
+          <button
+            onClick={() => setPainelSenhaAberto((v) => !v)}
+            className="text-sm font-semibold text-ink/70 hover:text-ink flex items-center gap-1.5"
+          >
+            🔑 Definir nova senha
+          </button>
+          {painelSenhaAberto && (
+            <div className="mt-3 rounded-2xl bg-surface p-4">
+              {senhaDefinida ? (
+                <div>
+                  <p className="text-xs text-ink/50 mb-2">Nova senha definida — passa isso pra pessoa:</p>
+                  <p className="text-sm font-mono font-semibold text-ink bg-white rounded-lg px-3 py-2">{novaSenha}</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <input value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} className="input text-sm font-mono" />
+                    <button
+                      type="button"
+                      onClick={() => setNovaSenha(Math.random().toString(36).slice(2, 8) + Math.floor(Math.random() * 90 + 10))}
+                      className="shrink-0 text-xs font-semibold text-forest hover:text-ink"
+                    >
+                      🔄
+                    </button>
+                  </div>
+                  {erroSenha && <p className="text-xs text-red-600 mt-1.5">{erroSenha}</p>}
+                  <button
+                    onClick={definirNovaSenha}
+                    disabled={definindoSenha}
+                    className="mt-2 rounded-full bg-ink text-white px-4 py-1.5 text-xs font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+                  >
+                    {definindoSenha ? "Definindo..." : "Confirmar nova senha"}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 pt-5 border-t border-black/5">
+          <button onClick={() => setConfirmandoRemocao((v) => !v)} className="text-sm font-semibold text-red-500 hover:text-red-700">
+            🗑 Remover acesso ao sistema
+          </button>
+          {confirmandoRemocao && (
+            <div className="mt-3 rounded-2xl bg-red-50 p-4 space-y-2">
+              <p className="text-xs text-red-700">
+                Isso tira o acesso dessa pessoa ao sistema. O cadastro dela em Pessoas continua existindo.
+              </p>
+              <label className="flex items-center gap-2 text-xs text-red-700">
+                <input type="checkbox" checked={excluirLogin} onChange={(e) => setExcluirLogin(e.target.checked)} className="accent-red-600" />
+                Também apagar a conta de login (libera o e-mail pra um novo convite)
+              </label>
+              <button
+                onClick={removerAcesso}
+                disabled={removendo}
+                className="rounded-full bg-red-600 text-white px-4 py-1.5 text-xs font-semibold hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {removendo ? "Removendo..." : "Confirmar remoção"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
