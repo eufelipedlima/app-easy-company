@@ -127,6 +127,9 @@ function NovoUsuarioModal({ onClose, onCriado }: { onClose: () => void; onCriado
   const [cargoId, setCargoId] = useState("");
   const [perfisAcesso, setPerfisAcesso] = useState<{ id: string; nome: string }[]>([]);
   const [perfilId, setPerfilId] = useState("");
+  const [formaAcesso, setFormaAcesso] = useState<"convite" | "senha">("convite");
+  const [senhaTemporaria, setSenhaTemporaria] = useState(() => Math.random().toString(36).slice(2, 8) + Math.floor(Math.random() * 90 + 10));
+  const [senhaCriada, setSenhaCriada] = useState<{ email: string; senha: string } | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -226,16 +229,54 @@ function NovoUsuarioModal({ onClose, onCriado }: { onClose: () => void; onCriado
       const res = await fetch("/api/usuarios/convidar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: emailFinal, funcionarioId, perfilAcessoId: perfilId || null }),
+        body: JSON.stringify({
+          email: emailFinal,
+          funcionarioId,
+          perfilAcessoId: perfilId || null,
+          senhaTemporaria: formaAcesso === "senha" ? senhaTemporaria : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Não foi possível enviar o convite.");
-      onCriado();
+      if (formaAcesso === "senha") {
+        setSenhaCriada({ email: emailFinal, senha: senhaTemporaria });
+      } else {
+        onCriado();
+      }
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao criar usuário.");
     } finally {
       setSaving(false);
     }
+  }
+
+  if (senhaCriada) {
+    return (
+      <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onCriado}>
+        <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <h2 className="text-lg font-bold text-ink mb-2">✅ Usuário criado</h2>
+          <p className="text-sm text-ink/60 mb-4">
+            Passa esses dados pra pessoa (WhatsApp, por exemplo) — ela consegue trocar a senha depois em &quot;Meu perfil&quot;.
+          </p>
+          <div className="rounded-2xl bg-surface p-4 space-y-2 mb-4">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">E-mail</p>
+              <p className="text-sm font-semibold text-ink">{senhaCriada.email}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40">Senha temporária</p>
+              <p className="text-sm font-semibold text-ink font-mono">{senhaCriada.senha}</p>
+            </div>
+          </div>
+          <button
+            onClick={onCriado}
+            className="w-full rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -332,6 +373,44 @@ function NovoUsuarioModal({ onClose, onCriado }: { onClose: () => void; onCriado
             </>
           )}
 
+          <div>
+            <span className="block text-sm font-medium text-ink/70 mb-1">Como a pessoa vai acessar?</span>
+            <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 w-full">
+              <button
+                type="button"
+                onClick={() => setFormaAcesso("convite")}
+                className={`flex-1 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
+                  formaAcesso === "convite" ? "bg-ink text-white" : "text-ink/50"
+                }`}
+              >
+                Convite por e-mail
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormaAcesso("senha")}
+                className={`flex-1 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
+                  formaAcesso === "senha" ? "bg-ink text-white" : "text-ink/50"
+                }`}
+              >
+                Senha temporária
+              </button>
+            </div>
+            {formaAcesso === "convite" ? (
+              <p className="text-xs text-ink/40 mt-1.5">A pessoa recebe um e-mail pra criar a própria senha.</p>
+            ) : (
+              <div className="mt-2 flex items-center gap-2">
+                <input value={senhaTemporaria} onChange={(e) => setSenhaTemporaria(e.target.value)} className="input text-sm font-mono" />
+                <button
+                  type="button"
+                  onClick={() => setSenhaTemporaria(Math.random().toString(36).slice(2, 8) + Math.floor(Math.random() * 90 + 10))}
+                  className="shrink-0 text-xs font-semibold text-forest hover:text-ink"
+                >
+                  🔄 Gerar
+                </button>
+              </div>
+            )}
+          </div>
+
           <label className="block">
             <span className="block text-sm font-medium text-ink/70 mb-1">Perfil de acesso</span>
             <select value={perfilId} onChange={(e) => setPerfilId(e.target.value)} className="input">
@@ -352,7 +431,7 @@ function NovoUsuarioModal({ onClose, onCriado }: { onClose: () => void; onCriado
               disabled={saving}
               className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
             >
-              {saving ? "Enviando..." : "Criar e enviar convite"}
+              {saving ? "Criando..." : formaAcesso === "senha" ? "Criar usuário" : "Criar e enviar convite"}
             </button>
             <button type="button" onClick={onClose} className="text-sm font-semibold text-ink/60 hover:text-ink">
               Cancelar

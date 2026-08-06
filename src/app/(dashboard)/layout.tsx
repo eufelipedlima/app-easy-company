@@ -137,6 +137,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [permissoes, setPermissoes] = useState<Record<string, "nenhum" | "visualizar" | "completo"> | null>(null);
 
   useEffect(() => {
+    async function verificarPerfilCompleto() {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: funcionario } = await supabase.from("funcionarios").select("perfil_completo").eq("auth_user_id", user.id).maybeSingle();
+      if (funcionario && funcionario.perfil_completo === false) {
+        router.replace("/completar-perfil");
+      }
+    }
+    verificarPerfilCompleto();
+  }, [router]);
+
+  useEffect(() => {
     async function carregarPermissoes() {
       const supabase = createClient();
       const areas = ["financeiro", "contratos", "conteudo", "pessoas", "configuracoes", "tarefas", "docs"];
