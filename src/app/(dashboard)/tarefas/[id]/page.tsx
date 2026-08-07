@@ -54,6 +54,17 @@ interface Tarefa {
   eh_modelo_projeto: boolean;
 }
 
+interface Anexo {
+  id: string;
+  arquivo_path: string;
+  arquivo_nome: string | null;
+  arquivo_tipo: string | null;
+  tamanho_bytes: number | null;
+  enviado_por: string | null;
+  created_at: string;
+  url: string;
+}
+
 interface Subtarefa {
   id: string;
   titulo: string;
@@ -182,6 +193,8 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   const [meuNome, setMeuNome] = useState("Você");
   const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
   const [subtarefas, setSubtarefas] = useState<Subtarefa[]>([]);
+  const [anexos, setAnexos] = useState<Anexo[]>([]);
+  const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   const [pastasAbertas, setPastasAbertas] = useState<Set<string>>(new Set());
   const [secaoSubtarefasAberta, setSecaoSubtarefasAberta] = useState(true);
   const [responsaveisPorSubtarefa, setResponsaveisPorSubtarefa] = useState<Record<string, Responsavel[]>>({});
@@ -352,12 +365,24 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     setHistorico(data ?? []);
   }, [id]);
 
+  const carregarAnexos = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase.from("tarefas_anexos").select("*").eq("tarefa_id", id).order("created_at", { ascending: false });
+    setAnexos(
+      (data ?? []).map((a) => ({
+        ...a,
+        url: supabase.storage.from("tarefas-anexos").getPublicUrl(a.arquivo_path).data.publicUrl,
+      }))
+    );
+  }, [id]);
+
   useEffect(() => {
     carregarResponsaveis();
     carregarSubtarefas();
     carregarComentarios();
     carregarHistorico();
-  }, [carregarResponsaveis, carregarSubtarefas, carregarComentarios, carregarHistorico]);
+    carregarAnexos();
+  }, [carregarResponsaveis, carregarSubtarefas, carregarComentarios, carregarHistorico, carregarAnexos]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -401,6 +426,44 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     const supabase = createClient();
     await supabase.from("tarefas").update(campo).eq("id", id);
     if (eventoHistorico) registrarHistorico(eventoHistorico);
+  }
+
+  async function adicionarAnexos(arquivos: FileList | null) {
+    if (!arquivos || arquivos.length === 0) return;
+    setEnviandoAnexo(true);
+    const supabase = createClient();
+    for (const arquivo of Array.from(arquivos)) {
+      const caminho = `${id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${arquivo.name}`;
+      const { error } = await supabase.storage.from("tarefas-anexos").upload(caminho, arquivo);
+      if (!error) {
+        await supabase.from("tarefas_anexos").insert({
+          tarefa_id: id,
+          arquivo_path: caminho,
+          arquivo_nome: arquivo.name,
+          arquivo_tipo: arquivo.type,
+          tamanho_bytes: arquivo.size,
+          enviado_por: meuId,
+        });
+      }
+    }
+    registrarHistorico(`anexou ${arquivos.length > 1 ? `${arquivos.length} arquivos` : "um arquivo"}`);
+    carregarAnexos();
+    setEnviandoAnexo(false);
+  }
+
+  async function removerAnexo(anexo: Anexo) {
+    if (!window.confirm(`Remover "${anexo.arquivo_nome}"?`)) return;
+    const supabase = createClient();
+    await supabase.storage.from("tarefas-anexos").remove([anexo.arquivo_path]);
+    await supabase.from("tarefas_anexos").delete().eq("id", anexo.id);
+    setAnexos((atual) => atual.filter((a) => a.id !== anexo.id));
+  }
+
+  function formatarTamanho(bytes: number | null) {
+    if (!bytes) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   async function salvarCampoDireto(nomeCampo: string, valor: string | null, eventoHistorico?: string) {
@@ -676,6 +739,29 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             className="text-2xl font-extrabold text-ink w-full mb-5 outline-none focus:bg-white rounded-lg px-1 -mx-1 bg-transparent"
           />
 
+          {tarefa.eh_projeto &&
+            (() => {
+              const itensDeTrabalho = subtarefas.filter((s) => !s.eh_pasta);
+              const total = itensDeTrabalho.length;
+              if (total === 0) return null;
+              const completos = itensDeTrabalho.filter((s) => statusList.find((st) => st.id === s.status_id)?.cor === "verde").length;
+              const pct = Math.round((completos / total) * 100);
+              return (
+                <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-bold text-ink">Progresso do projeto</span>
+                    <span className="text-sm font-bold text-amber-600">{pct}%</span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-black/5 overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${pct === 100 ? "bg-forest" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
+                  </div>
+                  <p className="text-xs text-ink/40 mt-1.5">
+                    {completos} de {total} subtarefas concluídas
+                  </p>
+                </div>
+              );
+            })()}
+
           <div className="grid grid-cols-2 gap-x-6 gap-y-4 mb-6 rounded-2xl bg-white p-4 shadow-sm">
             <div>
               <span className="block text-xs text-ink/50 mb-1">Status</span>
@@ -812,6 +898,37 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
               onSalvar={() => salvarCampoDireto("descricao", descricao || null, "atualizou a descrição")}
               placeholder="Detalhes da tarefa..."
             />
+          </div>
+
+          <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-bold text-ink flex items-center gap-2">
+                📎 Anexos
+                {anexos.length > 0 && <span className="text-xs font-semibold text-ink/40 bg-surface rounded-full px-2 py-0.5">{anexos.length}</span>}
+              </span>
+              <label className="text-xs font-semibold text-forest hover:text-ink cursor-pointer">
+                {enviandoAnexo ? "Enviando..." : "+ Adicionar"}
+                <input type="file" multiple onChange={(e) => adicionarAnexos(e.target.files)} className="hidden" disabled={enviandoAnexo} />
+              </label>
+            </div>
+            {anexos.length === 0 ? (
+              <p className="text-xs text-ink/40">Nenhum anexo ainda.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {anexos.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2">
+                    <a href={a.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 min-w-0 hover:underline">
+                      <span className="text-sm shrink-0">📄</span>
+                      <span className="text-sm text-ink truncate">{a.arquivo_nome ?? "arquivo"}</span>
+                      {a.tamanho_bytes && <span className="text-xs text-ink/40 shrink-0">{formatarTamanho(a.tamanho_bytes)}</span>}
+                    </a>
+                    <button onClick={() => removerAnexo(a)} className="text-ink/30 hover:text-red-600 text-xs shrink-0 px-1">
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="rounded-2xl bg-white p-4 shadow-sm">
@@ -1096,7 +1213,10 @@ function NoSubtarefa({
         )}
       </div>
       {criandoFilho && (
-        <div className="flex items-center gap-2 mt-1" style={{ marginLeft: 24 }}>
+        <div
+          className="flex items-center gap-2 mt-1.5 p-2 rounded-xl bg-violet-50 border-2 border-violet-200"
+          style={{ marginLeft: 24 }}
+        >
           <input
             autoFocus
             value={nomeFilho}
@@ -1112,16 +1232,26 @@ function NoSubtarefa({
             onBlur={() => {
               if (!nomeFilho.trim()) setCriandoFilho(false);
             }}
-            className="input py-1 text-xs flex-1"
+            className="input py-1.5 text-sm flex-1 bg-white"
             placeholder="Nome da subtarefa..."
           />
+          <button
+            onClick={() => {
+              onAdicionarFilho(no.id, nomeFilho.trim() || "Nova subtarefa", false);
+              setNomeFilho("");
+              setCriandoFilho(false);
+            }}
+            className="shrink-0 rounded-full bg-forest text-white px-3 py-1.5 text-xs font-bold hover:brightness-110 transition"
+          >
+            + Subtarefa
+          </button>
           <button
             onClick={() => {
               onAdicionarFilho(no.id, nomeFilho.trim() || "Nova pasta", true);
               setNomeFilho("");
               setCriandoFilho(false);
             }}
-            className="shrink-0 text-xs font-semibold text-violet-600 hover:text-violet-800"
+            className="shrink-0 rounded-full bg-violet-600 text-white px-3 py-1.5 text-xs font-bold hover:brightness-110 transition"
             title="Criar como pasta"
           >
             📁 Pasta
@@ -1188,11 +1318,19 @@ function LinhaSubtarefaEditavel({
     return (
       <div
         onClick={onAbrir}
-        className={`w-full flex items-center gap-2 rounded-xl px-3 py-2 cursor-pointer transition-colors ${
+        className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2 cursor-pointer transition-colors ${
           pastaCompleta ? "bg-emerald-50 hover:bg-emerald-100" : "bg-violet-50 hover:bg-violet-100"
         }`}
       >
-        <span className="text-sm shrink-0">{pastaCompleta ? "✅" : "📁"}</span>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          className={`shrink-0 ${pastaCompleta ? "text-emerald-500" : "text-violet-500"}`}
+        >
+          <path d="M3 6a2 2 0 0 1 2-2h4.5l2 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" />
+        </svg>
         {campoEditando === "nome" ? (
           <input
             autoFocus
@@ -1228,11 +1366,23 @@ function LinhaSubtarefaEditavel({
         pastaCompleta ? "bg-emerald-50 hover:bg-emerald-100" : "bg-surface hover:bg-surface/70"
       }`}
     >
-      <div className="flex items-center gap-2 min-w-0" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-2.5 min-w-0" onClick={(e) => e.stopPropagation()}>
         {comFilhos ? (
-          <span className="text-sm shrink-0">{pastaCompleta ? "✅" : "📁"}</span>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className={`shrink-0 ${pastaCompleta ? "text-emerald-500" : "text-violet-500"}`}
+          >
+            <path d="M3 6a2 2 0 0 1 2-2h4.5l2 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" />
+          </svg>
         ) : (
-          <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
+          <span
+            className={`h-3.5 w-3.5 rounded-full border-2 shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot.replace("bg-", "border-")} ${
+              statusSub?.cor === "verde" ? corDoStatus(statusSub.cor).dot : ""
+            }`}
+          />
         )}
         {campoEditando === "nome" ? (
           <input

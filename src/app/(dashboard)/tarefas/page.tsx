@@ -74,6 +74,7 @@ interface AcoesCard {
   statusList: StatusItem[];
   funcionariosComAcesso: Responsavel[];
   responsaveisPorTarefa: Record<string, Responsavel[]>;
+  progressoProjetos: Record<string, { total: number; completos: number }>;
   onRenomear: (t: Tarefa) => void;
   onMover: (tarefaId: string, novoStatusId: string) => void;
   onDuplicar: (t: Tarefa) => void;
@@ -170,6 +171,7 @@ export default function TarefasPage() {
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
   const [contagemSubtarefas, setContagemSubtarefas] = useState<Record<string, number>>({});
   const [contagemComentarios, setContagemComentarios] = useState<Record<string, number>>({});
+  const [progressoProjetos, setProgressoProjetos] = useState<Record<string, { total: number; completos: number }>>({});
   const [responsaveisPorTarefa, setResponsaveisPorTarefa] = useState<Record<string, Responsavel[]>>({});
   const [clienteFiltroId, setClienteFiltroId] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<"tudo" | "tarefas" | "projetos">("tudo");
@@ -363,6 +365,49 @@ export default function TarefasPage() {
         mapaResponsaveis[r.tarefa_id].push(resp);
       }
       setResponsaveisPorTarefa(mapaResponsaveis);
+
+      const idsProjetos = lista.filter((t) => t.eh_projeto).map((t) => t.id);
+      if (idsProjetos.length > 0) {
+        let todasDescendentes: { id: string; status_id: string; eh_pasta: boolean; tarefa_pai_id: string | null }[] = [];
+        let nivelAtual = idsProjetos;
+        for (let i = 0; i < 8 && nivelAtual.length > 0; i++) {
+          const { data: nivel } = await supabase
+            .from("tarefas")
+            .select("id, status_id, eh_pasta, tarefa_pai_id")
+            .in("tarefa_pai_id", nivelAtual)
+            .is("excluido_em", null);
+          if (!nivel || nivel.length === 0) break;
+          todasDescendentes = [...todasDescendentes, ...nivel];
+          nivelAtual = nivel.map((n) => n.id);
+        }
+        const mapaPaiDireto = new Map<string, string>();
+        // acha, pra cada descendente, a qual projeto ele pertence subindo a árvore
+        const mapaTudoPorId = new Map(todasDescendentes.map((d) => [d.id, d]));
+        function projetoDe(itemId: string): string | null {
+          let atual = mapaTudoPorId.get(itemId);
+          let atualId = itemId;
+          for (let i = 0; i < 10 && atual; i++) {
+            if (idsProjetos.includes(atual.tarefa_pai_id ?? "")) return atual.tarefa_pai_id;
+            atualId = atual.tarefa_pai_id ?? "";
+            atual = mapaTudoPorId.get(atualId);
+          }
+          return null;
+        }
+        void mapaPaiDireto;
+        const progresso: Record<string, { total: number; completos: number }> = {};
+        for (const item of todasDescendentes) {
+          if (item.eh_pasta) continue; // pasta é só divisória, não conta como item de trabalho
+          const projId = idsProjetos.includes(item.tarefa_pai_id ?? "") ? item.tarefa_pai_id! : projetoDe(item.id);
+          if (!projId) continue;
+          if (!progresso[projId]) progresso[projId] = { total: 0, completos: 0 };
+          progresso[projId].total++;
+          const statusItem = statusList.find((s) => s.id === item.status_id);
+          if (statusItem?.cor === "verde") progresso[projId].completos++;
+        }
+        setProgressoProjetos(progresso);
+      } else {
+        setProgressoProjetos({});
+      }
     } else {
       setContagemSubtarefas({});
       setContagemComentarios({});
@@ -473,6 +518,7 @@ export default function TarefasPage() {
     statusList,
     funcionariosComAcesso,
     responsaveisPorTarefa,
+    progressoProjetos,
     onRenomear: renomearTarefa,
     onMover: moverTarefaStatus,
     onDuplicar: duplicarTarefa,
@@ -1060,6 +1106,29 @@ function TarefaCardConteudo({
       <p className="text-sm font-semibold text-ink truncate pr-5">
         <span className={tarefa.eh_projeto ? "text-amber-600" : "text-ink/30"}>{tarefa.eh_projeto ? "📋" : "✔️"}</span> {tarefa.titulo}
       </p>
+      {tarefa.eh_projeto &&
+        acoes?.progressoProjetos[tarefa.id] &&
+        acoes.progressoProjetos[tarefa.id].total > 0 &&
+        (() => {
+          const { total, completos } = acoes.progressoProjetos[tarefa.id];
+          const pct = Math.round((completos / total) * 100);
+          return (
+            <div className="mt-1.5">
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[10px] font-semibold text-ink/40">
+                  {completos}/{total} concluídas
+                </span>
+                <span className="text-[10px] font-bold text-amber-600">{pct}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-black/5 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${pct === 100 ? "bg-forest" : "bg-amber-500"}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })()}
       {camposVisiveis.cliente && <p className="text-xs text-ink/50 truncate mt-0.5">{cliente ?? "Interna"}</p>}
 
       <div className="flex items-center gap-2 mt-2 flex-wrap">
