@@ -23,8 +23,8 @@ export interface Lancamento {
   total_parcelas: number | null;
   grupo_id: string | null;
   recorrencia_tipo: "mensal" | "semanal" | "anual" | null;
-  clientes: { papeis: { pessoas: { nome: string; pix: string | null } | null } | null } | null;
-  pessoas: { nome: string; pix: string | null } | null;
+  clientes: { papeis: { pessoas: { id: string; nome: string; pix: string | null; tipo_pessoa: "PF" | "PJ" } | null } | null } | null;
+  pessoas: { id: string; nome: string; pix: string | null; tipo_pessoa: "PF" | "PJ" } | null;
   bancos: { nome: string } | null;
   bancos_destino: { nome: string } | null;
   planos_conta: { nome: string } | null;
@@ -79,7 +79,11 @@ export function LancamentoForm({
   );
 
   const [pessoas, setPessoas] = useState<PessoaOpcao[]>([]);
-  const [pessoaSelecionada, setPessoaSelecionada] = useState<PessoaOpcao | null>(null);
+  const [pessoaSelecionada, setPessoaSelecionada] = useState<PessoaOpcao | null>(() => {
+    if (!lancamentoEditando) return null;
+    const p = lancamentoEditando.pessoas ?? lancamentoEditando.clientes?.papeis?.pessoas ?? null;
+    return p ? { id: p.id, nome: p.nome, tipo_pessoa: p.tipo_pessoa } : null;
+  });
   const [buscaCliente, setBuscaCliente] = useState(
     lancamentoEditando ? nomePessoaLancamento(lancamentoEditando) ?? "" : ""
   );
@@ -212,6 +216,16 @@ export function LancamentoForm({
   // "esperado" salvo no próprio lançamento) que alimenta o saldo dos bancos.
   async function sincronizarPagamento(lancamentoId: string, bancoId: string | null) {
     const supabase = createClient();
+
+    // Se já existem 2+ pagamentos parciais registrados (via o painel dedicado de
+    // pagamentos, em bancos possivelmente diferentes), essa edição simples não deve
+    // apagar esse detalhamento — só mexe quando havia 0 ou 1 registro (ou seja,
+    // quando o "pago" foi marcado por aqui mesmo, não pelo painel de parciais).
+    const { count } = await supabase
+      .from("lancamento_pagamentos")
+      .select("id", { count: "exact", head: true })
+      .eq("lancamento_id", lancamentoId);
+    if ((count ?? 0) >= 2) return;
 
     if (situacao === "pago") {
       // Substitui qualquer pagamento anterior por um único registro refletindo o

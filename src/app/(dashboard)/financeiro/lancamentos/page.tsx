@@ -416,8 +416,8 @@ export default function LancamentosPage() {
       .select(
         `id, descricao, valor, tipo, situacao, data_vencimento, data_quitacao, data_competencia, codigo_transacao,
          banco_id, banco_destino_id, plano_conta_id, servico_id, numero_parcela, total_parcelas, recorrencia_tipo, grupo_id,
-         clientes ( papeis ( pessoas ( nome, pix ) ) ),
-         pessoas ( nome, pix ),
+         clientes ( papeis ( pessoas ( id, nome, pix, tipo_pessoa ) ) ),
+         pessoas ( id, nome, pix, tipo_pessoa ),
          bancos:banco_id ( nome ),
          bancos_destino:banco_destino_id ( nome ),
          planos_conta ( nome ),
