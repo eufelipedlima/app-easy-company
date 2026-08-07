@@ -30,6 +30,7 @@ interface Transferencia {
 interface Pendencia {
   tipo: "receita" | "despesa";
   valor: number;
+  data_vencimento: string;
 }
 
 function formatarMoeda(valor: number) {
@@ -38,6 +39,20 @@ function formatarMoeda(valor: number) {
 
 function hojeISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+async function buscarTudo<T>(construirQuery: (from: number, to: number) => PromiseLike<{ data: unknown[] | null }>): Promise<T[]> {
+  let todos: T[] = [];
+  let pagina = 0;
+  const tamanho = 1000;
+  while (true) {
+    const { data } = await construirQuery(pagina * tamanho, pagina * tamanho + tamanho - 1);
+    if (!data || data.length === 0) break;
+    todos = [...todos, ...(data as T[])];
+    if (data.length < tamanho) break;
+    pagina++;
+  }
+  return todos;
 }
 
 const CORES_BANCO = ["#143421", "#dc9d3a", "#2563eb", "#dc2626", "#7c3aed", "#0d9488", "#db2777", "#ca8a04"];
@@ -83,6 +98,11 @@ export default function BancosPage() {
   const [painelAjuste, setPainelAjuste] = useState<Banco | null>(null);
   const [saldoEditado, setSaldoEditado] = useState("");
 
+  const [painelEditar, setPainelEditar] = useState<Banco | null>(null);
+  const [nomeEditado, setNomeEditado] = useState("");
+  const [saldoInicialEditado, setSaldoInicialEditado] = useState("");
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
   const [painelTransferencia, setPainelTransferencia] = useState(false);
   const [origemId, setOrigemId] = useState("");
   const [destinoId, setDestinoId] = useState("");
@@ -94,22 +114,40 @@ export default function BancosPage() {
   const carregar = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
-    const [{ data: b }, { data: p }, { data: t }, { data: pend }] = await Promise.all([
+    const inicioMes = `${hojeISO().slice(0, 7)}-01`;
+    const fimMes = new Date(Number(hojeISO().slice(0, 4)), Number(hojeISO().slice(5, 7)), 0).toISOString().slice(0, 10);
+
+    const [{ data: b }, p, t, pend] = await Promise.all([
       supabase.from("bancos").select("id, nome, saldo_inicial, ativo").order("nome"),
-      supabase
-        .from("lancamento_pagamentos")
-        .select("banco_id, valor, data_pagamento, lancamentos ( tipo, descricao )"),
-      supabase
-        .from("lancamentos")
-        .select("valor, banco_id, banco_destino_id, data_quitacao")
-        .eq("tipo", "transferencia")
-        .eq("situacao", "pago"),
-      supabase.from("lancamentos").select("tipo, valor").eq("situacao", "pendente").neq("tipo", "transferencia"),
+      buscarTudo<PagamentoComTipo>((from, to) =>
+        supabase
+          .from("lancamento_pagamentos")
+          .select("banco_id, valor, data_pagamento, lancamentos ( tipo, descricao )")
+          .range(from, to)
+      ),
+      buscarTudo<Transferencia>((from, to) =>
+        supabase
+          .from("lancamentos")
+          .select("valor, banco_id, banco_destino_id, data_quitacao")
+          .eq("tipo", "transferencia")
+          .eq("situacao", "pago")
+          .range(from, to)
+      ),
+      buscarTudo<Pendencia>((from, to) =>
+        supabase
+          .from("lancamentos")
+          .select("tipo, valor, data_vencimento")
+          .eq("situacao", "pendente")
+          .neq("tipo", "transferencia")
+          .gte("data_vencimento", inicioMes)
+          .lte("data_vencimento", fimMes)
+          .range(from, to)
+      ),
     ]);
     setBancos((b as Banco[]) ?? []);
-    setPagamentos((p as unknown as PagamentoComTipo[]) ?? []);
-    setTransferencias((t as Transferencia[]) ?? []);
-    setPendencias((pend as Pendencia[]) ?? []);
+    setPagamentos(p);
+    setTransferencias(t);
+    setPendencias(pend);
     setLoading(false);
   }, []);
 
@@ -160,6 +198,19 @@ export default function BancosPage() {
     const supabase = createClient();
     await supabase.from("bancos").update({ ativo }).eq("id", id);
     setMenuAbertoId(null);
+    carregar();
+  }
+
+  async function salvarEdicaoBanco() {
+    if (!painelEditar || !nomeEditado.trim()) return;
+    setSalvandoEdicao(true);
+    const supabase = createClient();
+    await supabase
+      .from("bancos")
+      .update({ nome: nomeEditado.trim(), saldo_inicial: saldoInicialEditado ? Number(saldoInicialEditado) : 0 })
+      .eq("id", painelEditar.id);
+    setSalvandoEdicao(false);
+    setPainelEditar(null);
     carregar();
   }
 
@@ -338,6 +389,7 @@ export default function BancosPage() {
           <div>
             <p className="text-xs text-ink/40 font-semibold mb-1">A receber</p>
             <p className="text-xl font-extrabold text-emerald-600">{formatarMoeda(totalAReceber)}</p>
+            <p className="text-[10px] text-ink/30 mt-0.5">este mês</p>
           </div>
           <span className="h-9 w-9 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0">
             <TrendingUp size={16} />
@@ -347,6 +399,7 @@ export default function BancosPage() {
           <div>
             <p className="text-xs text-ink/40 font-semibold mb-1">A pagar</p>
             <p className="text-xl font-extrabold text-red-500">{formatarMoeda(totalAPagar)}</p>
+            <p className="text-[10px] text-ink/30 mt-0.5">este mês</p>
           </div>
           <span className="h-9 w-9 rounded-full bg-red-50 text-red-500 flex items-center justify-center shrink-0">
             <TrendingDown size={16} />
@@ -511,6 +564,17 @@ export default function BancosPage() {
               >
                 <button
                   onClick={() => {
+                    setPainelEditar(banco);
+                    setNomeEditado(banco.nome);
+                    setSaldoInicialEditado(String(banco.saldo_inicial));
+                    setMenuAbertoId(null);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => {
                     setPainelAjuste(banco);
                     setSaldoEditado(String(saldoAte(banco, hojeISO())));
                     setMenuAbertoId(null);
@@ -605,6 +669,45 @@ export default function BancosPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {painelEditar && (
+        <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={() => setPainelEditar(null)}>
+          <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-ink mb-5">Editar banco</h2>
+            <div className="space-y-4">
+              <label className="block">
+                <span className="block text-sm font-medium text-ink/70 mb-1">Nome do banco</span>
+                <input value={nomeEditado} onChange={(e) => setNomeEditado(e.target.value)} className="input" autoFocus />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium text-ink/70 mb-1">Saldo inicial (R$)</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={saldoInicialEditado}
+                  onChange={(e) => setSaldoInicialEditado(e.target.value)}
+                  className="input"
+                />
+                <span className="block text-xs text-ink/40 mt-1">
+                  Isso muda o ponto de partida do cálculo — corrige o saldo de hoje na hora.
+                </span>
+              </label>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={salvarEdicaoBanco}
+                  disabled={salvandoEdicao}
+                  className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+                >
+                  {salvandoEdicao ? "Salvando..." : "Salvar"}
+                </button>
+                <button onClick={() => setPainelEditar(null)} className="text-sm font-semibold text-ink/60 hover:text-ink">
+                  Cancelar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
