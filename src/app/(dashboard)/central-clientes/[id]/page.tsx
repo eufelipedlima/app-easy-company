@@ -571,20 +571,54 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       </div>
 
       {aba === "geral" && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {[
-              ["Tarefas abertas", tarefasAbertas.length],
-              ["Tarefas concluídas", tarefasConcluidas.length],
-              ["Conteúdos abertos", postsAbertos.length],
-              ["Conteúdos concluídos", postsConcluidos.length],
-              ["Documentos", docs.length],
-            ].map(([label, valor]) => (
-              <div key={label as string} className="rounded-2xl bg-card border border-black/5 p-4">
-                <p className="text-2xl font-extrabold text-ink">{valor}</p>
-                <p className="text-xs text-ink/50">{label}</p>
-              </div>
-            ))}
+        <div className="space-y-5">
+          <div className="rounded-3xl bg-card border border-black/5 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-ink/50">✔️ Tarefas por etapa</h2>
+              <span className="text-xs text-ink/40">{tarefas.length} no total</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {statusList.map((s) => {
+                const qtd = tarefas.filter((t) => t.status_id === s.id).length;
+                return (
+                  <div
+                    key={s.id}
+                    className={`rounded-2xl p-4 text-center transition-all duration-200 hover:scale-105 hover:shadow-md cursor-default ${corDoStatus(s.cor).cor}`}
+                  >
+                    <p className="text-3xl font-extrabold">{qtd}</p>
+                    <p className="text-xs font-semibold mt-0.5 truncate">{s.nome}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-3xl bg-card border border-black/5 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-ink/50">📅 Conteúdo por etapa</h2>
+              <span className="text-xs text-ink/40">{posts.length} no total</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {statusList.map((s) => {
+                const qtd = posts.filter((p) => p.status_id === s.id).length;
+                return (
+                  <div
+                    key={s.id}
+                    className={`rounded-2xl p-4 text-center transition-all duration-200 hover:scale-105 hover:shadow-md cursor-default ${corDoStatus(s.cor).cor}`}
+                  >
+                    <p className="text-3xl font-extrabold">{qtd}</p>
+                    <p className="text-xs font-semibold mt-0.5 truncate">{s.nome}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-card border border-black/5 p-4 flex items-center gap-2">
+            <span className="text-lg">📄</span>
+            <p className="text-sm text-ink">
+              <span className="font-extrabold">{docs.length}</span> <span className="text-ink/50">documentos</span>
+            </p>
           </div>
 
           {(tarefasEmAtraso.length > 0 || tarefasHoje.length > 0) && (

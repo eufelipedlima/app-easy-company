@@ -180,6 +180,8 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   const [editando, setEditando] = useState<Post | null>(null);
   const [novoEmData, setNovoEmData] = useState<string | null>(null);
   const [linkPublicoAberto, setLinkPublicoAberto] = useState(false);
+  const [criarDropdownAberto, setCriarDropdownAberto] = useState(false);
+  const [planejamentoModalAberto, setPlanejamentoModalAberto] = useState(false);
   const [camposVisiveis, setCamposVisiveis] = useState<CamposVisiveis>(CAMPOS_VISIVEIS_PADRAO);
   const [painelCamposAberto, setPainelCamposAberto] = useState(false);
 
@@ -538,7 +540,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
         <div className="flex items-center gap-3 flex-wrap">
           <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner shrink-0">
             <button
-              onClick={() => router.push("/conteudo/calendario")}
+              onClick={() => setVisualizacao("calendario")}
               className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
                 visualizacao === "calendario" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
               }`}
@@ -546,7 +548,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
               Calendário
             </button>
             <button
-              onClick={() => router.push("/conteudo/calendario/kanban")}
+              onClick={() => setVisualizacao("kanban")}
               className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
                 visualizacao === "kanban" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
               }`}
@@ -649,14 +651,49 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
           >
             🔗 Link público
           </button>
-          <button
-            onClick={() => criarPostRapido(hojeISO)}
-            className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors"
-          >
-            + Novo post
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setCriarDropdownAberto((v) => !v)}
+              className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors flex items-center gap-1.5"
+            >
+              + Criar {criarDropdownAberto ? "▴" : "▾"}
+            </button>
+            {criarDropdownAberto && (
+              <div
+                className="absolute z-20 top-full right-0 mt-2 w-56 rounded-2xl bg-white border border-black/10 shadow-lg py-1.5"
+                onMouseLeave={() => setCriarDropdownAberto(false)}
+              >
+                <button
+                  onClick={() => {
+                    setCriarDropdownAberto(false);
+                    criarPostRapido(hojeISO);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-ink hover:bg-surface flex items-center gap-2"
+                >
+                  📄 Novo post
+                </button>
+                <button
+                  onClick={() => {
+                    setCriarDropdownAberto(false);
+                    setPlanejamentoModalAberto(true);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-ink hover:bg-surface flex items-center gap-2"
+                >
+                  🗓️ Novo planejamento
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {planejamentoModalAberto && (
+        <NovoPlanejamentoModal
+          clientes={clientes}
+          onClose={() => setPlanejamentoModalAberto(false)}
+          onCriado={(tarefaId) => router.push(`/tarefas/${tarefaId}`)}
+        />
+      )}
 
       {visualizacao === "calendario" && (
         <>
@@ -2007,6 +2044,138 @@ function KanbanCardConteudo({
           {mostrarResponsavel && <AvatarStackPost pessoas={responsaveis} />}
         </div>
       )}
+    </div>
+  );
+}
+
+const MESES_PT = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
+function NovoPlanejamentoModal({
+  clientes,
+  onClose,
+  onCriado,
+}: {
+  clientes: ClienteOpcao[];
+  onClose: () => void;
+  onCriado: (tarefaId: string) => void;
+}) {
+  const mesAtualNome = MESES_PT[new Date().getMonth()];
+  const [titulo, setTitulo] = useState(`Planejamento de ${mesAtualNome}`);
+  const [buscaCliente, setBuscaCliente] = useState("");
+  const [clienteSelecionado, setClienteSelecionado] = useState<ClienteOpcao | null>(null);
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const sugestoes = clientes.filter((c) => normalizar(c.nome).includes(normalizar(buscaCliente)));
+
+  async function criar(e: React.FormEvent) {
+    e.preventDefault();
+    if (!clienteSelecionado) {
+      setErro("Escolhe o cliente desse planejamento.");
+      return;
+    }
+    if (!titulo.trim()) {
+      setErro("Dê um nome pro planejamento.");
+      return;
+    }
+    setSaving(true);
+    setErro(null);
+    const supabase = createClient();
+    const { data: statusList } = await supabase.from("status_conteudo").select("id").order("ordem").limit(1);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const { data: tarefa, error } = await supabase
+      .from("tarefas")
+      .insert({ titulo: titulo.trim(), cliente_id: clienteSelecionado.id, status_id: statusList?.[0]?.id })
+      .select("id")
+      .single();
+    if (error || !tarefa) {
+      setErro(error?.message ?? "Erro ao criar o planejamento.");
+      setSaving(false);
+      return;
+    }
+    if (user) {
+      await supabase.from("tarefas_historico").insert({ tarefa_id: tarefa.id, autor_id: user.id, descricao: "criou a tarefa" });
+    }
+
+    const subtarefas = Array.from({ length: 15 }, (_, i) => ({
+      titulo: `${String(i + 1).padStart(2, "0")} -`,
+      tarefa_pai_id: tarefa.id,
+      cliente_id: clienteSelecionado.id,
+      status_id: statusList?.[0]?.id,
+    }));
+    await supabase.from("tarefas").insert(subtarefas);
+
+    setSaving(false);
+    onCriado(tarefa.id);
+  }
+
+  return (
+    <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-ink mb-1">🗓️ Novo planejamento</h2>
+        <p className="text-xs text-ink/50 mb-4">Cria uma tarefa com 15 subtarefas numeradas (01 a 15), prontas pra você preencher com os posts do mês.</p>
+        <form onSubmit={criar} className="space-y-4">
+          <label className="block">
+            <span className="block text-sm font-medium text-ink/70 mb-1">Nome *</span>
+            <input value={titulo} onChange={(e) => setTitulo(e.target.value)} className="input" autoFocus />
+          </label>
+          <label className="block relative">
+            <span className="block text-sm font-medium text-ink/70 mb-1">Cliente *</span>
+            <input
+              value={clienteSelecionado ? clienteSelecionado.nome : buscaCliente}
+              onChange={(e) => {
+                setBuscaCliente(e.target.value);
+                setClienteSelecionado(null);
+                setBuscaAberta(true);
+              }}
+              onFocus={() => setBuscaAberta(true)}
+              className="input"
+              placeholder="Digite pra buscar..."
+            />
+            {buscaAberta && buscaCliente && !clienteSelecionado && (
+              <div className="absolute z-10 top-full left-0 w-full mt-1 rounded-2xl bg-white border border-black/10 shadow-lg py-1 max-h-48 overflow-y-auto">
+                {sugestoes.length === 0 ? (
+                  <p className="px-4 py-2 text-xs text-ink/40">Nenhum cliente encontrado.</p>
+                ) : (
+                  sugestoes.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setClienteSelecionado(c);
+                        setBuscaAberta(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-surface"
+                    >
+                      {c.nome}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </label>
+          {erro && <p className="text-sm text-red-600">{erro}</p>}
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+            >
+              {saving ? "Criando..." : "Criar e abrir"}
+            </button>
+            <button type="button" onClick={onClose} className="text-sm font-semibold text-ink/60 hover:text-ink">
+              Cancelar
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

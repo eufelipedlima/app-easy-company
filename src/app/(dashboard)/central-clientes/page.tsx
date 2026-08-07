@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
+import { corDoStatus } from "@/lib/status-conteudo";
 
 interface ClienteResumo {
   id: string;
@@ -22,9 +23,27 @@ function corAvatar(nome: string) {
   return CORES_AVATAR[Math.abs(hash) % CORES_AVATAR.length];
 }
 
+const GRADIENTES = [
+  "from-orange-300 via-amber-200 to-yellow-200",
+  "from-fuchsia-300 via-pink-200 to-rose-200",
+  "from-yellow-200 via-lime-200 to-emerald-200",
+  "from-sky-300 via-cyan-200 to-teal-200",
+  "from-rose-300 via-orange-200 to-amber-100",
+  "from-violet-300 via-purple-200 to-fuchsia-200",
+  "from-emerald-300 via-teal-200 to-cyan-200",
+  "from-indigo-300 via-blue-200 to-sky-200",
+];
+function gradienteCliente(nome: string) {
+  let hash = 0;
+  for (let i = 0; i < nome.length; i++) hash = (hash * 31 + nome.charCodeAt(i)) % GRADIENTES.length;
+  return GRADIENTES[Math.abs(hash) % GRADIENTES.length];
+}
+
 export default function CentralClientesPage() {
   const router = useRouter();
   const [clientes, setClientes] = useState<ClienteResumo[]>([]);
+  const [statusList, setStatusList] = useState<{ id: string; nome: string; cor: string }[]>([]);
+  const [contagemPorCliente, setContagemPorCliente] = useState<Record<string, Record<string, number>>>({});
   const [busca, setBusca] = useState("");
   const [loading, setLoading] = useState(true);
   const [souAdmin, setSouAdmin] = useState(false);
@@ -32,10 +51,15 @@ export default function CentralClientesPage() {
 
   const carregar = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase
-      .from("clientes")
-      .select("id, papeis ( pessoas ( nome, foto_url, segmentos ( nome ) ) )")
-      .eq("ativo_central_clientes", true);
+    const [{ data }, { data: statusData }] = await Promise.all([
+      supabase
+        .from("clientes")
+        .select("id, papeis ( pessoas ( nome, foto_url, segmentos ( nome ) ) )")
+        .eq("ativo_central_clientes", true),
+      supabase.from("status_conteudo").select("id, nome, cor").order("ordem"),
+    ]);
+    setStatusList(statusData ?? []);
+
     const lista = ((data ?? []) as unknown as {
       id: string;
       papeis: { pessoas: { nome: string; foto_url: string | null; segmentos: { nome: string } | null } | null } | null;
@@ -48,6 +72,21 @@ export default function CentralClientesPage() {
       }))
       .sort((a, b) => a.nome.localeCompare(b.nome));
     setClientes(lista);
+
+    if (lista.length > 0) {
+      const { data: posts } = await supabase
+        .from("posts_conteudo")
+        .select("cliente_id, status_id")
+        .in("cliente_id", lista.map((c) => c.id))
+        .eq("arquivado", false)
+        .is("excluido_em", null);
+      const mapa: Record<string, Record<string, number>> = {};
+      for (const p of posts ?? []) {
+        if (!mapa[p.cliente_id]) mapa[p.cliente_id] = {};
+        mapa[p.cliente_id][p.status_id] = (mapa[p.cliente_id][p.status_id] ?? 0) + 1;
+      }
+      setContagemPorCliente(mapa);
+    }
     setLoading(false);
   }, []);
 
@@ -73,7 +112,7 @@ export default function CentralClientesPage() {
   const filtrados = clientes.filter((c) => normalizar(c.nome).includes(normalizar(busca)));
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
+    <main className="mx-auto max-w-6xl px-6 py-10">
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-extrabold text-ink mb-1">Central de Clientes</h1>
@@ -101,27 +140,54 @@ export default function CentralClientesPage() {
       ) : filtrados.length === 0 ? (
         <p className="text-sm text-ink/50">Nenhum cliente encontrado.</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {filtrados.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => router.push(`/central-clientes/${c.id}`)}
-              className="flex items-center gap-3 rounded-2xl bg-card border border-black/5 p-4 hover:shadow-md hover:border-forest/20 transition-all text-left"
-            >
-              {c.fotoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={c.fotoUrl} alt={c.nome} className="h-11 w-11 rounded-full object-cover shrink-0" />
-              ) : (
-                <div className={`h-11 w-11 rounded-full ${corAvatar(c.nome)} text-white flex items-center justify-center font-bold shrink-0`}>
-                  {c.nome.slice(0, 2).toUpperCase()}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtrados.map((c) => {
+            const contagem = contagemPorCliente[c.id] ?? {};
+            const statusComItens = statusList.filter((s) => contagem[s.id]);
+            return (
+              <button
+                key={c.id}
+                onClick={() => router.push(`/central-clientes/${c.id}`)}
+                className="group text-left rounded-3xl bg-card border border-black/5 overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
+              >
+                <div className={`h-16 bg-gradient-to-br ${gradienteCliente(c.nome)}`} />
+                <div className="px-4 pb-4">
+                  <div className="-mt-8 mb-2 flex items-end justify-between">
+                    {c.fotoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={c.fotoUrl} alt={c.nome} className="h-16 w-16 rounded-2xl object-cover ring-4 ring-white shadow-sm" />
+                    ) : (
+                      <div
+                        className={`h-16 w-16 rounded-2xl ${corAvatar(c.nome)} text-white flex items-center justify-center font-bold text-xl ring-4 ring-white shadow-sm shrink-0`}
+                      >
+                        {c.nome.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-mint text-forest px-2.5 py-1 text-[10px] font-bold">
+                      <span className="h-1.5 w-1.5 rounded-full bg-forest" /> Ativo
+                    </span>
+                  </div>
+
+                  <p className="text-sm font-extrabold text-ink truncate group-hover:text-forest transition-colors">{c.nome}</p>
+                  {c.segmento && (
+                    <span className="inline-block mt-1.5 rounded-full bg-surface text-ink/50 px-2.5 py-1 text-[11px] font-semibold">
+                      {c.segmento}
+                    </span>
+                  )}
+
+                  {statusComItens.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {statusComItens.map((s) => (
+                        <span key={s.id} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold ${corDoStatus(s.cor).cor}`}>
+                          {contagem[s.id]} {s.nome}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-ink truncate">{c.nome}</p>
-                {c.segmento && <p className="text-xs text-ink/50 truncate">{c.segmento}</p>}
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       )}
 
