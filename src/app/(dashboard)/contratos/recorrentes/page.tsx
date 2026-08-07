@@ -904,6 +904,7 @@ function ContratoRecorrenteForm({
   const [observacaoEncerramento, setObservacaoEncerramento] = useState(contratoEditando?.observacao_encerramento ?? "");
 
   const [ehMigracao, setEhMigracao] = useState(contratoEditando?.eh_migracao ?? false);
+  const [gerarCentralClientes, setGerarCentralClientes] = useState(!contratoEditando);
   const [valorPagoHistorico, setValorPagoHistorico] = useState(
     contratoEditando?.valor_pago_historico != null ? String(contratoEditando.valor_pago_historico) : ""
   );
@@ -1156,6 +1157,10 @@ function ContratoRecorrenteForm({
           await enviarArquivo(novoContrato.id, arquivo);
         }
 
+        if (gerarCentralClientes) {
+          await supabase.from("clientes").update({ ativo_central_clientes: true }).eq("id", clienteId);
+        }
+
         // Gera os lançamentos automaticamente. Em contratos normais: entrada (se houver) +
         // 12 meses de mensalidade a partir da data da primeira mensalidade. Em contratos
         // de migração (cliente já existente antes do sistema): sem entrada, e a partir da
@@ -1298,51 +1303,15 @@ function ContratoRecorrenteForm({
       </div>
 
       {!editando && (
-        <div className="rounded-2xl bg-surface p-3">
-          <label className="flex items-center gap-2 text-sm font-semibold text-ink cursor-pointer">
-            <input
-              type="checkbox"
-              checked={ehMigracao}
-              onChange={(e) => {
-                setEhMigracao(e.target.checked);
-                if (e.target.checked) setDataPrimeiraMensalidade("");
-              }}
-              className="h-4 w-4 rounded accent-forest"
-            />
-            Contrato já existente (cliente antigo, migração pro sistema)
-          </label>
-
-          {ehMigracao && (
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              <Campo label="Data da próxima cobrança" required>
-                <input
-                  type="date"
-                  required
-                  value={dataProximaCobranca}
-                  onChange={(e) => setDataProximaCobranca(e.target.value)}
-                  className="input"
-                />
-                <span className="block text-xs text-ink/40 mt-1">
-                  As parcelas serão lançadas a partir daqui, não da data de início real.
-                </span>
-              </Campo>
-              <Campo label="Valor já pago antes de entrar no sistema (R$)">
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={valorPagoHistorico}
-                  onChange={(e) => setValorPagoHistorico(e.target.value)}
-                  className="input"
-                  placeholder="Opcional"
-                />
-                <span className="block text-xs text-ink/40 mt-1">
-                  Só pra cálculo de LTV/total pago — não gera lançamento nenhum.
-                </span>
-              </Campo>
-            </div>
-          )}
-        </div>
+        <label className="flex items-center gap-2 text-sm font-semibold text-ink cursor-pointer rounded-2xl bg-surface p-3">
+          <input
+            type="checkbox"
+            checked={gerarCentralClientes}
+            onChange={(e) => setGerarCentralClientes(e.target.checked)}
+            className="h-4 w-4 rounded accent-forest"
+          />
+          Gerar Central de Clientes (tarefas, conteúdo, chat e docs pra esse cliente)
+        </label>
       )}
 
       <div className="grid grid-cols-2 gap-3">

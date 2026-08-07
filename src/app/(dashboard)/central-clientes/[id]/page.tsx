@@ -121,6 +121,8 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const inputFotoRef = useRef<HTMLInputElement>(null);
   const [aba, setAba] = useState<Aba>("geral");
+  const [souAdmin, setSouAdmin] = useState(false);
+  const [confirmandoArquivar, setConfirmandoArquivar] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [tarefas, setTarefas] = useState<TarefaResumo[]>([]);
@@ -311,6 +313,30 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
   }, [carregar]);
 
   useEffect(() => {
+    async function carregarPermissao() {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: perfilData } = await supabase
+        .from("funcionarios")
+        .select("perfis_acesso ( nome )")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+      const nomePerfil = (perfilData as unknown as { perfis_acesso: { nome: string } | null } | null)?.perfis_acesso?.nome;
+      setSouAdmin(nomePerfil === "Administrador");
+    }
+    carregarPermissao();
+  }, []);
+
+  async function arquivarCentral() {
+    const supabase = createClient();
+    await supabase.from("clientes").update({ ativo_central_clientes: false }).eq("id", id);
+    router.push("/central-clientes");
+  }
+
+  useEffect(() => {
     if (aba === "chat") chatFimRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensagens, aba]);
 
@@ -349,12 +375,22 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
     setTarefas((atual) => atual.map((t) => (t.id === tarefaId ? { ...t, status_id: novoStatusId } : t)));
     const supabase = createClient();
     await supabase.from("tarefas").update({ status_id: novoStatusId }).eq("id", tarefaId);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const nomeStatus = statusList.find((s) => s.id === novoStatusId)?.nome ?? "outro status";
+    if (user) await supabase.from("tarefas_historico").insert({ tarefa_id: tarefaId, autor_id: user.id, descricao: `mudou o status para "${nomeStatus}"` });
   }
 
   async function moverPostStatus(postId: string, novoStatusId: string) {
     setPosts((atual) => atual.map((p) => (p.id === postId ? { ...p, status_id: novoStatusId } : p)));
     const supabase = createClient();
     await supabase.from("posts_conteudo").update({ status_id: novoStatusId }).eq("id", postId);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const nomeStatus = statusList.find((s) => s.id === novoStatusId)?.nome ?? "outro status";
+    if (user) await supabase.from("posts_conteudo_historico").insert({ post_id: postId, autor_id: user.id, descricao: `mudou o status para "${nomeStatus}"` });
   }
 
   async function criarCanalCliente() {
@@ -392,7 +428,13 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       .insert({ titulo: tituloNovo.trim(), cliente_id: id, status_id: statusList?.[0]?.id })
       .select("id")
       .single();
-    if (nova) router.push(`/tarefas/${nova.id}`);
+    if (nova) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) await supabase.from("tarefas_historico").insert({ tarefa_id: nova.id, autor_id: user.id, descricao: "criou a tarefa" });
+      router.push(`/tarefas/${nova.id}`);
+    }
   }
 
   async function novoPostRapido() {
@@ -406,7 +448,13 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       .insert({ titulo: tituloNovo.trim(), cliente_id: id, data_publicacao: hoje, status_id: statusList?.[0]?.id })
       .select("id")
       .single();
-    if (novo) router.push(`/conteudo/calendario/post/${novo.id}`);
+    if (novo) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) await supabase.from("posts_conteudo_historico").insert({ post_id: novo.id, autor_id: user.id, descricao: "criou o conteúdo" });
+      router.push(`/conteudo/calendario/post/${novo.id}`);
+    }
   }
 
   async function novoDocRapido() {
@@ -456,27 +504,53 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
         ← Central de Clientes
       </button>
 
-      <div className="flex items-center gap-4 mb-6">
-        <div className="relative group/avatar">
-          {fotoCliente ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={fotoCliente} alt={nomeCliente} className="h-14 w-14 rounded-full object-cover" />
-          ) : (
-            <div className={`h-14 w-14 rounded-full ${corAvatar(nomeCliente)} text-white flex items-center justify-center font-bold text-lg shrink-0`}>
-              {nomeCliente.slice(0, 2).toUpperCase()}
-            </div>
-          )}
-          <button
-            onClick={() => inputFotoRef.current?.click()}
-            disabled={enviandoFoto}
-            className="absolute inset-0 rounded-full bg-black/50 text-white opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-[10px] font-semibold"
-            title="Trocar foto do cliente"
-          >
-            {enviandoFoto ? "..." : "Trocar"}
-          </button>
-          <input ref={inputFotoRef} type="file" accept="image/*" onChange={enviarFotoCliente} className="hidden" />
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-4">
+          <div className="relative group/avatar">
+            {fotoCliente ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={fotoCliente} alt={nomeCliente} className="h-14 w-14 rounded-full object-cover" />
+            ) : (
+              <div className={`h-14 w-14 rounded-full ${corAvatar(nomeCliente)} text-white flex items-center justify-center font-bold text-lg shrink-0`}>
+                {nomeCliente.slice(0, 2).toUpperCase()}
+              </div>
+            )}
+            <button
+              onClick={() => inputFotoRef.current?.click()}
+              disabled={enviandoFoto}
+              className="absolute inset-0 rounded-full bg-black/50 text-white opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-[10px] font-semibold"
+              title="Trocar foto do cliente"
+            >
+              {enviandoFoto ? "..." : "Trocar"}
+            </button>
+            <input ref={inputFotoRef} type="file" accept="image/*" onChange={enviarFotoCliente} className="hidden" />
+          </div>
+          <h1 className="text-2xl font-extrabold text-ink">{nomeCliente}</h1>
         </div>
-        <h1 className="text-2xl font-extrabold text-ink">{nomeCliente}</h1>
+        {souAdmin && (
+          <div className="relative shrink-0">
+            <button
+              onClick={() => setConfirmandoArquivar((v) => !v)}
+              className="rounded-full border-2 border-red-200 text-red-600 px-4 py-2 text-sm font-semibold hover:bg-red-50 transition-colors"
+            >
+              Arquivar Central de Cliente
+            </button>
+            {confirmandoArquivar && (
+              <div className="absolute z-10 top-full right-0 mt-2 w-72 rounded-2xl bg-white border border-red-200 shadow-lg p-4">
+                <p className="text-xs text-ink/60 mb-3">
+                  Isso tira {nomeCliente} da lista da Central de Clientes. Nada é excluído — tarefas, conteúdo e docs continuam
+                  guardados, só ficam inacessíveis por aqui até reativar.
+                </p>
+                <button
+                  onClick={arquivarCentral}
+                  className="w-full rounded-full bg-red-600 text-white px-4 py-2 text-xs font-semibold hover:bg-red-700 transition-colors"
+                >
+                  Confirmar arquivamento
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner mb-6">

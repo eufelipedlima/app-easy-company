@@ -1063,39 +1063,6 @@ function ContratoPontualForm({
         )}
       </div>
 
-      {!editando && (
-        <div className="rounded-2xl bg-surface p-3">
-          <label className="flex items-center gap-2 text-sm font-semibold text-ink cursor-pointer">
-            <input
-              type="checkbox"
-              checked={ehMigracao}
-              onChange={(e) => setEhMigracao(e.target.checked)}
-              className="h-4 w-4 rounded accent-forest"
-            />
-            Contrato já existente (já foi pago antes de entrar no sistema)
-          </label>
-
-          {ehMigracao && (
-            <div className="mt-3">
-              <Campo label="Valor já pago antes de entrar no sistema (R$)">
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={valorPagoHistorico}
-                  onChange={(e) => setValorPagoHistorico(e.target.value)}
-                  className="input"
-                  placeholder="Opcional"
-                />
-                <span className="block text-xs text-ink/40 mt-1">
-                  Só pra cálculo de total pago — não gera lançamento nenhum no financeiro.
-                </span>
-              </Campo>
-            </div>
-          )}
-        </div>
-      )}
-
       <div className="grid grid-cols-2 gap-3">
         <div className="relative">
           <span className="block text-sm font-medium text-ink/70 mb-1">Serviço</span>

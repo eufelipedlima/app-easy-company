@@ -532,6 +532,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       status_id: statusList[0]?.id,
       eh_pasta: ehPasta ?? false,
     });
+    registrarHistorico(`criou ${ehPasta ? "a pasta" : "a subtarefa"} "${nomeFinal.trim()}"`);
     if (!tituloNovo) setNovaSubtarefa("");
     setCriandoSubtarefa(false);
     if (paiId !== id) setPastasAbertas((atual) => new Set(atual).add(paiId));

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
+import { IconeTarefa, IconeProjeto } from "@/components/icones-tarefa";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { BuscaCliente } from "@/components/busca-cliente";
 import {
@@ -429,6 +430,11 @@ export default function TarefasPage() {
     setTarefas((atual) => atual.map((t) => (t.id === tarefaId ? { ...t, status_id: novoStatusId } : t)));
     const supabase = createClient();
     await supabase.from("tarefas").update({ status_id: novoStatusId }).eq("id", tarefaId);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const nomeStatus = statusList.find((s) => s.id === novoStatusId)?.nome ?? "outro status";
+    if (user) await supabase.from("tarefas_historico").insert({ tarefa_id: tarefaId, autor_id: user.id, descricao: `mudou o status para "${nomeStatus}"` });
   }
 
   async function renomearTarefa(t: Tarefa) {
@@ -779,6 +785,15 @@ export default function TarefasPage() {
   );
 }
 
+async function registrarCriacaoTarefa(tarefaId: string, rotulo: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+  await supabase.from("tarefas_historico").insert({ tarefa_id: tarefaId, autor_id: user.id, descricao: `criou ${rotulo}` });
+}
+
 function TarefasBoard({
   statusList,
   tarefas,
@@ -1103,8 +1118,8 @@ function TarefaCardConteudo({
           <MenuAcoesTarefa tarefa={tarefa} acoes={acoes} />
         </div>
       )}
-      <p className="text-sm font-semibold text-ink truncate pr-5">
-        <span className={tarefa.eh_projeto ? "text-amber-600" : "text-ink/30"}>{tarefa.eh_projeto ? "📋" : "✔️"}</span> {tarefa.titulo}
+      <p className="text-sm font-semibold text-ink truncate pr-5 flex items-center gap-1.5">
+        {tarefa.eh_projeto ? <IconeProjeto /> : <IconeTarefa />} {tarefa.titulo}
       </p>
       {tarefa.eh_projeto &&
         acoes?.progressoProjetos[tarefa.id] &&
@@ -1411,7 +1426,7 @@ function TarefasMes({
                       onClick={() => onAbrirTarefa(t)}
                       className="w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate bg-surface hover:bg-surface/70"
                     >
-                      {t.eh_projeto ? "📋" : "✔️"} {t.titulo}
+                      {t.eh_projeto ? <IconeProjeto tamanho={11} className="inline-block align-[-1px]" /> : <IconeTarefa tamanho={11} className="inline-block align-[-1px]" />} {t.titulo}
                     </button>
                   ))}
                   {tarefasDoDia.length > 3 && <p className="text-[10px] text-ink/40 px-1.5">+{tarefasDoDia.length - 3} mais</p>}
@@ -1538,6 +1553,7 @@ function NovaTarefaModal({
       setErro(error?.message ?? "Erro ao criar tarefa.");
       return;
     }
+    registrarCriacaoTarefa(data.id, "a tarefa");
     onCriada(data.id);
   }
 
@@ -1675,6 +1691,7 @@ function NovoProjetoModal({
       setSaving(false);
       return;
     }
+    registrarCriacaoTarefa(projeto.id, "o projeto");
     const etapas = modeloSelecionado?.etapas ?? [];
     if (etapas.length > 0) {
       const mapaAntigoNovo = new Map<string, string>();
@@ -1712,6 +1729,7 @@ function NovoProjetoModal({
       .select("id")
       .single();
     if (!error && modelo) {
+      registrarCriacaoTarefa(modelo.id, "o modelo de projeto");
       window.open(`/tarefas/${modelo.id}`, "_blank");
       window.addEventListener("focus", function aoVoltar() {
         carregarModelos();

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
+import { IconeTarefa } from "@/components/icones-tarefa";
 
 interface ItemAgenda {
   id: string;
@@ -361,7 +362,7 @@ export default function InicioPage() {
                           atrasado ? "bg-red-50 hover:bg-red-100" : "bg-surface/60 hover:bg-surface"
                         }`}
                       >
-                        <span className="text-base shrink-0">{item.tipo === "tarefa" ? "✔️" : "📅"}</span>
+                        <span className="shrink-0">{item.tipo === "tarefa" ? <IconeTarefa /> : "📅"}</span>
                         <span className="flex-1 min-w-0">
                           <span className="block text-[13px] font-semibold text-ink truncate">{item.titulo}</span>
                           {item.clienteNome && <span className="block text-[11px] text-ink/40 truncate">{item.clienteNome}</span>}

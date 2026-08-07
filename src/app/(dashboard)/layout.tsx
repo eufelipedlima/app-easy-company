@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Users, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, ListTree, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle, UserCircle, Inbox, ListChecks, Home } from "lucide-react";
+import { Users, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle, UserCircle, Inbox, ListChecks, Home } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -45,10 +45,7 @@ const MENU: Grupo[] = [
     label: "Conteúdo",
     icon: <Calendar size={18} />,
     areaSlug: "conteudo",
-    itens: [
-      { href: "/conteudo/calendario", label: "Calendário", icon: <CalendarDays size={15} /> },
-      { href: "/conteudo/calendario/kanban", label: "Kanban", icon: <ListTree size={15} /> },
-    ],
+    href: "/conteudo/calendario",
   },
   {
     label: "Tarefas",

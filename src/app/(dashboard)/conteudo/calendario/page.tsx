@@ -297,6 +297,11 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     setPostsKanban((atual) => atual.map((p) => (p.id === postId ? { ...p, status_id: novoStatusId } : p)));
     const supabase = createClient();
     await supabase.from("posts_conteudo").update({ status_id: novoStatusId }).eq("id", postId);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const nomeStatus = statusList.find((s) => s.id === novoStatusId)?.nome ?? "outro status";
+    if (user) await supabase.from("posts_conteudo_historico").insert({ post_id: postId, autor_id: user.id, descricao: `mudou o status para "${nomeStatus}"` });
     carregarKanban();
   }
 
@@ -465,7 +470,13 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
       })
       .select("id")
       .single();
-    if (!error && novo) router.push(`/conteudo/calendario/post/${novo.id}`);
+    if (!error && novo) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) await supabase.from("posts_conteudo_historico").insert({ post_id: novo.id, autor_id: user.id, descricao: "criou o conteúdo" });
+      router.push(`/conteudo/calendario/post/${novo.id}`);
+    }
   }
 
   useEffect(() => {
@@ -839,7 +850,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
 }
 
 export default function CalendarioConteudoPage() {
-  return <CalendarioConteudoConteudo viewInicial="calendario" />;
+  return <CalendarioConteudoConteudo viewInicial="kanban" />;
 }
 
 function StatusSelect({

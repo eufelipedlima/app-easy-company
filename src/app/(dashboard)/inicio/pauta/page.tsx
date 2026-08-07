@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
+import { IconeTarefa } from "@/components/icones-tarefa";
 
 interface Responsavel {
   id: string;
@@ -261,6 +262,10 @@ export default function PautaPage() {
       .select("id")
       .single();
     if (nova) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) await supabase.from("tarefas_historico").insert({ tarefa_id: nova.id, autor_id: user.id, descricao: "criou a tarefa" });
       const respId = funcionarioId ?? meuFuncionarioId;
       if (respId) await supabase.from("tarefas_responsaveis").insert({ tarefa_id: nova.id, funcionario_id: respId });
       router.push(`/tarefas/${nova.id}?from=pauta`);
@@ -444,7 +449,7 @@ export default function PautaPage() {
                                   onClick={() => router.push(item.link)}
                                   className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(item.statusCor).cor}`}
                                 >
-                                  {item.tipo === "tarefa" ? "✔️" : "📅"} {item.titulo}
+                                  <span className="inline-flex items-center gap-1">{item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {item.titulo}</span>
                                 </button>
                               );
                             }
@@ -455,7 +460,7 @@ export default function PautaPage() {
                                 className={`w-full text-left rounded-lg px-2 py-1.5 ${corDoStatus(item.statusCor).cor}`}
                               >
                                 <p className="text-[11px] font-semibold truncate">
-                                  {item.tipo === "tarefa" ? "✔️" : "📅"} {item.titulo}
+                                  <span className="inline-flex items-center gap-1">{item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {item.titulo}</span>
                                 </p>
                                 {(item.temDescricao || item.qtdSubitens > 0 || respItem.length > 0) && (
                                   <div className="flex items-center justify-between mt-1">
