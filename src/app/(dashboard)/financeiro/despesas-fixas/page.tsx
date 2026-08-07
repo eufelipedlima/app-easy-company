@@ -423,6 +423,20 @@ function DespesaFixaForm({
           .eq("id", despesaEditando.id);
         if (error) throw error;
 
+        // Propaga banco/plano de conta/valor/fornecedor/descrição pras parcelas
+        // futuras ainda pendentes — as já pagas ficam como estavam (histórico).
+        await supabase
+          .from("lancamentos")
+          .update({
+            descricao: nome.trim(),
+            valor: Number(valorMensal),
+            banco_id: bancoFinalId,
+            plano_conta_id: planoContaFinalId,
+            pessoa_id: fornecedorId,
+          })
+          .eq("despesa_fixa_id", despesaEditando.id)
+          .eq("situacao", "pendente");
+
         if (status === "encerrado" && dataEncerramento) {
           await supabase
             .from("lancamentos")

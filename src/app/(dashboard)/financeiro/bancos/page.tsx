@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
+import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { Wallet, Landmark, TrendingUp, TrendingDown, ArrowLeftRight } from "lucide-react";
 
 interface Banco {
   id: string;
@@ -15,7 +17,7 @@ interface PagamentoComTipo {
   banco_id: string | null;
   valor: number;
   data_pagamento: string;
-  lancamentos: { tipo: "receita" | "despesa" | "transferencia" } | null;
+  lancamentos: { tipo: "receita" | "despesa" | "transferencia"; descricao: string | null } | null;
 }
 
 interface Transferencia {
@@ -23,6 +25,11 @@ interface Transferencia {
   banco_id: string | null;
   banco_destino_id: string | null;
   data_quitacao: string | null;
+}
+
+interface Pendencia {
+  tipo: "receita" | "despesa";
+  valor: number;
 }
 
 function formatarMoeda(valor: number) {
@@ -33,12 +40,24 @@ function hojeISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const CORES_BANCO = ["#143421", "#dc9d3a", "#2563eb", "#dc2626", "#7c3aed", "#0d9488", "#db2777", "#ca8a04"];
+function corBanco(index: number) {
+  return CORES_BANCO[index % CORES_BANCO.length];
+}
+function iniciaisBanco(nome: string) {
+  const partes = nome.trim().split(/\s+/);
+  return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
+}
+
 export default function BancosPage() {
   const [bancos, setBancos] = useState<Banco[]>([]);
   const [pagamentos, setPagamentos] = useState<PagamentoComTipo[]>([]);
   const [transferencias, setTransferencias] = useState<Transferencia[]>([]);
+  const [pendencias, setPendencias] = useState<Pendencia[]>([]);
   const [loading, setLoading] = useState(true);
   const [verSaldoAte, setVerSaldoAte] = useState(hojeISO());
+  const [buscaBanco, setBuscaBanco] = useState("");
+  const [periodoEvolucao, setPeriodoEvolucao] = useState<7 | 30 | 90>(7);
   const [mostrarArquivados, setMostrarArquivados] = useState(false);
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
@@ -75,20 +94,22 @@ export default function BancosPage() {
   const carregar = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
-    const [{ data: b }, { data: p }, { data: t }] = await Promise.all([
+    const [{ data: b }, { data: p }, { data: t }, { data: pend }] = await Promise.all([
       supabase.from("bancos").select("id, nome, saldo_inicial, ativo").order("nome"),
       supabase
         .from("lancamento_pagamentos")
-        .select("banco_id, valor, data_pagamento, lancamentos ( tipo )"),
+        .select("banco_id, valor, data_pagamento, lancamentos ( tipo, descricao )"),
       supabase
         .from("lancamentos")
         .select("valor, banco_id, banco_destino_id, data_quitacao")
         .eq("tipo", "transferencia")
         .eq("situacao", "pago"),
+      supabase.from("lancamentos").select("tipo, valor").eq("situacao", "pendente").neq("tipo", "transferencia"),
     ]);
     setBancos((b as Banco[]) ?? []);
     setPagamentos((p as unknown as PagamentoComTipo[]) ?? []);
     setTransferencias((t as Transferencia[]) ?? []);
+    setPendencias((pend as Pendencia[]) ?? []);
     setLoading(false);
   }, []);
 
@@ -217,31 +238,66 @@ export default function BancosPage() {
 
   const bancosAtivos = bancos.filter((b) => b.ativo);
   const bancosArquivados = bancos.filter((b) => !b.ativo);
+  const bancosFiltrados = bancosAtivos.filter((b) => b.nome.toLowerCase().includes(buscaBanco.toLowerCase()));
+
+  const saldoTotal = bancosAtivos.reduce((s, b) => s + saldoAte(b, verSaldoAte), 0);
+  const totalAReceber = pendencias.filter((p) => p.tipo === "receita").reduce((s, p) => s + p.valor, 0);
+  const totalAPagar = pendencias.filter((p) => p.tipo === "despesa").reduce((s, p) => s + p.valor, 0);
+
+  const dadosDonut = bancosAtivos
+    .map((b, i) => ({ nome: b.nome, valor: Math.max(saldoAte(b, verSaldoAte), 0), cor: corBanco(i) }))
+    .filter((d) => d.valor > 0);
+  const somaDonut = dadosDonut.reduce((s, d) => s + d.valor, 0);
+
+  const dadosEvolucao = useMemo(() => {
+    const pontos: { data: string; label: string; saldo: number }[] = [];
+    const hoje = new Date();
+    for (let i = periodoEvolucao - 1; i >= 0; i--) {
+      const d = new Date(hoje);
+      d.setDate(d.getDate() - i);
+      const iso = d.toISOString().slice(0, 10);
+      const total = bancosAtivos.reduce((s, b) => s + saldoAte(b, iso), 0);
+      pontos.push({ data: iso, label: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), saldo: total });
+    }
+    return pontos;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodoEvolucao, bancosAtivos, pagamentos, transferencias]);
+
+  const movimentacoes = useMemo(() => {
+    const doPagamento = pagamentos
+      .filter((p) => p.lancamentos?.tipo !== "transferencia")
+      .map((p) => ({
+        descricao: p.lancamentos?.descricao || (p.lancamentos?.tipo === "receita" ? "Recebimento" : "Pagamento"),
+        valor: p.lancamentos?.tipo === "receita" ? p.valor : -p.valor,
+        data: p.data_pagamento,
+        bancoId: p.banco_id,
+      }));
+    const dasTransferencias = transferencias
+      .filter((t) => t.data_quitacao)
+      .flatMap((t) => [
+        { descricao: "Transferência enviada", valor: -t.valor, data: t.data_quitacao!, bancoId: t.banco_id },
+        { descricao: "Transferência recebida", valor: t.valor, data: t.data_quitacao!, bancoId: t.banco_destino_id },
+      ]);
+    return [...doPagamento, ...dasTransferencias].sort((a, b) => (a.data < b.data ? 1 : -1)).slice(0, 6);
+  }, [pagamentos, transferencias]);
+
+  function nomeDoBanco(id: string | null) {
+    return bancos.find((b) => b.id === id)?.nome ?? "—";
+  }
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <div className="mb-6">
-        <h1 className="text-2xl font-extrabold text-ink mb-1">Bancos</h1>
-        <p className="text-sm text-ink/60">Saldo das contas usadas nos lançamentos financeiros.</p>
-      </div>
-
-      <div className="flex items-end justify-between gap-4 mb-4">
-        <label className="text-sm text-ink/60">
-          <span className="block mb-1">Ver saldo até</span>
-          <input
-            type="date"
-            value={verSaldoAte}
-            onChange={(e) => setVerSaldoAte(e.target.value)}
-            className="input py-1.5"
-          />
-        </label>
-
-        <div className="flex items-center gap-2">
+    <main className="mx-auto max-w-6xl px-6 py-10">
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-extrabold text-ink mb-1">Bancos</h1>
+          <p className="text-sm text-ink/60">Visão geral dos saldos e movimentações das suas contas.</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setPainelTransferencia(true)}
-            className="rounded-full border-2 border-ink/15 text-ink px-4 py-2 text-sm font-semibold hover:bg-surface transition-colors"
+            className="rounded-full border-2 border-ink/15 text-ink px-4 py-2 text-sm font-semibold hover:bg-surface transition-colors flex items-center gap-1.5"
           >
-            Transferir entre bancos
+            <ArrowLeftRight size={15} /> Transferir entre bancos
           </button>
           <button
             onClick={() => setPainelNovoBanco(true)}
@@ -252,36 +308,115 @@ export default function BancosPage() {
         </div>
       </div>
 
-      <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-surface text-left text-ink/40 text-xs uppercase tracking-wide">
-              <th className="px-4 py-3 font-semibold">Banco</th>
-              <th className="px-4 py-3 font-semibold">Saldo atual</th>
-              <th className="px-4 py-3 font-semibold w-10"></th>
-            </tr>
-          </thead>
-          <tbody>
+      <div className="flex items-center gap-3 mb-6">
+        <label className="text-xs text-ink/50 flex items-center gap-2">
+          Ver saldo até
+          <input type="date" value={verSaldoAte} onChange={(e) => setVerSaldoAte(e.target.value)} className="input py-1.5 text-sm !w-auto" />
+        </label>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="rounded-2xl bg-card border border-black/5 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-ink/40 font-semibold mb-1">Saldo total</p>
+            <p className={`text-xl font-extrabold ${saldoTotal < 0 ? "text-red-600" : "text-ink"}`}>{formatarMoeda(saldoTotal)}</p>
+          </div>
+          <span className="h-9 w-9 rounded-full bg-red-50 text-red-500 flex items-center justify-center shrink-0">
+            <Wallet size={16} />
+          </span>
+        </div>
+        <div className="rounded-2xl bg-card border border-black/5 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-ink/40 font-semibold mb-1">Contas ativas</p>
+            <p className="text-xl font-extrabold text-ink">{bancosAtivos.length}</p>
+          </div>
+          <span className="h-9 w-9 rounded-full bg-surface text-ink/60 flex items-center justify-center shrink-0">
+            <Landmark size={16} />
+          </span>
+        </div>
+        <div className="rounded-2xl bg-card border border-black/5 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-ink/40 font-semibold mb-1">A receber</p>
+            <p className="text-xl font-extrabold text-emerald-600">{formatarMoeda(totalAReceber)}</p>
+          </div>
+          <span className="h-9 w-9 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0">
+            <TrendingUp size={16} />
+          </span>
+        </div>
+        <div className="rounded-2xl bg-card border border-black/5 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-ink/40 font-semibold mb-1">A pagar</p>
+            <p className="text-xl font-extrabold text-red-500">{formatarMoeda(totalAPagar)}</p>
+          </div>
+          <span className="h-9 w-9 rounded-full bg-red-50 text-red-500 flex items-center justify-center shrink-0">
+            <TrendingDown size={16} />
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <div className="rounded-3xl bg-card border border-black/5 p-5">
+          <h2 className="text-sm font-bold text-ink mb-4">Distribuição do saldo</h2>
+          {dadosDonut.length === 0 ? (
+            <p className="text-sm text-ink/40 py-10 text-center">Sem saldo positivo pra distribuir ainda.</p>
+          ) : (
+            <div className="flex items-center gap-6">
+              <div className="w-40 h-40 shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={dadosDonut} dataKey="valor" nameKey="nome" innerRadius={45} outerRadius={70} paddingAngle={2}>
+                      {dadosDonut.map((d, i) => (
+                        <Cell key={i} fill={d.cor} stroke="none" />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v) => formatarMoeda(Number(v))} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-2 flex-1 min-w-0">
+                {dadosDonut.map((d) => (
+                  <div key={d.nome} className="flex items-center gap-2 text-sm">
+                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: d.cor }} />
+                    <span className="text-ink font-medium truncate flex-1">{d.nome}</span>
+                    <span className="text-ink/40 text-xs shrink-0">{((d.valor / somaDonut) * 100).toFixed(1)}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-3xl bg-card border border-black/5 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold text-ink">Contas cadastradas</h2>
+          </div>
+          <input
+            value={buscaBanco}
+            onChange={(e) => setBuscaBanco(e.target.value)}
+            placeholder="Buscar banco..."
+            className="input py-2 text-sm mb-3"
+          />
+          <div className="space-y-1 max-h-64 overflow-y-auto">
             {loading ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-4 text-sm text-ink/50">Carregando...</td>
-              </tr>
-            ) : bancosAtivos.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-4 text-sm text-ink/50">Nenhum banco cadastrado ainda.</td>
-              </tr>
+              <p className="text-sm text-ink/50 py-4">Carregando...</p>
+            ) : bancosFiltrados.length === 0 ? (
+              <p className="text-sm text-ink/50 py-4">Nenhum banco encontrado.</p>
             ) : (
-              bancosAtivos.map((banco) => (
-                <tr key={banco.id} className="border-t border-black/5 hover:bg-surface/60">
-                  <td className="px-4 py-3 font-medium text-ink">{banco.nome}</td>
-                  <td
-                    className={`px-4 py-3 font-semibold ${
-                      saldoAte(banco, verSaldoAte) < 0 ? "text-red-600" : "text-ink"
-                    }`}
-                  >
-                    {formatarMoeda(saldoAte(banco, verSaldoAte))}
-                  </td>
-                  <td className="px-4 py-3 text-right relative">
+              bancosFiltrados.map((banco, i) => {
+                const saldo = saldoAte(banco, verSaldoAte);
+                return (
+                  <div key={banco.id} className="flex items-center gap-3 px-2 py-2.5 rounded-xl hover:bg-surface/60 transition-colors">
+                    <span
+                      className="h-9 w-9 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0"
+                      style={{ background: corBanco(i) }}
+                    >
+                      {iniciaisBanco(banco.nome)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-ink truncate">{banco.nome}</p>
+                      <p className="text-xs text-ink/40">Conta corrente</p>
+                    </div>
+                    <span className={`text-sm font-bold shrink-0 ${saldo < 0 ? "text-red-600" : "text-ink"}`}>{formatarMoeda(saldo)}</span>
                     <button
                       onClick={(e) => {
                         if (menuAbertoId === banco.id) {
@@ -292,16 +427,73 @@ export default function BancosPage() {
                         setMenuPos({ top: rect.bottom + 4, left: rect.right - 176 });
                         setMenuAbertoId(banco.id);
                       }}
-                      className="text-ink/40 hover:text-ink px-2"
+                      className="text-ink/30 hover:text-ink px-1 shrink-0"
                     >
                       •••
                     </button>
-                  </td>
-                </tr>
-              ))
+                  </div>
+                );
+              })
             )}
-          </tbody>
-        </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        <div className="rounded-3xl bg-card border border-black/5 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold text-ink">Evolução do saldo total</h2>
+            <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+              {([7, 30, 90] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPeriodoEvolucao(p)}
+                  className={`rounded-full px-3 py-1 text-xs font-bold transition-all ${
+                    periodoEvolucao === p ? "bg-ink text-white" : "text-ink/50 hover:text-ink"
+                  }`}
+                >
+                  {p} dias
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="h-52">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={dadosEvolucao}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#0000000d" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => formatarMoeda(v)} width={70} />
+                <Tooltip formatter={(v) => formatarMoeda(Number(v))} />
+                <Line type="monotone" dataKey="saldo" stroke="#143421" strokeWidth={2.5} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="rounded-3xl bg-card border border-black/5 p-5">
+          <h2 className="text-sm font-bold text-ink mb-4">Últimas movimentações</h2>
+          {movimentacoes.length === 0 ? (
+            <p className="text-sm text-ink/40 py-6 text-center">Nenhuma movimentação ainda.</p>
+          ) : (
+            <div className="space-y-1">
+              {movimentacoes.map((m, i) => (
+                <div key={i} className="flex items-center gap-3 px-1 py-2.5 border-b border-black/5 last:border-0">
+                  <span className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${m.valor >= 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"}`}>
+                    {m.valor >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-ink truncate">{m.descricao}</p>
+                    <p className="text-xs text-ink/40">{nomeDoBanco(m.bancoId)}</p>
+                  </div>
+                  <span className={`text-sm font-bold shrink-0 ${m.valor >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                    {m.valor >= 0 ? "+" : ""}
+                    {formatarMoeda(m.valor)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {menuAbertoId &&
@@ -352,30 +544,19 @@ export default function BancosPage() {
         )}
 
       {bancosArquivados.length > 0 && (
-        <div className="mt-4">
-          <button
-            onClick={() => setMostrarArquivados((v) => !v)}
-            className="text-xs font-semibold text-ink/50 hover:text-ink"
-          >
+        <div className="mt-2 mb-4">
+          <button onClick={() => setMostrarArquivados((v) => !v)} className="text-xs font-semibold text-ink/50 hover:text-ink">
             {mostrarArquivados ? "− Ocultar" : "+ Ver"} bancos arquivados ({bancosArquivados.length})
           </button>
 
           {mostrarArquivados && (
             <div className="rounded-3xl bg-card border border-black/5 overflow-hidden mt-2">
               {bancosArquivados.map((banco) => (
-                <div
-                  key={banco.id}
-                  className="flex items-center justify-between px-4 py-3 border-b border-black/5 last:border-0 opacity-60"
-                >
+                <div key={banco.id} className="flex items-center justify-between px-4 py-3 border-b border-black/5 last:border-0 opacity-60">
                   <span className="text-sm font-medium text-ink">{banco.nome}</span>
                   <div className="flex items-center gap-4">
-                    <span className="text-sm font-bold text-ink/50">
-                      {formatarMoeda(saldoAte(banco, verSaldoAte))}
-                    </span>
-                    <button
-                      onClick={() => arquivar(banco.id, true)}
-                      className="text-xs font-semibold text-forest hover:text-ink"
-                    >
+                    <span className="text-sm font-bold text-ink/50">{formatarMoeda(saldoAte(banco, verSaldoAte))}</span>
+                    <button onClick={() => arquivar(banco.id, true)} className="text-xs font-semibold text-forest hover:text-ink">
                       Reativar
                     </button>
                   </div>
@@ -386,21 +567,14 @@ export default function BancosPage() {
         </div>
       )}
 
-      <p className="text-xs text-ink/40 mt-3">
-        Saldo = saldo inicial + pagamentos recebidos − pagamentos feitos até a data escolhida
-        (considerando o banco selecionado na hora de marcar como pago), mais transferências entre
-        contas. Só entram lançamentos com pagamento já registrado.
+      <p className="text-xs text-ink/40 mb-8">
+        Saldo = saldo inicial + pagamentos recebidos − pagamentos feitos até a data escolhida (considerando o banco selecionado
+        na hora de marcar como pago), mais transferências entre contas. Só entram lançamentos com pagamento já registrado.
       </p>
 
       {painelNovoBanco && (
-        <div
-          className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6"
-          onClick={() => setPainelNovoBanco(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={() => setPainelNovoBanco(false)}>
+          <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold text-ink mb-5">Novo banco</h2>
             <form onSubmit={adicionarBanco} className="space-y-4">
               <label className="block">
@@ -436,32 +610,16 @@ export default function BancosPage() {
       )}
 
       {painelAjuste && (
-        <div
-          className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6"
-          onClick={() => setPainelAjuste(null)}
-        >
-          <div
-            className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={() => setPainelAjuste(null)}>
+          <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold text-ink mb-1">Ajustar saldo — {painelAjuste.nome}</h2>
             <p className="text-xs text-ink/40 mb-5">Isso cria um lançamento de &ldquo;Ajuste de saldo&rdquo; automaticamente.</p>
             <label className="block mb-5">
               <span className="block text-sm font-medium text-ink/70 mb-1">Novo saldo (R$)</span>
-              <input
-                type="number"
-                step="0.01"
-                autoFocus
-                value={saldoEditado}
-                onChange={(e) => setSaldoEditado(e.target.value)}
-                className="input"
-              />
+              <input type="number" step="0.01" autoFocus value={saldoEditado} onChange={(e) => setSaldoEditado(e.target.value)} className="input" />
             </label>
             <div className="flex items-center gap-3">
-              <button
-                onClick={salvarAjusteSaldo}
-                className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
-              >
+              <button onClick={salvarAjusteSaldo} className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors">
                 Salvar
               </button>
               <button onClick={() => setPainelAjuste(null)} className="text-sm font-semibold text-ink/60 hover:text-ink">
@@ -473,14 +631,8 @@ export default function BancosPage() {
       )}
 
       {painelTransferencia && (
-        <div
-          className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6"
-          onClick={() => setPainelTransferencia(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={() => setPainelTransferencia(false)}>
+          <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold text-ink mb-5">Transferir entre bancos</h2>
             <form onSubmit={salvarTransferencia} className="space-y-4">
               <label className="block">
@@ -508,24 +660,11 @@ export default function BancosPage() {
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="block text-sm font-medium text-ink/70 mb-1">Valor (R$)</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={valorTransferencia}
-                    onChange={(e) => setValorTransferencia(e.target.value)}
-                    className="input"
-                    required
-                  />
+                  <input type="number" step="0.01" value={valorTransferencia} onChange={(e) => setValorTransferencia(e.target.value)} className="input" required />
                 </label>
                 <label className="block">
                   <span className="block text-sm font-medium text-ink/70 mb-1">Data</span>
-                  <input
-                    type="date"
-                    value={dataTransferencia}
-                    onChange={(e) => setDataTransferencia(e.target.value)}
-                    className="input"
-                    required
-                  />
+                  <input type="date" value={dataTransferencia} onChange={(e) => setDataTransferencia(e.target.value)} className="input" required />
                 </label>
               </div>
 

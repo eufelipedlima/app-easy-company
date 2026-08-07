@@ -1096,11 +1096,12 @@ export default function LancamentosPage() {
                       onClick={() => {
                         setDataPagamentoNovo(new Date().toISOString().slice(0, 10));
                         setValorPagamentoNovo(String(Math.max(detalhe.valor - valorPagoTotal, 0)));
+                        setBancoPagamentoNovo(detalhe.banco_id ?? "");
                         setPainelPagamentoAberto(true);
                       }}
-                      className="text-xs font-bold text-forest hover:text-ink"
+                      className="rounded-full bg-forest text-white px-4 py-2 text-sm font-bold hover:brightness-110 transition shadow-sm flex items-center gap-1.5"
                     >
-                      + Registrar pagamento
+                      💰 Realizar pagamento
                     </button>
                   )}
                 </div>
