@@ -8,6 +8,9 @@ import { corDoStatus } from "@/lib/status-conteudo";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { BuscaCliente } from "@/components/busca-cliente";
 import { Cronometro } from "@/components/cronometro";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface StatusItem {
   id: string;
@@ -73,6 +76,7 @@ interface SubConteudo {
   titulo: string | null;
   status_id: string;
   data_publicacao: string;
+  ordem: number;
 }
 const OBJETIVO_CONFIG: Record<string, string> = {
   atracao: "Atração",
@@ -201,6 +205,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   const [responsaveisPorSub, setResponsaveisPorSub] = useState<Record<string, Responsavel[]>>({});
   const [novoSubConteudo, setNovoSubConteudo] = useState("");
   const [criandoSub, setCriandoSub] = useState(false);
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const [novoComentario, setNovoComentario] = useState("");
   const [mencaoBusca, setMencaoBusca] = useState<string | null>(null);
@@ -286,10 +291,10 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     const supabase = createClient();
     const { data } = await supabase
       .from("posts_conteudo")
-      .select("id, titulo, status_id, data_publicacao")
+      .select("id, titulo, status_id, data_publicacao, ordem")
       .eq("post_pai_id", id)
       .is("excluido_em", null)
-      .order("data_publicacao");
+      .order("ordem");
     const lista = data ?? [];
     setSubConteudos(lista);
 
@@ -551,11 +556,21 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       cliente_id: post.cliente_id,
       data_publicacao: post.data_publicacao,
       status_id: statusList[0]?.id,
+      ordem: subConteudos.length,
     });
     setNovoSubConteudo("");
     setCriandoSub(false);
     carregarSubConteudos();
     registrarHistorico(`adicionou o sub-conteúdo "${novoSubConteudo.trim()}"`);
+  }
+
+  async function reordenarSubConteudo(indexAntigo: number, indexNovo: number) {
+    const nova = [...subConteudos];
+    const [movido] = nova.splice(indexAntigo, 1);
+    nova.splice(indexNovo, 0, movido);
+    setSubConteudos(nova);
+    const supabase = createClient();
+    await Promise.all(nova.map((s, i) => supabase.from("posts_conteudo").update({ ordem: i }).eq("id", s.id)));
   }
 
   async function salvarCampoSub(subId: string, campo: Record<string, string | null>) {
@@ -996,20 +1011,36 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
               </div>
             )}
             <div className="space-y-1.5 mb-2">
-              {subConteudos.map((s) => (
-                <LinhaSubConteudoEditavel
-                  key={s.id}
-                  sub={s}
-                  statusList={statusList}
-                  funcionariosComAcesso={funcionariosComAcesso}
-                  responsaveis={responsaveisPorSub[s.id] ?? []}
-                  onAbrir={() => router.push(`/conteudo/calendario/post/${s.id}`)}
-                  onSalvarNome={(novoNome) => salvarCampoSub(s.id, { titulo: novoNome })}
-                  onSalvarData={(novaData) => salvarCampoSub(s.id, { data_publicacao: novaData })}
-                  onSalvarStatus={(novoStatusId) => salvarCampoSub(s.id, { status_id: novoStatusId })}
-                  onToggleResponsavel={(funcionarioId) => toggleResponsavelSub(s.id, funcionarioId)}
-                />
-              ))}
+              <DndContext
+                sensors={dndSensors}
+                collisionDetection={closestCenter}
+                onDragEnd={(e: DragEndEvent) => {
+                  const { active, over } = e;
+                  if (!over || active.id === over.id) return;
+                  const indexAntigo = subConteudos.findIndex((s) => s.id === active.id);
+                  const indexNovo = subConteudos.findIndex((s) => s.id === over.id);
+                  if (indexAntigo === -1 || indexNovo === -1) return;
+                  reordenarSubConteudo(indexAntigo, indexNovo);
+                }}
+              >
+                <SortableContext items={subConteudos.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+                  {subConteudos.map((s) => (
+                    <LinhaSubConteudoArrastavel key={s.id} id={s.id}>
+                      <LinhaSubConteudoEditavel
+                        sub={s}
+                        statusList={statusList}
+                        funcionariosComAcesso={funcionariosComAcesso}
+                        responsaveis={responsaveisPorSub[s.id] ?? []}
+                        onAbrir={() => router.push(`/conteudo/calendario/post/${s.id}`)}
+                        onSalvarNome={(novoNome) => salvarCampoSub(s.id, { titulo: novoNome })}
+                        onSalvarData={(novaData) => salvarCampoSub(s.id, { data_publicacao: novaData })}
+                        onSalvarStatus={(novoStatusId) => salvarCampoSub(s.id, { status_id: novoStatusId })}
+                        onToggleResponsavel={(funcionarioId) => toggleResponsavelSub(s.id, funcionarioId)}
+                      />
+                    </LinhaSubConteudoArrastavel>
+                  ))}
+                </SortableContext>
+              </DndContext>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -1156,6 +1187,31 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   );
 }
 
+function LinhaSubConteudoArrastavel({ id, children }: { id: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-1.5">
+      <button
+        {...attributes}
+        {...listeners}
+        className="shrink-0 h-6 w-4 flex items-center justify-center text-ink/25 hover:text-ink/60 cursor-grab active:cursor-grabbing touch-none"
+        title="Arrastar pra reordenar"
+      >
+        <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
+          <circle cx="2.5" cy="2.5" r="1.5" />
+          <circle cx="7.5" cy="2.5" r="1.5" />
+          <circle cx="2.5" cy="8" r="1.5" />
+          <circle cx="7.5" cy="8" r="1.5" />
+          <circle cx="2.5" cy="13.5" r="1.5" />
+          <circle cx="7.5" cy="13.5" r="1.5" />
+        </svg>
+      </button>
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+}
+
 function LinhaSubConteudoEditavel({
   sub,
   statusList,
@@ -1186,7 +1242,7 @@ function LinhaSubConteudoEditavel({
       onClick={() => campoEditando === null && onAbrir()}
       className="group/row w-full grid grid-cols-[1fr_110px_90px_110px] items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors cursor-pointer"
     >
-      <div className="flex items-center gap-2 min-w-0" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-2 min-w-0">
         <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
         {campoEditando === "nome" ? (
           <input
@@ -1201,13 +1257,17 @@ function LinhaSubConteudoEditavel({
               if (e.key === "Enter") e.currentTarget.blur();
               if (e.key === "Escape") setCampoEditando(null);
             }}
+            onClick={(e) => e.stopPropagation()}
             className="input py-1 text-sm flex-1"
           />
         ) : (
           <>
             <span className="text-sm text-ink truncate flex-1">{sub.titulo || "Sem título"}</span>
             <button
-              onClick={() => setCampoEditando("nome")}
+              onClick={(e) => {
+                e.stopPropagation();
+                setCampoEditando("nome");
+              }}
               className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs shrink-0"
               title="Editar nome"
             >

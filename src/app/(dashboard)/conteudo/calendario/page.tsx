@@ -214,6 +214,8 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     if (!el) return;
     function onWheel(e: WheelEvent) {
       if (!el) return;
+      const alvo = (e.target as HTMLElement).closest("[data-coluna-scroll]") as HTMLElement | null;
+      if (alvo && alvo.scrollHeight > alvo.clientHeight) return;
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
         e.preventDefault();
         el.scrollLeft += e.deltaY;
@@ -691,7 +693,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
         <NovoPlanejamentoModal
           clientes={clientes}
           onClose={() => setPlanejamentoModalAberto(false)}
-          onCriado={(tarefaId) => router.push(`/tarefas/${tarefaId}`)}
+          onCriado={(postId) => router.push(`/conteudo/calendario/post/${postId}`)}
         />
       )}
 
@@ -1660,7 +1662,7 @@ function KanbanColuna({
         <p className="text-sm font-bold text-ink truncate">{coluna.nome}</p>
         <span className={`ml-auto text-xs font-bold rounded-full px-2 py-0.5 shrink-0 ${cor.cor}`}>{cards.length}</span>
       </div>
-      <div className="space-y-2 min-h-[80px] max-h-[65vh] overflow-y-auto pr-1">
+      <div data-coluna-scroll className="space-y-2 min-h-[80px] max-h-[65vh] overflow-y-auto pr-1">
         {cards.map((p) => (
           <KanbanCardArrastavel
             key={p.id}
@@ -2060,7 +2062,7 @@ function NovoPlanejamentoModal({
 }: {
   clientes: ClienteOpcao[];
   onClose: () => void;
-  onCriado: (tarefaId: string) => void;
+  onCriado: (postId: string) => void;
 }) {
   const mesAtualNome = MESES_PT[new Date().getMonth()];
   const [titulo, setTitulo] = useState(`Planejamento de ${mesAtualNome}`);
@@ -2089,31 +2091,34 @@ function NovoPlanejamentoModal({
     const {
       data: { user },
     } = await supabase.auth.getUser();
+    const hoje = new Date().toISOString().slice(0, 10);
 
-    const { data: tarefa, error } = await supabase
-      .from("tarefas")
-      .insert({ titulo: titulo.trim(), cliente_id: clienteSelecionado.id, status_id: statusList?.[0]?.id })
+    const { data: post, error } = await supabase
+      .from("posts_conteudo")
+      .insert({ titulo: titulo.trim(), cliente_id: clienteSelecionado.id, status_id: statusList?.[0]?.id, data_publicacao: hoje })
       .select("id")
       .single();
-    if (error || !tarefa) {
+    if (error || !post) {
       setErro(error?.message ?? "Erro ao criar o planejamento.");
       setSaving(false);
       return;
     }
     if (user) {
-      await supabase.from("tarefas_historico").insert({ tarefa_id: tarefa.id, autor_id: user.id, descricao: "criou a tarefa" });
+      await supabase.from("posts_conteudo_historico").insert({ post_id: post.id, autor_id: user.id, descricao: "criou o conteúdo" });
     }
 
-    const subtarefas = Array.from({ length: 15 }, (_, i) => ({
+    const subConteudos = Array.from({ length: 15 }, (_, i) => ({
       titulo: `${String(i + 1).padStart(2, "0")} -`,
-      tarefa_pai_id: tarefa.id,
+      post_pai_id: post.id,
       cliente_id: clienteSelecionado.id,
       status_id: statusList?.[0]?.id,
+      data_publicacao: hoje,
+      ordem: i,
     }));
-    await supabase.from("tarefas").insert(subtarefas);
+    await supabase.from("posts_conteudo").insert(subConteudos);
 
     setSaving(false);
-    onCriado(tarefa.id);
+    onCriado(post.id);
   }
 
   return (

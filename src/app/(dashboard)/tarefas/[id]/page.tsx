@@ -8,6 +8,9 @@ import { corDoStatus } from "@/lib/status-conteudo";
 import { BuscaCliente } from "@/components/busca-cliente";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { Cronometro } from "@/components/cronometro";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface StatusItem {
   id: string;
@@ -72,6 +75,7 @@ interface Subtarefa {
   prazo: string | null;
   tarefa_pai_id: string | null;
   eh_pasta: boolean;
+  ordem: number;
 }
 
 interface SubtarefaNode extends Subtarefa {
@@ -216,6 +220,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
   const [novaSubtarefa, setNovaSubtarefa] = useState("");
   const [criandoSubtarefa, setCriandoSubtarefa] = useState(false);
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [novoComentario, setNovoComentario] = useState("");
   const [mencaoBusca, setMencaoBusca] = useState<string | null>(null);
   const [enviandoComentario, setEnviandoComentario] = useState(false);
@@ -311,10 +316,10 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     for (let i = 0; i < 8 && nivelAtual.length > 0; i++) {
       const { data } = await supabase
         .from("tarefas")
-        .select("id, titulo, status_id, prazo, tarefa_pai_id, eh_pasta")
+        .select("id, titulo, status_id, prazo, tarefa_pai_id, eh_pasta, ordem")
         .in("tarefa_pai_id", nivelAtual)
         .is("excluido_em", null)
-        .order("created_at");
+        .order("ordem");
       if (!data || data.length === 0) break;
       todas = [...todas, ...data];
       nivelAtual = data.map((d) => d.id);
@@ -525,18 +530,31 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     if (!nomeFinal.trim() || !tarefa) return;
     setCriandoSubtarefa(true);
     const supabase = createClient();
+    const irmaos = subtarefas.filter((s) => s.tarefa_pai_id === paiId);
     await supabase.from("tarefas").insert({
       titulo: nomeFinal.trim(),
       tarefa_pai_id: paiId,
       cliente_id: tarefa.cliente_id,
       status_id: statusList[0]?.id,
       eh_pasta: ehPasta ?? false,
+      ordem: irmaos.length,
     });
     registrarHistorico(`criou ${ehPasta ? "a pasta" : "a subtarefa"} "${nomeFinal.trim()}"`);
     if (!tituloNovo) setNovaSubtarefa("");
     setCriandoSubtarefa(false);
     if (paiId !== id) setPastasAbertas((atual) => new Set(atual).add(paiId));
     carregarSubtarefas();
+  }
+
+  async function reordenarSubtarefas(paiId: string, indexAntigo: number, indexNovo: number) {
+    const irmaos = subtarefas.filter((s) => s.tarefa_pai_id === paiId);
+    const outros = subtarefas.filter((s) => s.tarefa_pai_id !== paiId);
+    const novosIrmaos = [...irmaos];
+    const [movido] = novosIrmaos.splice(indexAntigo, 1);
+    novosIrmaos.splice(indexNovo, 0, movido);
+    setSubtarefas([...outros, ...novosIrmaos]);
+    const supabase = createClient();
+    await Promise.all(novosIrmaos.map((s, i) => supabase.from("tarefas").update({ ordem: i }).eq("id", s.id)));
   }
 
   async function salvarCampoSubtarefa(subId: string, campo: Record<string, string | null>) {
@@ -952,31 +970,49 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                   </div>
                 )}
                 <div className="space-y-1.5 mb-2">
-                  {construirArvoreSubtarefas(subtarefas, id).map((no) => (
-                    <NoSubtarefa
-                      key={no.id}
-                      no={no}
-                      nivel={0}
-                      pastasAbertas={pastasAbertas}
-                      onTogglePasta={(nid) =>
-                        setPastasAbertas((atual) => {
-                          const novo = new Set(atual);
-                          if (novo.has(nid)) novo.delete(nid);
-                          else novo.add(nid);
-                          return novo;
-                        })
-                      }
-                      statusList={statusList}
-                      funcionariosComAcesso={funcionariosComAcesso}
-                      responsaveisPorSubtarefa={responsaveisPorSubtarefa}
-                      onAbrir={(nid) => router.push(`/tarefas/${nid}`)}
-                      onSalvarNome={(nid, novoNome) => salvarCampoSubtarefa(nid, { titulo: novoNome })}
-                      onSalvarPrazo={(nid, novoPrazo) => salvarCampoSubtarefa(nid, { prazo: novoPrazo || null })}
-                      onSalvarStatus={(nid, novoStatusId) => salvarCampoSubtarefa(nid, { status_id: novoStatusId })}
-                      onToggleResponsavel={(nid, funcionarioId) => toggleResponsavelSubtarefa(nid, funcionarioId)}
-                      onAdicionarFilho={(nid, nomeNovo, ehPasta) => adicionarSubtarefa(nid, nomeNovo, ehPasta)}
-                    />
-                  ))}
+                  <DndContext
+                    sensors={dndSensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={(e: DragEndEvent) => {
+                      const { active, over } = e;
+                      if (!over || active.id === over.id) return;
+                      const raizes = construirArvoreSubtarefas(subtarefas, id);
+                      const indexAntigo = raizes.findIndex((n) => n.id === active.id);
+                      const indexNovo = raizes.findIndex((n) => n.id === over.id);
+                      if (indexAntigo === -1 || indexNovo === -1) return;
+                      reordenarSubtarefas(id, indexAntigo, indexNovo);
+                    }}
+                  >
+                    <SortableContext items={construirArvoreSubtarefas(subtarefas, id).map((n) => n.id)} strategy={verticalListSortingStrategy}>
+                      {construirArvoreSubtarefas(subtarefas, id).map((no) => (
+                        <NoSubtarefa
+                          key={no.id}
+                          no={no}
+                          nivel={0}
+                          pastasAbertas={pastasAbertas}
+                          onTogglePasta={(nid) =>
+                            setPastasAbertas((atual) => {
+                              const novo = new Set(atual);
+                              if (novo.has(nid)) novo.delete(nid);
+                              else novo.add(nid);
+                              return novo;
+                            })
+                          }
+                          statusList={statusList}
+                          funcionariosComAcesso={funcionariosComAcesso}
+                          responsaveisPorSubtarefa={responsaveisPorSubtarefa}
+                          onAbrir={(nid) => router.push(`/tarefas/${nid}`)}
+                          onSalvarNome={(nid, novoNome) => salvarCampoSubtarefa(nid, { titulo: novoNome })}
+                          onSalvarPrazo={(nid, novoPrazo) => salvarCampoSubtarefa(nid, { prazo: novoPrazo || null })}
+                          onSalvarStatus={(nid, novoStatusId) => salvarCampoSubtarefa(nid, { status_id: novoStatusId })}
+                          onToggleResponsavel={(nid, funcionarioId) => toggleResponsavelSubtarefa(nid, funcionarioId)}
+                          onAdicionarFilho={(nid, nomeNovo, ehPasta) => adicionarSubtarefa(nid, nomeNovo, ehPasta)}
+                          onReordenar={reordenarSubtarefas}
+                          dndSensors={dndSensors}
+                        />
+                      ))}
+                    </SortableContext>
+                  </DndContext>
                 </div>
                 <div className="flex items-center gap-2">
                   <input
@@ -1156,6 +1192,8 @@ function NoSubtarefa({
   onSalvarStatus,
   onToggleResponsavel,
   onAdicionarFilho,
+  onReordenar,
+  dndSensors,
 }: {
   no: SubtarefaNode;
   nivel: number;
@@ -1170,6 +1208,8 @@ function NoSubtarefa({
   onSalvarStatus: (id: string, v: string) => void;
   onToggleResponsavel: (id: string, funcionarioId: string) => void;
   onAdicionarFilho: (id: string, nome: string, ehPasta?: boolean) => void;
+  onReordenar: (paiId: string, indexAntigo: number, indexNovo: number) => void;
+  dndSensors: ReturnType<typeof useSensors>;
 }) {
   const temFilhos = no.filhos.length > 0;
   const ehPastaVisual = no.eh_pasta || temFilhos;
@@ -1177,10 +1217,27 @@ function NoSubtarefa({
   const aberto = pastasAbertas.has(no.id);
   const [criandoFilho, setCriandoFilho] = useState(false);
   const [nomeFilho, setNomeFilho] = useState("");
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: no.id });
+  const dragStyle = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
 
   return (
-    <div style={{ marginLeft: nivel * 20 }}>
+    <div ref={setNodeRef} style={{ marginLeft: nivel * 20, ...dragStyle }}>
       <div className="flex items-center gap-1">
+        <button
+          {...attributes}
+          {...listeners}
+          className="shrink-0 h-6 w-4 flex items-center justify-center text-ink/25 hover:text-ink/60 cursor-grab active:cursor-grabbing touch-none"
+          title="Arrastar pra reordenar"
+        >
+          <svg width="9" height="15" viewBox="0 0 10 16" fill="currentColor">
+            <circle cx="2.5" cy="2.5" r="1.5" />
+            <circle cx="7.5" cy="2.5" r="1.5" />
+            <circle cx="2.5" cy="8" r="1.5" />
+            <circle cx="7.5" cy="8" r="1.5" />
+            <circle cx="2.5" cy="13.5" r="1.5" />
+            <circle cx="7.5" cy="13.5" r="1.5" />
+          </svg>
+        </button>
         <button
           onClick={() => (temFilhos ? onTogglePasta(no.id) : ehPastaVisual ? setCriandoFilho(true) : onTogglePasta(no.id))}
           className={`h-5 w-5 shrink-0 rounded-md flex items-center justify-center text-ink/40 hover:bg-black/10 hover:text-ink text-[10px] ${!ehPastaVisual && "invisible"}`}
@@ -1261,24 +1318,41 @@ function NoSubtarefa({
       )}
       {aberto && temFilhos && (
         <div className="mt-1 space-y-1">
-          {no.filhos.map((filho) => (
-            <NoSubtarefa
-              key={filho.id}
-              no={filho}
-              nivel={nivel + 1}
-              pastasAbertas={pastasAbertas}
-              onTogglePasta={onTogglePasta}
-              statusList={statusList}
-              funcionariosComAcesso={funcionariosComAcesso}
-              responsaveisPorSubtarefa={responsaveisPorSubtarefa}
-              onAbrir={onAbrir}
-              onSalvarNome={onSalvarNome}
-              onSalvarPrazo={onSalvarPrazo}
-              onSalvarStatus={onSalvarStatus}
-              onToggleResponsavel={onToggleResponsavel}
-              onAdicionarFilho={onAdicionarFilho}
-            />
-          ))}
+          <DndContext
+            sensors={dndSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={(e: DragEndEvent) => {
+              const { active, over } = e;
+              if (!over || active.id === over.id) return;
+              const indexAntigo = no.filhos.findIndex((f) => f.id === active.id);
+              const indexNovo = no.filhos.findIndex((f) => f.id === over.id);
+              if (indexAntigo === -1 || indexNovo === -1) return;
+              onReordenar(no.id, indexAntigo, indexNovo);
+            }}
+          >
+            <SortableContext items={no.filhos.map((f) => f.id)} strategy={verticalListSortingStrategy}>
+              {no.filhos.map((filho) => (
+                <NoSubtarefa
+                  key={filho.id}
+                  no={filho}
+                  nivel={nivel + 1}
+                  pastasAbertas={pastasAbertas}
+                  onTogglePasta={onTogglePasta}
+                  statusList={statusList}
+                  funcionariosComAcesso={funcionariosComAcesso}
+                  responsaveisPorSubtarefa={responsaveisPorSubtarefa}
+                  onAbrir={onAbrir}
+                  onSalvarNome={onSalvarNome}
+                  onSalvarPrazo={onSalvarPrazo}
+                  onSalvarStatus={onSalvarStatus}
+                  onToggleResponsavel={onToggleResponsavel}
+                  onAdicionarFilho={onAdicionarFilho}
+                  onReordenar={onReordenar}
+                  dndSensors={dndSensors}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         </div>
       )}
     </div>
@@ -1367,7 +1441,7 @@ function LinhaSubtarefaEditavel({
         pastaCompleta ? "bg-emerald-50 hover:bg-emerald-100" : "bg-surface hover:bg-surface/70"
       }`}
     >
-      <div className="flex items-center gap-2.5 min-w-0" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-2.5 min-w-0">
         {comFilhos ? (
           <svg
             width="16"
@@ -1404,7 +1478,10 @@ function LinhaSubtarefaEditavel({
           <>
             <span className="text-sm text-ink truncate flex-1">{sub.titulo}</span>
             <button
-              onClick={() => setCampoEditando("nome")}
+              onClick={(e) => {
+                e.stopPropagation();
+                setCampoEditando("nome");
+              }}
               className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs shrink-0"
               title="Editar nome"
             >

@@ -234,6 +234,8 @@ export default function TarefasPage() {
     if (!el) return;
     function onWheel(e: WheelEvent) {
       if (!el) return;
+      const alvo = (e.target as HTMLElement).closest("[data-coluna-scroll]") as HTMLElement | null;
+      if (alvo && alvo.scrollHeight > alvo.clientHeight) return;
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
         e.preventDefault();
         el.scrollLeft += e.deltaY;
@@ -891,7 +893,7 @@ function TarefasColuna({
         <p className="text-sm font-bold text-ink truncate">{coluna.nome}</p>
         <span className={`ml-auto text-xs font-bold rounded-full px-2 py-0.5 shrink-0 ${cor.cor}`}>{cards.length}</span>
       </div>
-      <div className="space-y-2 min-h-[80px] max-h-[65vh] overflow-y-auto pr-1">
+      <div data-coluna-scroll className="space-y-2 min-h-[80px] max-h-[65vh] overflow-y-auto pr-1">
         {cards.map((t) => (
           <TarefaCardArrastavel
             key={t.id}
