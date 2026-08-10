@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { EstadoVazio } from "@/components/estado-vazio";
+import { EsqueletoLista } from "@/components/esqueleto";
 
 interface Notificacao {
   id: string;
@@ -173,9 +175,12 @@ export default function CaixaDeEntradaPage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-ink/50">Carregando...</p>
+        <EsqueletoLista linhas={5} />
       ) : listaAtual.length === 0 ? (
-        <p className="text-sm text-ink/50">{aba === "nao_lidas" ? "Tudo em dia por aqui. 🎉" : "Nada visualizado ainda."}</p>
+        <EstadoVazio
+          emoji={aba === "nao_lidas" ? "🎉" : "📭"}
+          titulo={aba === "nao_lidas" ? "Tudo em dia por aqui" : "Nada visualizado ainda"}
+        />
       ) : (
         <div className="space-y-6">
           {grupos.map((g) => (

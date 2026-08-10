@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
+import { EstadoVazio } from "@/components/estado-vazio";
+import { EsqueletoLinha, EsqueletoLista } from "@/components/esqueleto";
 import {
   DndContext,
   DragOverlay,
@@ -988,7 +990,15 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
 
           <div ref={kanbanScrollRef} className="overflow-x-auto pb-4 min-h-[65vh]">
             {loadingKanban ? (
-              <p className="text-sm text-ink/50">Carregando...</p>
+              <div className="flex gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="w-64 shrink-0 rounded-3xl bg-surface p-3 space-y-2">
+                    <EsqueletoLinha className="h-4 w-24 mb-2" />
+                    <EsqueletoLinha className="h-20 w-full rounded-2xl" />
+                    <EsqueletoLinha className="h-20 w-4/5 rounded-2xl" />
+                  </div>
+                ))}
+              </div>
             ) : (
               <KanbanBoard
                 statusList={statusList}
@@ -1027,9 +1037,11 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
       {visualizacao === "lista" && (
         <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
           {loadingKanban ? (
-            <p className="text-sm text-ink/50 p-5">Carregando...</p>
+            <div className="p-5">
+              <EsqueletoLista linhas={5} />
+            </div>
           ) : aplicarFiltros(postsKanban).length === 0 ? (
-            <p className="text-sm text-ink/50 p-5">Nenhum conteúdo encontrado com esses filtros.</p>
+            <EstadoVazio emoji="🗂️" titulo="Nenhum conteúdo encontrado" descricao="Tenta ajustar os filtros ou cria um novo post." />
           ) : (
             <>
               <div className="grid grid-cols-[1fr_140px_110px_140px_110px] gap-2 px-5 py-2.5 text-[11px] font-bold uppercase tracking-wide text-ink/40 bg-surface/60">

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
+import { EstadoVazio } from "@/components/estado-vazio";
+import { EsqueletoGrade } from "@/components/esqueleto";
 
 interface ClienteResumo {
   id: string;
@@ -136,9 +138,9 @@ export default function CentralClientesPage() {
       />
 
       {loading ? (
-        <p className="text-sm text-ink/50">Carregando...</p>
+        <EsqueletoGrade itens={6} />
       ) : filtrados.length === 0 ? (
-        <p className="text-sm text-ink/50">Nenhum cliente encontrado.</p>
+        <EstadoVazio emoji="🔍" titulo="Nenhum cliente encontrado" descricao="Tenta buscar por outro nome." />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtrados.map((c) => {

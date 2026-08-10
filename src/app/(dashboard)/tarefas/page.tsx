@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { IconeTarefa, IconeProjeto } from "@/components/icones-tarefa";
+import { EsqueletoLinha } from "@/components/esqueleto";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { BuscaCliente } from "@/components/busca-cliente";
 import {
@@ -733,7 +734,16 @@ export default function TarefasPage() {
 
       <div ref={scrollRef} className="overflow-x-auto pb-4 min-h-[65vh]">
         {loading ? (
-          <p className="text-sm text-ink/50">Carregando...</p>
+          <div className="flex gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="w-64 shrink-0 rounded-3xl bg-surface p-3 space-y-2">
+                <EsqueletoLinha className="h-4 w-24 mb-2" />
+                <EsqueletoLinha className="h-16 w-full rounded-2xl" />
+                <EsqueletoLinha className="h-16 w-full rounded-2xl" />
+                <EsqueletoLinha className="h-16 w-4/5 rounded-2xl" />
+              </div>
+            ))}
+          </div>
         ) : visualizacao === "kanban" ? (
           <TarefasBoard
             statusList={statusList}

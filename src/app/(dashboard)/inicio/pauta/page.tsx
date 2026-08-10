@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { IconeTarefa } from "@/components/icones-tarefa";
+import { EsqueletoLinha } from "@/components/esqueleto";
 
 interface Responsavel {
   id: string;
@@ -396,7 +397,10 @@ export default function PautaPage() {
         </div>
 
         {loading ? (
-          <p className="text-sm text-ink/50">Carregando...</p>
+          <div className="rounded-3xl bg-white border border-black/5 p-4 space-y-2">
+            <EsqueletoLinha className="h-4 w-40" />
+            <EsqueletoLinha className="h-24 w-full" />
+          </div>
         ) : funcionariosExibidos.length === 0 ? (
           <p className="text-sm text-ink/50">Você ainda não tem cadastro de funcionário vinculado à sua conta.</p>
         ) : (

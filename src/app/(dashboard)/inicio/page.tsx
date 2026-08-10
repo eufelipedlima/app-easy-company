@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { IconeTarefa } from "@/components/icones-tarefa";
+import { EstadoVazio } from "@/components/estado-vazio";
+import { EsqueletoLinha } from "@/components/esqueleto";
 
 interface ItemAgenda {
   id: string;
@@ -322,7 +324,19 @@ export default function InicioPage() {
         </p>
 
         {loading ? (
-          <p className="text-sm text-ink/50">Carregando...</p>
+          <div className="space-y-6">
+            <div className="rounded-2xl bg-white border border-black/5 shadow-sm p-4 space-y-3">
+              <EsqueletoLinha className="h-4 w-40" />
+              <div className="flex gap-2">
+                <EsqueletoLinha className="h-7 w-24 rounded-full" />
+                <EsqueletoLinha className="h-7 w-24 rounded-full" />
+                <EsqueletoLinha className="h-7 w-24 rounded-full" />
+              </div>
+              <EsqueletoLinha className="h-10 w-full" />
+              <EsqueletoLinha className="h-10 w-full" />
+              <EsqueletoLinha className="h-10 w-5/6" />
+            </div>
+          </div>
         ) : (
           <div className="space-y-6">
             <div className="rounded-2xl bg-white border border-black/5 shadow-sm p-4">
@@ -349,7 +363,7 @@ export default function InicioPage() {
               </div>
 
               {listaAtiva.length === 0 ? (
-                <p className="text-xs text-ink/40 py-4 text-center">Nada por aqui. 🎉</p>
+                <EstadoVazio emoji="🎉" titulo="Tudo em dia por aqui" descricao="Nenhum item nessa aba agora." />
               ) : (
                 <div className="space-y-1.5">
                   {listaAtiva.map((item) => {
@@ -418,7 +432,7 @@ export default function InicioPage() {
                   </button>
                 </div>
                 {notificacoes.length === 0 ? (
-                  <p className="text-xs text-ink/40 py-3 text-center">Tudo em dia. 🎉</p>
+                  <EstadoVazio emoji="📭" titulo="Tudo em dia" descricao="Nenhuma notificação pendente." />
                 ) : (
                   <div className="space-y-1">
                     {notificacoes.map((n) => (
@@ -456,7 +470,7 @@ export default function InicioPage() {
                   </button>
                 </div>
                 {canaisChat.length === 0 ? (
-                  <p className="text-xs text-ink/40 py-3 text-center">Nenhuma conversa ainda.</p>
+                  <EstadoVazio emoji="💬" titulo="Nenhuma conversa ainda" />
                 ) : (
                   <div className="space-y-1">
                     {canaisChat.map((c) => (

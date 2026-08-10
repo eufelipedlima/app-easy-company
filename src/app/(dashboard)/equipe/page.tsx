@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { EstadoVazio } from "@/components/estado-vazio";
+import { EsqueletoGrade } from "@/components/esqueleto";
 
 interface Membro {
   id: string;
@@ -120,9 +122,9 @@ export default function EquipePage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-ink/50">Carregando...</p>
+        <EsqueletoGrade itens={6} />
       ) : membros.length === 0 ? (
-        <p className="text-sm text-ink/50">Nenhum membro com acesso ao sistema ainda.</p>
+        <EstadoVazio emoji="👥" titulo="Nenhum membro com acesso ainda" descricao="Convide alguém em Configurações → Usuários." />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {membros.map((m, i) => {
