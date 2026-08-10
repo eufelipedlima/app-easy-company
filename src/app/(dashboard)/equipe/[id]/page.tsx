@@ -30,6 +30,24 @@ interface TempoPorCliente {
   segundos: number;
 }
 
+type Periodo = "mes" | "semana" | "tudo";
+
+function inicioFimPeriodo(periodo: Periodo): { inicio: string | null; fim: string | null } {
+  const hoje = new Date();
+  if (periodo === "tudo") return { inicio: null, fim: null };
+  if (periodo === "semana") {
+    const inicio = new Date(hoje);
+    inicio.setDate(hoje.getDate() - hoje.getDay());
+    const fim = new Date(inicio);
+    fim.setDate(inicio.getDate() + 6);
+    return { inicio: inicio.toISOString().slice(0, 10), fim: fim.toISOString().slice(0, 10) };
+  }
+  // mes
+  const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+  return { inicio: inicio.toISOString().slice(0, 10), fim: fim.toISOString().slice(0, 10) };
+}
+
 function formatarDuracao(totalSegundos: number) {
   const h = Math.floor(totalSegundos / 3600);
   const m = Math.floor((totalSegundos % 3600) / 60);
@@ -73,6 +91,7 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
   const [atividade, setAtividade] = useState<AtividadeItem[]>([]);
   const [tempoPorCliente, setTempoPorCliente] = useState<TempoPorCliente[]>([]);
   const [filtro, setFiltro] = useState<"abertas" | "concluidas" | "atrasadas">("abertas");
+  const [periodo, setPeriodo] = useState<Periodo>("mes");
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -139,91 +158,120 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
       .map((r) => r.posts_conteudo)
       .filter((p): p is PostJoin => !!p && !p.arquivado && !p.excluido_em);
 
+    const { inicio, fim } = inicioFimPeriodo(periodo);
+    const dentroDoPeriodo = (data: string | null) => {
+      if (!inicio || !fim) return true;
+      if (!data) return false;
+      return data >= inicio && data <= fim;
+    };
+
     const listaItens: ItemTrabalho[] = [
-      ...minhasTarefas.map((t) => ({
-        id: t.id,
-        titulo: t.titulo,
-        tipo: "tarefa" as const,
-        statusNome: mapaStatus.get(t.status_id)?.nome ?? "—",
-        statusCor: mapaStatus.get(t.status_id)?.cor ?? "cinza",
-        clienteNome: t.clientes?.papeis?.pessoas?.nome ?? null,
-        data: t.prazo,
-        link: `/tarefas/${t.id}`,
-      })),
-      ...meusPosts.map((p) => ({
-        id: p.id,
-        titulo: p.titulo || "Sem título",
-        tipo: "conteudo" as const,
-        statusNome: mapaStatus.get(p.status_id)?.nome ?? "—",
-        statusCor: mapaStatus.get(p.status_id)?.cor ?? "cinza",
-        clienteNome: p.clientes?.papeis?.pessoas?.nome ?? null,
-        data: p.data_publicacao,
-        link: `/conteudo/calendario/post/${p.id}`,
-      })),
+      ...minhasTarefas
+        .filter((t) => dentroDoPeriodo(t.prazo))
+        .map((t) => ({
+          id: t.id,
+          titulo: t.titulo,
+          tipo: "tarefa" as const,
+          statusNome: mapaStatus.get(t.status_id)?.nome ?? "—",
+          statusCor: mapaStatus.get(t.status_id)?.cor ?? "cinza",
+          clienteNome: t.clientes?.papeis?.pessoas?.nome ?? null,
+          data: t.prazo,
+          link: `/tarefas/${t.id}`,
+        })),
+      ...meusPosts
+        .filter((p) => dentroDoPeriodo(p.data_publicacao))
+        .map((p) => ({
+          id: p.id,
+          titulo: p.titulo || "Sem título",
+          tipo: "conteudo" as const,
+          statusNome: mapaStatus.get(p.status_id)?.nome ?? "—",
+          statusCor: mapaStatus.get(p.status_id)?.cor ?? "cinza",
+          clienteNome: p.clientes?.papeis?.pessoas?.nome ?? null,
+          data: p.data_publicacao,
+          link: `/conteudo/calendario/post/${p.id}`,
+        })),
     ];
     setItens(listaItens);
 
-    const tempoMap = new Map<string, number>();
-    for (const t of minhasTarefas) {
-      const cli = t.clientes?.papeis?.pessoas?.nome ?? "Sem cliente";
-      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + (t.tempo_total_segundos ?? 0));
-    }
-    for (const p of meusPosts) {
-      const cli = p.clientes?.papeis?.pessoas?.nome ?? "Sem cliente";
-      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + (p.tempo_total_segundos ?? 0));
-    }
-    setTempoPorCliente(
-      Array.from(tempoMap.entries())
-        .map(([clienteNome, segundos]) => ({ clienteNome, segundos }))
-        .filter((t) => t.segundos > 0)
-        .sort((a, b) => b.segundos - a.segundos)
-    );
+    const clienteDaTarefa = new Map(minhasTarefas.map((t) => [t.id, t.clientes?.papeis?.pessoas?.nome ?? "Sem cliente"]));
+    const clienteDoPost = new Map(meusPosts.map((p) => [p.id, p.clientes?.papeis?.pessoas?.nome ?? "Sem cliente"]));
 
     if (f?.auth_user_id) {
-      const [{ data: histT }, { data: histP }] = await Promise.all([
-        supabase
-          .from("tarefas_historico")
-          .select("id, descricao, created_at, tarefa_id, tarefas ( titulo )")
-          .eq("autor_id", f.auth_user_id)
-          .order("created_at", { ascending: false })
-          .limit(12),
-        supabase
-          .from("posts_conteudo_historico")
-          .select("id, descricao, created_at, post_id, posts_conteudo ( titulo )")
-          .eq("autor_id", f.auth_user_id)
-          .order("created_at", { ascending: false })
-          .limit(12),
-      ]);
+      let queryHistT = supabase
+        .from("tarefas_historico")
+        .select("id, descricao, created_at, tarefa_id, tarefas ( titulo )")
+        .eq("autor_id", f.auth_user_id)
+        .order("created_at", { ascending: false })
+        .limit(300);
+      let queryHistP = supabase
+        .from("posts_conteudo_historico")
+        .select("id, descricao, created_at, post_id, posts_conteudo ( titulo )")
+        .eq("autor_id", f.auth_user_id)
+        .order("created_at", { ascending: false })
+        .limit(300);
+      if (inicio) queryHistT = queryHistT.gte("created_at", inicio);
+      if (fim) queryHistT = queryHistT.lte("created_at", `${fim}T23:59:59`);
+      if (inicio) queryHistP = queryHistP.gte("created_at", inicio);
+      if (fim) queryHistP = queryHistP.lte("created_at", `${fim}T23:59:59`);
+
+      const [{ data: histT }, { data: histP }] = await Promise.all([queryHistT, queryHistP]);
+
+      type HistT = { id: string; descricao: string; created_at: string; tarefa_id: string; tarefas: { titulo: string } | null };
+      type HistP = { id: string; descricao: string; created_at: string; post_id: string; posts_conteudo: { titulo: string | null } | null };
+      const listaHistT = (histT ?? []) as unknown as HistT[];
+      const listaHistP = (histP ?? []) as unknown as HistP[];
+
+      // Soma os minutos registrados nas pausas do cronômetro dentro do período, por cliente
+      const tempoMap = new Map<string, number>();
+      const regexMinutos = /\+(\d+)min/;
+      for (const h of listaHistT) {
+        const match = h.descricao.match(regexMinutos);
+        if (!match) continue;
+        const cli = clienteDaTarefa.get(h.tarefa_id) ?? "Sem cliente";
+        tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + Number(match[1]) * 60);
+      }
+      for (const h of listaHistP) {
+        const match = h.descricao.match(regexMinutos);
+        if (!match) continue;
+        const cli = clienteDoPost.get(h.post_id) ?? "Sem cliente";
+        tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + Number(match[1]) * 60);
+      }
+      setTempoPorCliente(
+        Array.from(tempoMap.entries())
+          .map(([clienteNome, segundos]) => ({ clienteNome, segundos }))
+          .filter((t) => t.segundos > 0)
+          .sort((a, b) => b.segundos - a.segundos)
+      );
+
       const atv: AtividadeItem[] = [
-        ...((histT ?? []) as unknown as { id: string; descricao: string; created_at: string; tarefa_id: string; tarefas: { titulo: string } | null }[]).map(
-          (h) => ({
-            id: h.id,
-            descricao: h.descricao,
-            created_at: h.created_at,
-            itemTitulo: h.tarefas?.titulo ?? "Tarefa",
-            link: `/tarefas/${h.tarefa_id}`,
-            tipo: "tarefa" as const,
-          })
-        ),
-        ...((histP ?? []) as unknown as { id: string; descricao: string; created_at: string; post_id: string; posts_conteudo: { titulo: string | null } | null }[]).map(
-          (h) => ({
-            id: h.id,
-            descricao: h.descricao,
-            created_at: h.created_at,
-            itemTitulo: h.posts_conteudo?.titulo || "Conteúdo",
-            link: `/conteudo/calendario/post/${h.post_id}`,
-            tipo: "conteudo" as const,
-          })
-        ),
+        ...listaHistT.map((h) => ({
+          id: h.id,
+          descricao: h.descricao,
+          created_at: h.created_at,
+          itemTitulo: h.tarefas?.titulo ?? "Tarefa",
+          link: `/tarefas/${h.tarefa_id}`,
+          tipo: "tarefa" as const,
+        })),
+        ...listaHistP.map((h) => ({
+          id: h.id,
+          descricao: h.descricao,
+          created_at: h.created_at,
+          itemTitulo: h.posts_conteudo?.titulo || "Conteúdo",
+          link: `/conteudo/calendario/post/${h.post_id}`,
+          tipo: "conteudo" as const,
+        })),
       ]
         .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
         .slice(0, 15);
       setAtividade(atv);
+    } else {
+      setTempoPorCliente([]);
+      setAtividade([]);
     }
 
     void hojeISO;
     setLoading(false);
-  }, [id]);
+  }, [id, periodo]);
 
   useEffect(() => {
     carregar();
@@ -248,18 +296,47 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
         <p className="text-sm text-ink/50">Carregando...</p>
       ) : (
         <>
-          <div className="flex items-center gap-4 mb-8">
-            {fotoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={fotoUrl} alt={nome} className="h-20 w-20 rounded-full object-cover shadow-sm" />
-            ) : (
-              <div className={`h-20 w-20 rounded-full ${corAvatar(nome)} text-white flex items-center justify-center font-bold text-2xl shadow-sm`}>
-                {nome.slice(0, 2).toUpperCase()}
+          <div className="flex items-center justify-between gap-4 mb-8 flex-wrap">
+            <div className="flex items-center gap-4">
+              {fotoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={fotoUrl} alt={nome} className="h-20 w-20 rounded-full object-cover shadow-sm" />
+              ) : (
+                <div className={`h-20 w-20 rounded-full ${corAvatar(nome)} text-white flex items-center justify-center font-bold text-2xl shadow-sm`}>
+                  {nome.slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <h1 className="text-2xl font-extrabold text-ink">{nome}</h1>
+                {cargoNome && <p className="text-sm text-ink/50">{cargoNome}</p>}
               </div>
-            )}
-            <div>
-              <h1 className="text-2xl font-extrabold text-ink">{nome}</h1>
-              {cargoNome && <p className="text-sm text-ink/50">{cargoNome}</p>}
+            </div>
+
+            <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 shrink-0">
+              <button
+                onClick={() => setPeriodo("semana")}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                  periodo === "semana" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                }`}
+              >
+                Esta semana
+              </button>
+              <button
+                onClick={() => setPeriodo("mes")}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                  periodo === "mes" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                }`}
+              >
+                Este mês
+              </button>
+              <button
+                onClick={() => setPeriodo("tudo")}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                  periodo === "tudo" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                }`}
+              >
+                Tudo
+              </button>
             </div>
           </div>
 
@@ -287,7 +364,9 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
             </button>
             <div className="rounded-2xl p-4 bg-card border border-black/5">
               <p className="text-2xl font-extrabold text-ink">{formatarDuracao(tempoTotal)}</p>
-              <p className="text-xs font-semibold text-ink/50">Tempo total</p>
+              <p className="text-xs font-semibold text-ink/50">
+                Tempo {periodo === "tudo" ? "total" : periodo === "mes" ? "este mês" : "esta semana"}
+              </p>
             </div>
           </div>
 
@@ -330,7 +409,9 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
 
             <div className="space-y-4">
               <div className="rounded-3xl bg-card border border-black/5 p-5">
-                <h2 className="text-sm font-bold text-ink mb-3">⏱️ Tempo por cliente</h2>
+                <h2 className="text-sm font-bold text-ink mb-3">
+                  ⏱️ Tempo por cliente {periodo !== "tudo" && <span className="text-ink/40 font-medium">· {periodo === "mes" ? "este mês" : "esta semana"}</span>}
+                </h2>
                 {tempoPorCliente.length === 0 ? (
                   <p className="text-xs text-ink/40">Nenhum tempo registrado ainda.</p>
                 ) : (
