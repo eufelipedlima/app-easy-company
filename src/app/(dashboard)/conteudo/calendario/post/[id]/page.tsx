@@ -438,15 +438,32 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
 
   async function adicionarMidias(arquivos: FileList | null) {
     if (!arquivos || arquivos.length === 0) return;
+
+    const limite = formato === "carrossel" ? 10 : 1;
+    const espacoLivre = limite - midias.length;
+    if (espacoLivre <= 0) {
+      alert(
+        formato === "carrossel"
+          ? "O carrossel já tem o máximo de 10 artes. Remove alguma antes de adicionar outra."
+          : "Formato estático aceita só 1 arte. Remove a atual antes de subir outra."
+      );
+      return;
+    }
+    const arquivosParaEnviar = Array.from(arquivos).slice(0, espacoLivre);
+    if (arquivosParaEnviar.length < arquivos.length) {
+      alert(`Só cabem mais ${espacoLivre} arte(s) nesse post — os arquivos extras foram ignorados.`);
+    }
+
     setEnviandoMidia(true);
     const supabase = createClient();
     let proximaOrdem = midias.length;
-    for (const arquivo of Array.from(arquivos)) {
+    const erros: string[] = [];
+    for (const arquivo of arquivosParaEnviar) {
       const extensao = arquivo.name.split(".").pop();
       const caminho = `${id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${extensao}`;
       const { error } = await supabase.storage.from("conteudo-midia").upload(caminho, arquivo);
       if (!error) {
-        const { data: nova } = await supabase
+        const { data: nova, error: erroInsert } = await supabase
           .from("posts_conteudo_midias")
           .insert({ post_id: id, arquivo_path: caminho, arquivo_nome: arquivo.name, arquivo_tipo: arquivo.type, ordem: proximaOrdem })
           .select("id, arquivo_path, arquivo_nome, arquivo_tipo, ordem")
@@ -455,10 +472,18 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
           const url = supabase.storage.from("conteudo-midia").getPublicUrl(nova.arquivo_path).data.publicUrl;
           setMidias((atual) => [...atual, { ...nova, url }]);
         }
+        if (erroInsert) erros.push(`${arquivo.name}: ${erroInsert.message}`);
         proximaOrdem++;
+      } else {
+        erros.push(`${arquivo.name}: ${error.message}`);
       }
     }
-    registrarHistorico(`adicionou ${arquivos.length > 1 ? `${arquivos.length} artes` : "uma arte"}`);
+    if (erros.length > 0) {
+      alert(`Não foi possível subir ${erros.length === 1 ? "esse arquivo" : "esses arquivos"}:\n\n${erros.join("\n")}`);
+    }
+    if (arquivosParaEnviar.length > erros.length) {
+      registrarHistorico(`adicionou ${arquivosParaEnviar.length > 1 ? `${arquivosParaEnviar.length} artes` : "uma arte"}`);
+    }
     setEnviandoMidia(false);
   }
 
@@ -922,7 +947,14 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
           </div>
 
           <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
-            <span className="block text-sm font-bold text-ink mb-2">Mídia</span>
+            <div className="flex items-center justify-between mb-2">
+              <span className="block text-sm font-bold text-ink">Mídia</span>
+              {formato !== "video" && (
+                <span className="text-xs text-ink/40">
+                  {midias.length}/{formato === "carrossel" ? 10 : 1}
+                </span>
+              )}
+            </div>
             {formato === "video" ? (
               <label className="block">
                 <span className="block text-xs text-ink/50 mb-1">Link do vídeo (Google Drive, etc.)</span>
@@ -939,50 +971,73 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
               </label>
             ) : (
               <div>
+                {!formato && (
+                  <p className="text-xs text-amber-700 bg-amber-50 rounded-xl px-3 py-2 mb-2">
+                    Escolhe o formato (Estático, Carrossel ou Vídeo) ali em cima antes de subir a arte.
+                  </p>
+                )}
                 <input
                   ref={inputMidiaRef}
                   type="file"
                   accept="image/*"
-                  multiple
+                  multiple={formato === "carrossel"}
                   onChange={(e) => adicionarMidias(e.target.files)}
                   className="hidden"
                 />
                 <button
                   type="button"
                   onClick={() => inputMidiaRef.current?.click()}
-                  disabled={enviandoMidia}
-                  className="rounded-full border-2 border-ink/15 text-ink px-4 py-2 text-xs font-semibold hover:bg-surface transition-colors disabled:opacity-50"
+                  disabled={enviandoMidia || midias.length >= (formato === "carrossel" ? 10 : 1)}
+                  className="rounded-full border-2 border-ink/15 text-ink px-4 py-2 text-xs font-semibold hover:bg-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {enviandoMidia ? "Enviando..." : "+ Adicionar arquivos"}
+                  {enviandoMidia ? "Enviando..." : midias.length === 0 ? "+ Adicionar arte" : "+ Adicionar mais artes"}
                 </button>
                 {midias.length > 0 && (
-                  <div className="mt-3 space-y-1.5">
+                  <div className="mt-3 grid grid-cols-3 sm:grid-cols-4 gap-2.5">
                     {midias.map((m, i) => (
-                      <div key={m.id} className="flex items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2 text-sm">
-                        <span className="truncate">
-                          {i + 1}. {m.arquivo_nome ?? "arquivo"}
+                      <div key={m.id} className="relative group rounded-xl overflow-hidden bg-surface border border-black/5 aspect-square">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={m.url} alt={m.arquivo_nome ?? "arte"} className="w-full h-full object-cover" />
+                        <span className="absolute top-1.5 left-1.5 h-5 w-5 rounded-full bg-ink/70 text-white text-[10px] font-bold flex items-center justify-center">
+                          {i + 1}
                         </span>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button type="button" onClick={() => moverMidia(i, -1)} disabled={i === 0} className="text-ink/40 hover:text-ink disabled:opacity-20 px-1">
-                            ↑
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
+                          <button
+                            type="button"
+                            onClick={() => moverMidia(i, -1)}
+                            disabled={i === 0}
+                            className="h-7 w-7 rounded-full bg-white/90 text-ink text-xs flex items-center justify-center disabled:opacity-30"
+                            title="Mover pra esquerda"
+                          >
+                            ←
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removerMidia(m.id)}
+                            className="h-7 w-7 rounded-full bg-white/90 text-red-600 text-xs flex items-center justify-center"
+                            title="Remover"
+                          >
+                            ✕
                           </button>
                           <button
                             type="button"
                             onClick={() => moverMidia(i, 1)}
                             disabled={i === midias.length - 1}
-                            className="text-ink/40 hover:text-ink disabled:opacity-20 px-1"
+                            className="h-7 w-7 rounded-full bg-white/90 text-ink text-xs flex items-center justify-center disabled:opacity-30"
+                            title="Mover pra direita"
                           >
-                            ↓
-                          </button>
-                          <button type="button" onClick={() => removerMidia(m.id)} className="text-ink/40 hover:text-red-600 px-1">
-                            ✕
+                            →
                           </button>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
-                <span className="block text-xs text-ink/40 mt-2">Sobe as artes na ordem certa — usa as setinhas pra reordenar (importante nos carrosséis).</span>
+                <span className="block text-xs text-ink/40 mt-2">
+                  {formato === "carrossel"
+                    ? "Passa o mouse na arte pra reordenar (setinhas) ou remover — a ordem aqui é a ordem que aparece no carrossel."
+                    : "Formato estático aceita só 1 arte."}
+                </span>
               </div>
             )}
           </div>
