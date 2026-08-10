@@ -7,7 +7,7 @@ import "@fontsource/manrope/800.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Easy Company | Sistema Interno",
+  title: "App | Easy Company",
   description: "Gestão interna da Easy Company — clientes, contratos, financeiro e projetos.",
 };
 
