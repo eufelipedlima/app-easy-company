@@ -167,7 +167,7 @@ function nomeCliente(p: Post) {
   return p.clientes?.papeis?.pessoas?.nome ?? "—";
 }
 
-export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "calendario" | "kanban" }) {
+export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "calendario" | "kanban" | "lista" }) {
   const hoje = new Date();
   const [mes, setMes] = useState(hoje.getMonth());
   const [ano, setAno] = useState(hoje.getFullYear());
@@ -197,8 +197,12 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     });
   }
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
-  const [visualizacao, setVisualizacao] = useState<"calendario" | "kanban">(viewInicial);
+  const [visualizacao, setVisualizacao] = useState<"calendario" | "kanban" | "lista">(viewInicial);
   const [postsKanban, setPostsKanban] = useState<Post[]>([]);
+  const [filtroStatusId, setFiltroStatusId] = useState("");
+  const [filtroFormato, setFiltroFormato] = useState("");
+  const [filtroResponsavelId, setFiltroResponsavelId] = useState("");
+  const [filtroDropdownAberto, setFiltroDropdownAberto] = useState<null | "status" | "formato" | "pessoa" | "vinculacao">(null);
   const [mostrarSubconteudos, setMostrarSubconteudos] = useState(true);
   const [responsaveisPorPost, setResponsaveisPorPost] = useState<Record<string, Responsavel[]>>({});
   const [contagemSubconteudos, setContagemSubconteudos] = useState<Record<string, number>>({});
@@ -500,7 +504,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   }, [carregarPosts]);
 
   useEffect(() => {
-    if (visualizacao === "kanban") carregarKanban();
+    if (visualizacao === "kanban" || visualizacao === "lista") carregarKanban();
   }, [visualizacao, carregarKanban]);
 
   const primeiroDiaMes = new Date(ano, mes, 1);
@@ -516,7 +520,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   }
 
   const postsPorDia = new Map<string, Post[]>();
-  for (const p of posts) {
+  for (const p of aplicarFiltros(posts)) {
     const lista = postsPorDia.get(p.data_publicacao) ?? [];
     lista.push(p);
     postsPorDia.set(p.data_publicacao, lista);
@@ -524,11 +528,20 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
 
   const hojeISO = toISODate(hoje);
 
+  function aplicarFiltros(lista: Post[]) {
+    return lista.filter((p) => {
+      if (filtroStatusId && p.status_id !== filtroStatusId) return false;
+      if (filtroFormato && p.formato !== filtroFormato) return false;
+      if (filtroResponsavelId && !(responsaveisPorPost[p.id] ?? []).some((r) => r.id === filtroResponsavelId)) return false;
+      return true;
+    });
+  }
+
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
-      <div className="mb-6">
-        <h1 className="text-2xl font-extrabold text-ink mb-1">Calendário de Conteúdo</h1>
-        <p className="text-sm text-ink/60">Planejamento e produção das postagens dos clientes.</p>
+      <div className="mb-4">
+        <h1 className="text-lg font-extrabold text-ink">Conteúdos</h1>
+        <p className="text-xs text-ink/50">Visão centralizada de todos os conteúdos.</p>
       </div>
 
       {erroCarregamento && (
@@ -538,125 +551,45 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner shrink-0">
-            <button
-              onClick={() => setVisualizacao("calendario")}
-              className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
-                visualizacao === "calendario" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
-              }`}
-            >
-              Calendário
-            </button>
-            <button
-              onClick={() => setVisualizacao("kanban")}
-              className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${
-                visualizacao === "kanban" ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
-              }`}
-            >
-              Kanban
-            </button>
-          </div>
-
-          {visualizacao === "calendario" && (
-            <>
-              <button
-                onClick={() => {
-                  const d = new Date(ano, mes - 1, 1);
-                  setMes(d.getMonth());
-                  setAno(d.getFullYear());
-                }}
-                className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-surface text-ink/50"
-              >
-                ←
-              </button>
-              <button
-                onClick={() => {
-                  setMes(hoje.getMonth());
-                  setAno(hoje.getFullYear());
-                }}
-                className="rounded-full border-2 border-ink/15 px-4 py-1.5 text-sm font-semibold hover:bg-surface"
-              >
-                Hoje
-              </button>
-              <button
-                onClick={() => {
-                  const d = new Date(ano, mes + 1, 1);
-                  setMes(d.getMonth());
-                  setAno(d.getFullYear());
-                }}
-                className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-surface text-ink/50"
-              >
-                →
-              </button>
-              <h2 className="text-lg font-bold text-ink">
-                {MESES[mes]} {ano}
-              </h2>
-            </>
-          )}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 shrink-0">
+          <button
+            onClick={() => setVisualizacao("kanban")}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+              visualizacao === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+            }`}
+          >
+            Kanban
+          </button>
+          <button
+            onClick={() => setVisualizacao("calendario")}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+              visualizacao === "calendario" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+            }`}
+          >
+            Calendário
+          </button>
+          <button
+            onClick={() => setVisualizacao("lista")}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+              visualizacao === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+            }`}
+          >
+            Lista
+          </button>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="relative shrink-0">
-            <button
-              onClick={() => setPainelCamposAberto((v) => !v)}
-              className={`rounded-full h-10 w-10 flex items-center justify-center border-2 transition-colors ${
-                clienteFiltroId ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/50 hover:text-ink hover:bg-surface"
-              }`}
-              title="Filtrar e escolher quais campos aparecem nos cards"
-            >
-              ⚙
-            </button>
-            {painelCamposAberto && (
-              <div
-                className="absolute z-20 right-0 mt-1 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3 space-y-4"
-                onMouseLeave={() => setPainelCamposAberto(false)}
-              >
-                <FiltroClienteConteudo clientes={clientes} valorId={clienteFiltroId} onMudar={setClienteFiltroId} />
-                <label className="flex items-center gap-2 px-1 py-1.5 text-sm text-ink cursor-pointer border-b border-black/5 pb-3">
-                  <input
-                    type="checkbox"
-                    checked={mostrarSubconteudos}
-                    onChange={(e) => setMostrarSubconteudos(e.target.checked)}
-                    className="h-4 w-4 rounded accent-forest"
-                  />
-                  Mostrar sub-conteúdos
-                </label>
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2 px-1">Campos visíveis</p>
-                  {(
-                    [
-                      ["titulo", "Título"],
-                      ["cliente", "Cliente"],
-                      ["formato", "Formato"],
-                      ["responsavel", "Responsável"],
-                    ] as [keyof CamposVisiveis, string][]
-                  ).map(([campo, label]) => (
-                    <label key={campo} className="flex items-center gap-2 px-1 py-1.5 text-sm text-ink cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={camposVisiveis[campo]}
-                        onChange={() => alternarCampoVisivel(campo)}
-                        className="h-4 w-4 rounded accent-forest"
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
           <button
             onClick={() => setLinkPublicoAberto(true)}
-            className="rounded-full border-2 border-ink/15 text-ink px-4 py-2 text-sm font-semibold hover:bg-surface transition-colors"
+            className="rounded-full border-2 border-ink/15 text-ink px-3.5 py-1.5 text-xs font-semibold hover:bg-surface transition-colors"
           >
             🔗 Link público
           </button>
           <div className="relative">
             <button
               onClick={() => setCriarDropdownAberto((v) => !v)}
-              className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors flex items-center gap-1.5"
+              className="rounded-full bg-ink text-white px-4 py-1.5 text-xs font-semibold hover:bg-forest transition-colors flex items-center gap-1.5"
             >
               + Criar {criarDropdownAberto ? "▴" : "▾"}
             </button>
@@ -688,6 +621,234 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
           </div>
         </div>
       </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-6 pb-3 border-b border-black/5">
+        <div className="relative">
+          <button
+            onClick={() => setFiltroDropdownAberto(filtroDropdownAberto === "status" ? null : "status")}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors flex items-center gap-1 ${
+              filtroStatusId ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/60 hover:bg-surface"
+            }`}
+          >
+            📌 Status {filtroStatusId && `· ${statusList.find((s) => s.id === filtroStatusId)?.nome}`}
+          </button>
+          {filtroDropdownAberto === "status" && (
+            <div
+              className="absolute z-20 top-full left-0 mt-1 w-48 rounded-2xl bg-white border border-black/10 shadow-lg py-1.5 max-h-64 overflow-y-auto"
+              onMouseLeave={() => setFiltroDropdownAberto(null)}
+            >
+              <button
+                onClick={() => {
+                  setFiltroStatusId("");
+                  setFiltroDropdownAberto(null);
+                }}
+                className="w-full text-left px-4 py-2 text-xs text-ink/50 hover:bg-surface"
+              >
+                Todos
+              </button>
+              {statusList.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => {
+                    setFiltroStatusId(s.id);
+                    setFiltroDropdownAberto(null);
+                  }}
+                  className="w-full text-left px-4 py-2 text-xs text-ink hover:bg-surface"
+                >
+                  {s.nome}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <button
+            onClick={() => setFiltroDropdownAberto(filtroDropdownAberto === "formato" ? null : "formato")}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors flex items-center gap-1 ${
+              filtroFormato ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/60 hover:bg-surface"
+            }`}
+          >
+            🖼️ Formato {filtroFormato && `· ${FORMATO_CONFIG[filtroFormato]?.label}`}
+          </button>
+          {filtroDropdownAberto === "formato" && (
+            <div
+              className="absolute z-20 top-full left-0 mt-1 w-44 rounded-2xl bg-white border border-black/10 shadow-lg py-1.5"
+              onMouseLeave={() => setFiltroDropdownAberto(null)}
+            >
+              <button
+                onClick={() => {
+                  setFiltroFormato("");
+                  setFiltroDropdownAberto(null);
+                }}
+                className="w-full text-left px-4 py-2 text-xs text-ink/50 hover:bg-surface"
+              >
+                Todos
+              </button>
+              {Object.entries(FORMATO_CONFIG).map(([key, cfg]) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setFiltroFormato(key);
+                    setFiltroDropdownAberto(null);
+                  }}
+                  className="w-full text-left px-4 py-2 text-xs text-ink hover:bg-surface"
+                >
+                  {cfg.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <button
+            onClick={() => setFiltroDropdownAberto(filtroDropdownAberto === "pessoa" ? null : "pessoa")}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors flex items-center gap-1 ${
+              filtroResponsavelId ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/60 hover:bg-surface"
+            }`}
+          >
+            👤 Pessoa {filtroResponsavelId && `· ${funcionariosComAcesso.find((f) => f.id === filtroResponsavelId)?.nome}`}
+          </button>
+          {filtroDropdownAberto === "pessoa" && (
+            <div
+              className="absolute z-20 top-full left-0 mt-1 w-48 rounded-2xl bg-white border border-black/10 shadow-lg py-1.5 max-h-64 overflow-y-auto"
+              onMouseLeave={() => setFiltroDropdownAberto(null)}
+            >
+              <button
+                onClick={() => {
+                  setFiltroResponsavelId("");
+                  setFiltroDropdownAberto(null);
+                }}
+                className="w-full text-left px-4 py-2 text-xs text-ink/50 hover:bg-surface"
+              >
+                Todas
+              </button>
+              {funcionariosComAcesso.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => {
+                    setFiltroResponsavelId(f.id);
+                    setFiltroDropdownAberto(null);
+                  }}
+                  className="w-full text-left px-4 py-2 text-xs text-ink hover:bg-surface"
+                >
+                  {f.nome}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <button
+            onClick={() => setFiltroDropdownAberto(filtroDropdownAberto === "vinculacao" ? null : "vinculacao")}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors flex items-center gap-1 ${
+              clienteFiltroId ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/60 hover:bg-surface"
+            }`}
+          >
+            🏢 Cliente {clienteFiltroId && `· ${clientes.find((c) => c.id === clienteFiltroId)?.nome ?? "Interno"}`}
+          </button>
+          {filtroDropdownAberto === "vinculacao" && (
+            <div
+              className="absolute z-20 top-full left-0 mt-1 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+              onMouseLeave={() => setFiltroDropdownAberto(null)}
+            >
+              <FiltroClienteConteudo
+                clientes={clientes}
+                valorId={clienteFiltroId}
+                onMudar={(v) => {
+                  setClienteFiltroId(v);
+                  setFiltroDropdownAberto(null);
+                }}
+              />
+            </div>
+          )}
+        </div>
+
+        <label className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold border border-black/10 text-ink/60 hover:bg-surface cursor-pointer transition-colors">
+          <input
+            type="checkbox"
+            checked={mostrarSubconteudos}
+            onChange={(e) => setMostrarSubconteudos(e.target.checked)}
+            className="h-3.5 w-3.5 rounded accent-forest"
+          />
+          Sub-conteúdos
+        </label>
+
+        <div className="relative ml-auto shrink-0">
+          <button
+            onClick={() => setPainelCamposAberto((v) => !v)}
+            className="rounded-full h-8 w-8 flex items-center justify-center border-2 border-black/10 text-ink/50 hover:text-ink hover:bg-surface transition-colors"
+            title="Mais configurações"
+          >
+            ⚙
+          </button>
+          {painelCamposAberto && (
+            <div
+              className="absolute z-20 right-0 mt-1 w-56 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+              onMouseLeave={() => setPainelCamposAberto(false)}
+            >
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2 px-1">Campos visíveis</p>
+              {(
+                [
+                  ["titulo", "Título"],
+                  ["cliente", "Cliente"],
+                  ["formato", "Formato"],
+                  ["responsavel", "Responsável"],
+                ] as [keyof CamposVisiveis, string][]
+              ).map(([campo, label]) => (
+                <label key={campo} className="flex items-center gap-2 px-1 py-1.5 text-sm text-ink cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={camposVisiveis[campo]}
+                    onChange={() => alternarCampoVisivel(campo)}
+                    className="h-4 w-4 rounded accent-forest"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {visualizacao === "calendario" && (
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            onClick={() => {
+              const d = new Date(ano, mes - 1, 1);
+              setMes(d.getMonth());
+              setAno(d.getFullYear());
+            }}
+            className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-surface text-ink/50"
+          >
+            ←
+          </button>
+          <button
+            onClick={() => {
+              setMes(hoje.getMonth());
+              setAno(hoje.getFullYear());
+            }}
+            className="rounded-full border-2 border-ink/15 px-4 py-1.5 text-sm font-semibold hover:bg-surface"
+          >
+            Hoje
+          </button>
+          <button
+            onClick={() => {
+              const d = new Date(ano, mes + 1, 1);
+              setMes(d.getMonth());
+              setAno(d.getFullYear());
+            }}
+            className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-surface text-ink/50"
+          >
+            →
+          </button>
+          <h2 className="text-base font-bold text-ink">
+            {MESES[mes]} {ano}
+          </h2>
+        </div>
+      )}
 
       {planejamentoModalAberto && (
         <NovoPlanejamentoModal
@@ -828,14 +989,14 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
             ) : (
               <KanbanBoard
                 statusList={statusList}
-                posts={
+                posts={aplicarFiltros(
                   todosOsMesesKanban
                     ? postsKanban
                     : postsKanban.filter((p) => {
                         const d = new Date(p.data_publicacao + "T00:00:00");
                         return d.getMonth() === mesKanban && d.getFullYear() === anoKanban;
                       })
-                }
+                )}
                 onMoverCard={moverCardStatus}
                 onAbrirCard={(p) => router.push(`/conteudo/calendario/post/${p.id}`)}
                 camposVisiveis={camposVisiveis}
@@ -858,6 +1019,46 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
             )}
           </div>
         </>
+      )}
+
+      {visualizacao === "lista" && (
+        <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
+          {loadingKanban ? (
+            <p className="text-sm text-ink/50 p-5">Carregando...</p>
+          ) : aplicarFiltros(postsKanban).length === 0 ? (
+            <p className="text-sm text-ink/50 p-5">Nenhum conteúdo encontrado com esses filtros.</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-[1fr_140px_110px_140px_110px] gap-2 px-5 py-2.5 text-[11px] font-bold uppercase tracking-wide text-ink/40 bg-surface/60">
+                <span>Título</span>
+                <span>Cliente</span>
+                <span>Formato</span>
+                <span>Responsáveis</span>
+                <span>Status</span>
+              </div>
+              {aplicarFiltros(postsKanban)
+                .sort((a, b) => (a.data_publicacao < b.data_publicacao ? 1 : -1))
+                .map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => router.push(`/conteudo/calendario/post/${p.id}`)}
+                    className="w-full grid grid-cols-[1fr_140px_110px_140px_110px] items-center gap-2 px-5 py-3 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
+                  >
+                    <span className="text-sm text-ink truncate flex items-center gap-1.5">
+                      {p.post_pai_id && <span className="text-forest text-xs">↳</span>}
+                      {p.titulo || "Sem título"}
+                    </span>
+                    <span className="text-xs text-ink/50 truncate">{p.clientes?.papeis?.pessoas?.nome ?? "Interno"}</span>
+                    <span className="text-xs text-ink/50">{p.formato ? FORMATO_CONFIG[p.formato]?.label : "—"}</span>
+                    <AvatarStackPost pessoas={responsaveisPorPost[p.id] ?? []} tamanho={20} />
+                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}>
+                      {p.status_conteudo?.nome ?? "—"}
+                    </span>
+                  </button>
+                ))}
+            </>
+          )}
+        </div>
       )}
 
       {linkPublicoAberto && <LinkPublicoModal onClose={() => setLinkPublicoAberto(false)} />}
