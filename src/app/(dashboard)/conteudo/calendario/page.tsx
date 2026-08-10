@@ -217,22 +217,25 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   const [anoKanban, setAnoKanban] = useState(hoje.getFullYear());
   const [todosOsMesesKanban, setTodosOsMesesKanban] = useState(false);
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
+  const kanbanWheelCleanupRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
-    const el = kanbanScrollRef.current;
+  const anexarScrollKanban = useCallback((el: HTMLDivElement | null) => {
+    kanbanWheelCleanupRef.current?.();
+    kanbanWheelCleanupRef.current = null;
+    kanbanScrollRef.current = el;
     if (!el) return;
+    const container = el;
     function onWheel(e: WheelEvent) {
-      if (!el) return;
       const alvo = (e.target as HTMLElement).closest("[data-coluna-scroll]") as HTMLElement | null;
       if (alvo && alvo.scrollHeight > alvo.clientHeight) return;
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
         e.preventDefault();
-        el.scrollLeft += e.deltaY;
+        container.scrollLeft += e.deltaY;
       }
     }
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [visualizacao]);
+    kanbanWheelCleanupRef.current = () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   const carregarExtras = useCallback(async (lista: Post[]) => {
     const ids = lista.map((p) => p.id);
@@ -996,7 +999,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
             </label>
           </div>
 
-          <div ref={kanbanScrollRef} className="overflow-x-auto pb-4 min-h-[65vh]">
+          <div ref={anexarScrollKanban} className="overflow-x-auto pb-4 min-h-[65vh]">
             {loadingKanban ? (
               <div className="flex gap-4">
                 {Array.from({ length: 4 }).map((_, i) => (

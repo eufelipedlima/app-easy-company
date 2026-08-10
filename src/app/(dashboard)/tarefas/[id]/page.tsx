@@ -190,6 +190,22 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
   const [tarefa, setTarefa] = useState<Tarefa | null>(null);
   const [tituloTarefaMae, setTituloTarefaMae] = useState<string | null>(null);
+  const [itensNav, setItensNav] = useState<{ id: string; titulo: string; status_id: string; eh_pasta: boolean }[]>([]);
+  const [tituloNav, setTituloNav] = useState<string | null>(null);
+  const [idPaiNav, setIdPaiNav] = useState<string | null>(null);
+  const [railColapsado, setRailColapsado] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setRailColapsado(localStorage.getItem("tarefa-rail-colapsado") === "true");
+    }
+  }, []);
+  function alternarRail() {
+    setRailColapsado((v) => {
+      const novo = !v;
+      if (typeof window !== "undefined") localStorage.setItem("tarefa-rail-colapsado", String(novo));
+      return novo;
+    });
+  }
   const [statusList, setStatusList] = useState<StatusItem[]>([]);
   const [clientes, setClientes] = useState<Opcao[]>([]);
   const [funcionariosComAcesso, setFuncionariosComAcesso] = useState<Responsavel[]>([]);
@@ -279,8 +295,26 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       if (t.tarefa_pai_id) {
         const { data: pai } = await supabase.from("tarefas").select("titulo").eq("id", t.tarefa_pai_id).maybeSingle();
         setTituloTarefaMae(pai?.titulo ?? null);
+        setTituloNav(pai?.titulo ?? null);
+        setIdPaiNav(t.tarefa_pai_id);
+        const { data: irmaos } = await supabase
+          .from("tarefas")
+          .select("id, titulo, status_id, eh_pasta")
+          .eq("tarefa_pai_id", t.tarefa_pai_id)
+          .is("excluido_em", null)
+          .order("ordem");
+        setItensNav(irmaos ?? []);
       } else {
         setTituloTarefaMae(null);
+        setTituloNav(t.titulo);
+        setIdPaiNav(t.id);
+        const { data: filhos } = await supabase
+          .from("tarefas")
+          .select("id, titulo, status_id, eh_pasta")
+          .eq("tarefa_pai_id", t.id)
+          .is("excluido_em", null)
+          .order("ordem");
+        setItensNav(filhos ?? []);
       }
     }
     setLoading(false);
@@ -738,6 +772,58 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       )}
 
       <div className="flex-1 flex overflow-hidden">
+        {itensNav.length > 0 && (
+          <div className={`shrink-0 border-r border-black/5 bg-white/60 flex flex-col transition-all duration-200 ${railColapsado ? "w-10" : "w-64"}`}>
+            <button
+              onClick={alternarRail}
+              className="flex items-center gap-2 px-3 py-3 text-ink/40 hover:text-ink shrink-0"
+              title={railColapsado ? "Expandir lista" : "Recolher lista"}
+            >
+              <span className={`text-xs transition-transform ${railColapsado ? "rotate-180" : ""}`}>◀</span>
+              {!railColapsado && <span className="text-[11px] font-bold uppercase tracking-wide">Subtarefas</span>}
+            </button>
+            {!railColapsado && (
+              <div className="flex-1 overflow-y-auto px-2 pb-4">
+                {tituloNav && (
+                  <button
+                    onClick={() => idPaiNav && idPaiNav !== id && router.push(`/tarefas/${idPaiNav}`)}
+                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs font-bold truncate mb-1 ${
+                      idPaiNav === id ? "text-ink" : "text-forest hover:bg-surface"
+                    }`}
+                  >
+                    {idPaiNav !== id && "↑ "}
+                    {tituloNav}
+                  </button>
+                )}
+                <div className="space-y-0.5">
+                  {itensNav.map((item) => {
+                    const st = statusList.find((s) => s.id === item.status_id);
+                    const ativo = item.id === id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => !item.eh_pasta && router.push(`/tarefas/${item.id}`)}
+                        disabled={item.eh_pasta}
+                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors ${
+                          ativo ? "bg-mint text-forest font-bold" : item.eh_pasta ? "text-ink/40 cursor-default" : "text-ink/70 hover:bg-surface"
+                        }`}
+                      >
+                        {item.eh_pasta ? (
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-violet-500">
+                            <path d="M3 6a2 2 0 0 1 2-2h4.5l2 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" />
+                          </svg>
+                        ) : (
+                          <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(st?.cor ?? "cinza").dot}`} />
+                        )}
+                        <span className="text-xs truncate">{item.titulo}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto px-8 py-6 max-w-3xl mx-auto w-full">
           {tarefa.eh_modelo_projeto ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 text-violet-700 px-3 py-1 text-xs font-bold uppercase tracking-wide mb-3">
@@ -782,7 +868,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
               );
             })()}
 
-          <div className="grid grid-cols-2 gap-x-6 gap-y-4 mb-6 rounded-2xl bg-white p-4 shadow-sm">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 mb-6 rounded-2xl bg-white p-3.5 shadow-sm text-sm">
             <div>
               <span className="block text-xs text-ink/50 mb-1">Status</span>
               <div className="relative">

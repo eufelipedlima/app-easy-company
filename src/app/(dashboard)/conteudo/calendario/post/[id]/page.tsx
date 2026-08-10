@@ -201,6 +201,22 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   const inputMidiaRef = useRef<HTMLInputElement>(null);
 
   const [tituloPostPai, setTituloPostPai] = useState<string | null>(null);
+  const [itensNav, setItensNav] = useState<{ id: string; titulo: string | null; status_id: string }[]>([]);
+  const [tituloNav, setTituloNav] = useState<string | null>(null);
+  const [idPaiNav, setIdPaiNav] = useState<string | null>(null);
+  const [railColapsado, setRailColapsado] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setRailColapsado(localStorage.getItem("conteudo-rail-colapsado") === "true");
+    }
+  }, []);
+  function alternarRail() {
+    setRailColapsado((v) => {
+      const novo = !v;
+      if (typeof window !== "undefined") localStorage.setItem("conteudo-rail-colapsado", String(novo));
+      return novo;
+    });
+  }
   const [subConteudos, setSubConteudos] = useState<SubConteudo[]>([]);
   const [responsaveisPorSub, setResponsaveisPorSub] = useState<Record<string, Responsavel[]>>({});
   const [novoSubConteudo, setNovoSubConteudo] = useState("");
@@ -268,8 +284,26 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       if (p.post_pai_id) {
         const { data: pai } = await supabase.from("posts_conteudo").select("titulo").eq("id", p.post_pai_id).maybeSingle();
         setTituloPostPai(pai?.titulo ?? null);
+        setTituloNav(pai?.titulo ?? "Sem título");
+        setIdPaiNav(p.post_pai_id);
+        const { data: irmaos } = await supabase
+          .from("posts_conteudo")
+          .select("id, titulo, status_id")
+          .eq("post_pai_id", p.post_pai_id)
+          .is("excluido_em", null)
+          .order("ordem");
+        setItensNav(irmaos ?? []);
       } else {
         setTituloPostPai(null);
+        setTituloNav(p.titulo || "Sem título");
+        setIdPaiNav(p.id);
+        const { data: filhos } = await supabase
+          .from("posts_conteudo")
+          .select("id, titulo, status_id")
+          .eq("post_pai_id", p.id)
+          .is("excluido_em", null)
+          .order("ordem");
+        setItensNav(filhos ?? []);
       }
 
       const { data: midiasData } = await supabase
@@ -759,6 +793,51 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       )}
 
       <div className="flex-1 flex overflow-hidden">
+        {itensNav.length > 0 && (
+          <div className={`shrink-0 border-r border-black/5 bg-white/60 flex flex-col transition-all duration-200 ${railColapsado ? "w-10" : "w-64"}`}>
+            <button
+              onClick={alternarRail}
+              className="flex items-center gap-2 px-3 py-3 text-ink/40 hover:text-ink shrink-0"
+              title={railColapsado ? "Expandir lista" : "Recolher lista"}
+            >
+              <span className={`text-xs transition-transform ${railColapsado ? "rotate-180" : ""}`}>◀</span>
+              {!railColapsado && <span className="text-[11px] font-bold uppercase tracking-wide">Sub-conteúdos</span>}
+            </button>
+            {!railColapsado && (
+              <div className="flex-1 overflow-y-auto px-2 pb-4">
+                {tituloNav && (
+                  <button
+                    onClick={() => idPaiNav && idPaiNav !== id && router.push(`/conteudo/calendario/post/${idPaiNav}`)}
+                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs font-bold truncate mb-1 ${
+                      idPaiNav === id ? "text-ink" : "text-forest hover:bg-surface"
+                    }`}
+                  >
+                    {idPaiNav !== id && "↑ "}
+                    {tituloNav}
+                  </button>
+                )}
+                <div className="space-y-0.5">
+                  {itensNav.map((item) => {
+                    const st = statusList.find((s) => s.id === item.status_id);
+                    const ativo = item.id === id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => router.push(`/conteudo/calendario/post/${item.id}`)}
+                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors ${
+                          ativo ? "bg-mint text-forest font-bold" : "text-ink/70 hover:bg-surface"
+                        }`}
+                      >
+                        <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(st?.cor ?? "cinza").dot}`} />
+                        <span className="text-xs truncate">{item.titulo || "Sem título"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto px-8 py-6 max-w-3xl mx-auto w-full">
           <input
             value={titulo}
@@ -791,7 +870,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
               );
             })()}
 
-          <div className="grid grid-cols-2 gap-x-6 gap-y-4 mb-6 rounded-2xl bg-white p-4 shadow-sm">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 mb-6 rounded-2xl bg-white p-3.5 shadow-sm text-sm">
             <div>
               <span className="block text-xs text-ink/50 mb-1">Status</span>
               <div className="relative">

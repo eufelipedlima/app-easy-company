@@ -188,6 +188,25 @@ export default function TarefasPage() {
   const [filtroPrioridade, setFiltroPrioridade] = useState("");
   const [filtroSoAtrasadas, setFiltroSoAtrasadas] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollWheelCleanupRef = useRef<(() => void) | null>(null);
+
+  const anexarScrollKanban = useCallback((el: HTMLDivElement | null) => {
+    scrollWheelCleanupRef.current?.();
+    scrollWheelCleanupRef.current = null;
+    scrollRef.current = el;
+    if (!el) return;
+    const container = el;
+    function onWheel(e: WheelEvent) {
+      const alvo = (e.target as HTMLElement).closest("[data-coluna-scroll]") as HTMLElement | null;
+      if (alvo && alvo.scrollHeight > alvo.clientHeight) return;
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        container.scrollLeft += e.deltaY;
+      }
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    scrollWheelCleanupRef.current = () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   useEffect(() => {
     setCamposVisiveis(carregarCamposVisiveis());
@@ -229,22 +248,6 @@ export default function TarefasPage() {
     if (filtroTipo === "projetos" && !t.eh_projeto) return false;
     return true;
   });
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    function onWheel(e: WheelEvent) {
-      if (!el) return;
-      const alvo = (e.target as HTMLElement).closest("[data-coluna-scroll]") as HTMLElement | null;
-      if (alvo && alvo.scrollHeight > alvo.clientHeight) return;
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        e.preventDefault();
-        el.scrollLeft += e.deltaY;
-      }
-    }
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, []);
 
   const carregarStatus = useCallback(async () => {
     const supabase = createClient();
@@ -732,7 +735,7 @@ export default function TarefasPage() {
         </div>
       </div>
 
-      <div ref={scrollRef} className="overflow-x-auto pb-4 min-h-[65vh]">
+      <div ref={anexarScrollKanban} className="overflow-x-auto pb-4 min-h-[65vh]">
         {loading ? (
           <div className="flex gap-4">
             {Array.from({ length: 4 }).map((_, i) => (
