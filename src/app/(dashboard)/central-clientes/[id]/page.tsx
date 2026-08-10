@@ -14,6 +14,16 @@ interface Responsavel {
   authUserId?: string | null;
 }
 
+interface AtividadeItem {
+  id: string;
+  autor_id: string | null;
+  descricao: string;
+  created_at: string;
+  itemTitulo: string;
+  link: string;
+  tipo: "tarefa" | "conteudo";
+}
+
 interface TarefaResumo {
   id: string;
   titulo: string;
@@ -99,6 +109,17 @@ function AvatarStack({ pessoas, tamanho = 20 }: { pessoas: Responsavel[]; tamanh
     </div>
   );
 }
+function formatarQuandoRelativo(iso: string) {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min}min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `há ${d}d`;
+  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
 function formatarData(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
@@ -128,6 +149,8 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
   const [tarefas, setTarefas] = useState<TarefaResumo[]>([]);
   const [responsaveisPorTarefa, setResponsaveisPorTarefa] = useState<Record<string, Responsavel[]>>({});
   const [visualizacaoTarefas, setVisualizacaoTarefas] = useState<"lista" | "kanban">("lista");
+  const [filtroStatusAtivo, setFiltroStatusAtivo] = useState<string | null>(null);
+  const [atividadeRecente, setAtividadeRecente] = useState<AtividadeItem[]>([]);
   const [posts, setPosts] = useState<PostResumo[]>([]);
   const [responsaveisPorPost, setResponsaveisPorPost] = useState<Record<string, Responsavel[]>>({});
   const [visualizacaoConteudo, setVisualizacaoConteudo] = useState<"lista" | "kanban">("lista");
@@ -257,6 +280,55 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
     );
 
     const ids = [...listaTarefas.map((t) => t.id), ...listaPosts.map((p) => p.id)];
+
+    if (listaTarefas.length > 0 || listaPosts.length > 0) {
+      const [{ data: histTarefas }, { data: histPosts }] = await Promise.all([
+        listaTarefas.length > 0
+          ? supabase
+              .from("tarefas_historico")
+              .select("id, autor_id, descricao, created_at, tarefa_id")
+              .in("tarefa_id", listaTarefas.map((t) => t.id))
+              .order("created_at", { ascending: false })
+              .limit(10)
+          : Promise.resolve({ data: [] }),
+        listaPosts.length > 0
+          ? supabase
+              .from("posts_conteudo_historico")
+              .select("id, autor_id, descricao, created_at, post_id")
+              .in("post_id", listaPosts.map((p) => p.id))
+              .order("created_at", { ascending: false })
+              .limit(10)
+          : Promise.resolve({ data: [] }),
+      ]);
+      const mapaTituloTarefa = new Map(listaTarefas.map((t) => [t.id, t.titulo]));
+      const mapaTituloPost = new Map(listaPosts.map((p) => [p.id, p.titulo || "Sem título"]));
+      const atividade: AtividadeItem[] = [
+        ...((histTarefas ?? []) as { id: string; autor_id: string | null; descricao: string; created_at: string; tarefa_id: string }[]).map((h) => ({
+          id: h.id,
+          autor_id: h.autor_id,
+          descricao: h.descricao,
+          created_at: h.created_at,
+          itemTitulo: mapaTituloTarefa.get(h.tarefa_id) ?? "Tarefa",
+          link: `/tarefas/${h.tarefa_id}`,
+          tipo: "tarefa" as const,
+        })),
+        ...((histPosts ?? []) as { id: string; autor_id: string | null; descricao: string; created_at: string; post_id: string }[]).map((h) => ({
+          id: h.id,
+          autor_id: h.autor_id,
+          descricao: h.descricao,
+          created_at: h.created_at,
+          itemTitulo: mapaTituloPost.get(h.post_id) ?? "Conteúdo",
+          link: `/conteudo/calendario/post/${h.post_id}`,
+          tipo: "conteudo" as const,
+        })),
+      ]
+        .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+        .slice(0, 8);
+      setAtividadeRecente(atividade);
+    } else {
+      setAtividadeRecente([]);
+    }
+
     if (ids.length > 0) {
       const [{ data: respTarefas }, { data: respPosts }] = await Promise.all([
         supabase
@@ -488,7 +560,9 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
   const postsConcluidos = posts.filter((p) => normalizar(p.statusCor) === "verde");
   const postsAbertos = posts.filter((p) => normalizar(p.statusCor) !== "verde");
 
-  const postsVisiveis = mostrarSubconteudos ? posts : posts.filter((p) => !p.post_pai_id);
+  const postsVisiveis = (mostrarSubconteudos ? posts : posts.filter((p) => !p.post_pai_id)).filter(
+    (p) => !filtroStatusAtivo || p.status_id === filtroStatusAtivo
+  );
 
   const ABAS: { chave: Aba; label: string; contagem?: number }[] = [
     { chave: "geral", label: "Visão geral" },
@@ -571,117 +645,201 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       </div>
 
       {aba === "geral" && (
-        <div className="space-y-5">
-          <div className="rounded-3xl bg-card border border-black/5 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-ink/50">✔️ Tarefas por etapa</h2>
-              <span className="text-xs text-ink/40">{tarefas.length} no total</span>
+        <div className="space-y-4">
+          <div className="rounded-2xl bg-card border border-black/5 p-4">
+            <div className="flex items-center justify-between mb-2.5">
+              <h2 className="text-xs font-bold uppercase tracking-wide text-ink/50">✔️ Tarefas por etapa</h2>
+              <span className="text-[11px] text-ink/40">{tarefas.length} no total</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+            {tarefas.length > 0 && (
+              <div className="flex h-2 rounded-full overflow-hidden mb-3 bg-black/5">
+                {statusList.map((s) => {
+                  const qtd = tarefas.filter((t) => t.status_id === s.id).length;
+                  if (qtd === 0) return null;
+                  return (
+                    <div
+                      key={s.id}
+                      title={`${s.nome}: ${qtd}`}
+                      className={`h-full transition-all ${corDoStatus(s.cor).dot}`}
+                      style={{ width: `${(qtd / tarefas.length) * 100}%` }}
+                    />
+                  );
+                })}
+              </div>
+            )}
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
               {statusList.map((s) => {
                 const qtd = tarefas.filter((t) => t.status_id === s.id).length;
                 return (
-                  <div
+                  <button
                     key={s.id}
-                    className={`rounded-2xl p-4 text-center transition-all duration-200 hover:scale-105 hover:shadow-md cursor-default ${corDoStatus(s.cor).cor}`}
+                    onClick={() => {
+                      setFiltroStatusAtivo(s.id);
+                      setVisualizacaoTarefas("lista");
+                      setAba("tarefas");
+                    }}
+                    className={`rounded-xl p-2.5 text-center transition-all duration-150 hover:scale-105 hover:shadow-sm active:scale-95 ${corDoStatus(s.cor).cor}`}
                   >
-                    <p className="text-3xl font-extrabold">{qtd}</p>
-                    <p className="text-xs font-semibold mt-0.5 truncate">{s.nome}</p>
-                  </div>
+                    <p className="text-lg font-extrabold leading-none">{qtd}</p>
+                    <p className="text-[10px] font-semibold mt-1 truncate">{s.nome}</p>
+                  </button>
                 );
               })}
             </div>
           </div>
 
-          <div className="rounded-3xl bg-card border border-black/5 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-ink/50">📅 Conteúdo por etapa</h2>
-              <span className="text-xs text-ink/40">{posts.length} no total</span>
+          <div className="rounded-2xl bg-card border border-black/5 p-4">
+            <div className="flex items-center justify-between mb-2.5">
+              <h2 className="text-xs font-bold uppercase tracking-wide text-ink/50">📅 Conteúdo por etapa</h2>
+              <span className="text-[11px] text-ink/40">{posts.length} no total</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+            {posts.length > 0 && (
+              <div className="flex h-2 rounded-full overflow-hidden mb-3 bg-black/5">
+                {statusList.map((s) => {
+                  const qtd = posts.filter((p) => p.status_id === s.id).length;
+                  if (qtd === 0) return null;
+                  return (
+                    <div
+                      key={s.id}
+                      title={`${s.nome}: ${qtd}`}
+                      className={`h-full transition-all ${corDoStatus(s.cor).dot}`}
+                      style={{ width: `${(qtd / posts.length) * 100}%` }}
+                    />
+                  );
+                })}
+              </div>
+            )}
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
               {statusList.map((s) => {
                 const qtd = posts.filter((p) => p.status_id === s.id).length;
                 return (
-                  <div
+                  <button
                     key={s.id}
-                    className={`rounded-2xl p-4 text-center transition-all duration-200 hover:scale-105 hover:shadow-md cursor-default ${corDoStatus(s.cor).cor}`}
+                    onClick={() => {
+                      setFiltroStatusAtivo(s.id);
+                      setVisualizacaoConteudo("lista");
+                      setAba("conteudo");
+                    }}
+                    className={`rounded-xl p-2.5 text-center transition-all duration-150 hover:scale-105 hover:shadow-sm active:scale-95 ${corDoStatus(s.cor).cor}`}
                   >
-                    <p className="text-3xl font-extrabold">{qtd}</p>
-                    <p className="text-xs font-semibold mt-0.5 truncate">{s.nome}</p>
-                  </div>
+                    <p className="text-lg font-extrabold leading-none">{qtd}</p>
+                    <p className="text-[10px] font-semibold mt-1 truncate">{s.nome}</p>
+                  </button>
                 );
               })}
             </div>
           </div>
 
-          <div className="rounded-2xl bg-card border border-black/5 p-4 flex items-center gap-2">
-            <span className="text-lg">📄</span>
-            <p className="text-sm text-ink">
-              <span className="font-extrabold">{docs.length}</span> <span className="text-ink/50">documentos</span>
-            </p>
-          </div>
-
-          {(tarefasEmAtraso.length > 0 || tarefasHoje.length > 0) && (
-            <div className="rounded-3xl bg-card border border-black/5 p-5">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-ink/50 mb-3">Atenção</h2>
-              <div className="space-y-1">
-                {tarefasEmAtraso.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => router.push(`/tarefas/${t.id}`)}
-                    className="w-full flex items-center justify-between gap-2 px-2 py-2 rounded-xl hover:bg-surface transition-colors text-left"
-                  >
-                    <span className="text-sm text-ink truncate">{t.titulo}</span>
-                    <span className="text-xs text-red-600 font-bold shrink-0">Atrasada · {formatarData(t.prazo!)}</span>
-                  </button>
-                ))}
-                {tarefasHoje.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => router.push(`/tarefas/${t.id}`)}
-                    className="w-full flex items-center justify-between gap-2 px-2 py-2 rounded-xl hover:bg-surface transition-colors text-left"
-                  >
-                    <span className="text-sm text-ink truncate">{t.titulo}</span>
-                    <span className="text-xs text-forest font-bold shrink-0">Hoje</span>
-                  </button>
-                ))}
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-2xl bg-card border border-black/5 p-4">
+              <h2 className="text-xs font-bold uppercase tracking-wide text-ink/50 mb-3">🕐 Atividade recente</h2>
+              {atividadeRecente.length === 0 ? (
+                <p className="text-xs text-ink/40">Nada por aqui ainda.</p>
+              ) : (
+                <div className="space-y-2.5">
+                  {atividadeRecente.map((a) => (
+                    <button
+                      key={a.id}
+                      onClick={() => router.push(a.link)}
+                      className="w-full flex items-start gap-2 text-left hover:bg-surface rounded-xl px-1.5 py-1 -mx-1.5 transition-colors"
+                    >
+                      <span className="text-sm shrink-0 mt-0.5">{a.tipo === "tarefa" ? "✔️" : "📅"}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="text-xs text-ink block truncate">
+                          <span className="font-semibold">{(a.autor_id && nomesPorAutor[a.autor_id]) || "Alguém"}</span> {a.descricao}
+                        </span>
+                        <span className="text-[11px] text-ink/40 block truncate">{a.itemTitulo}</span>
+                      </span>
+                      <span className="text-[10px] text-ink/30 shrink-0">{formatarQuandoRelativo(a.created_at)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+
+            <div className="space-y-4">
+              <div className="rounded-2xl bg-card border border-black/5 p-4 flex items-center gap-2">
+                <span className="text-lg">📄</span>
+                <p className="text-sm text-ink">
+                  <span className="font-extrabold">{docs.length}</span> <span className="text-ink/50">documentos</span>
+                </p>
+              </div>
+
+              {(tarefasEmAtraso.length > 0 || tarefasHoje.length > 0) && (
+                <div className="rounded-2xl bg-card border border-black/5 p-4">
+                  <h2 className="text-xs font-bold uppercase tracking-wide text-ink/50 mb-2">⚠️ Atenção</h2>
+                  <div className="space-y-1">
+                    {tarefasEmAtraso.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => router.push(`/tarefas/${t.id}`)}
+                        className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl hover:bg-surface transition-colors text-left"
+                      >
+                        <span className="text-xs text-ink truncate">{t.titulo}</span>
+                        <span className="text-[11px] text-red-600 font-bold shrink-0">Atrasada · {formatarData(t.prazo!)}</span>
+                      </button>
+                    ))}
+                    {tarefasHoje.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => router.push(`/tarefas/${t.id}`)}
+                        className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-xl hover:bg-surface transition-colors text-left"
+                      >
+                        <span className="text-xs text-ink truncate">{t.titulo}</span>
+                        <span className="text-[11px] text-forest font-bold shrink-0">Hoje</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
       {aba === "tarefas" && (
         <div>
           <div className="flex justify-between items-center mb-3">
-            <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
-              <button
-                onClick={() => setVisualizacaoTarefas("lista")}
-                className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
-                  visualizacaoTarefas === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-                }`}
-              >
-                Lista
-              </button>
-              <button
-                onClick={() => setVisualizacaoTarefas("kanban")}
-                className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
-                  visualizacaoTarefas === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-                }`}
-              >
-                Kanban
-              </button>
+            <div className="flex items-center gap-2">
+              <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+                <button
+                  onClick={() => setVisualizacaoTarefas("lista")}
+                  className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
+                    visualizacaoTarefas === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                  }`}
+                >
+                  Lista
+                </button>
+                <button
+                  onClick={() => setVisualizacaoTarefas("kanban")}
+                  className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
+                    visualizacaoTarefas === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                  }`}
+                >
+                  Kanban
+                </button>
+              </div>
+              {filtroStatusAtivo && (
+                <button
+                  onClick={() => setFiltroStatusAtivo(null)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-mint text-forest px-3 py-1.5 text-xs font-bold hover:brightness-95 transition"
+                >
+                  {statusList.find((s) => s.id === filtroStatusAtivo)?.nome} ✕
+                </button>
+              )}
             </div>
             <button onClick={novaTarefaRapida} className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors">
               + Nova tarefa
             </button>
           </div>
-          {tarefas.length === 0 ? (
-            <p className="text-sm text-ink/50">Nenhuma tarefa ainda.</p>
+          {(() => {
+            const tarefasFiltradas = filtroStatusAtivo ? tarefas.filter((t) => t.status_id === filtroStatusAtivo) : tarefas;
+            return tarefasFiltradas.length === 0 ? (
+            <p className="text-sm text-ink/50">Nenhuma tarefa {filtroStatusAtivo ? "nesse status" : "ainda"}.</p>
           ) : visualizacaoTarefas === "kanban" ? (
             <MiniKanban
               statusList={statusList}
-              itens={tarefas.map((t) => ({
+              itens={tarefasFiltradas.map((t) => ({
                 id: t.id,
                 titulo: t.titulo,
                 status_id: t.status_id,
@@ -701,7 +859,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
                 <span>Responsáveis</span>
                 <span>Status</span>
               </div>
-              {tarefas.map((t) => (
+              {tarefasFiltradas.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => router.push(`/tarefas/${t.id}`)}
@@ -715,7 +873,8 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
                 </button>
               ))}
             </div>
-          )}
+            );
+          })()}
         </div>
       )}
 
@@ -750,6 +909,14 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
                 />
                 Mostrar sub-conteúdos
               </label>
+              {filtroStatusAtivo && (
+                <button
+                  onClick={() => setFiltroStatusAtivo(null)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-mint text-forest px-3 py-1.5 text-xs font-bold hover:brightness-95 transition"
+                >
+                  {statusList.find((s) => s.id === filtroStatusAtivo)?.nome} ✕
+                </button>
+              )}
             </div>
             <button onClick={novoPostRapido} className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors">
               + Novo post
