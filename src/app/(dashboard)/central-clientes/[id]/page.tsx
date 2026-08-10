@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
+import { IconeProjeto } from "@/components/icones-tarefa";
 import { normalizar } from "@/lib/normalizar";
 import { DndContext, useDraggable, useDroppable, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 
@@ -30,6 +31,7 @@ interface TarefaResumo {
   status_id: string;
   prazo: string | null;
   descricao: string | null;
+  eh_projeto: boolean;
   statusNome: string;
   statusCor: string;
 }
@@ -147,13 +149,15 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
   const [loading, setLoading] = useState(true);
 
   const [tarefas, setTarefas] = useState<TarefaResumo[]>([]);
+  const [progressoTarefas, setProgressoTarefas] = useState<Record<string, { total: number; completos: number }>>({});
   const [responsaveisPorTarefa, setResponsaveisPorTarefa] = useState<Record<string, Responsavel[]>>({});
-  const [visualizacaoTarefas, setVisualizacaoTarefas] = useState<"lista" | "kanban">("lista");
+  const [visualizacaoTarefas, setVisualizacaoTarefas] = useState<"lista" | "kanban">("kanban");
   const [filtroStatusAtivo, setFiltroStatusAtivo] = useState<string | null>(null);
   const [atividadeRecente, setAtividadeRecente] = useState<AtividadeItem[]>([]);
   const [posts, setPosts] = useState<PostResumo[]>([]);
+  const [progressoPosts, setProgressoPosts] = useState<Record<string, { total: number; completos: number }>>({});
   const [responsaveisPorPost, setResponsaveisPorPost] = useState<Record<string, Responsavel[]>>({});
-  const [visualizacaoConteudo, setVisualizacaoConteudo] = useState<"lista" | "kanban">("lista");
+  const [visualizacaoConteudo, setVisualizacaoConteudo] = useState<"lista" | "kanban">("kanban");
   const [mostrarSubconteudos, setMostrarSubconteudos] = useState(false);
   const [docs, setDocs] = useState<DocResumo[]>([]);
   const [nomesPorAutor, setNomesPorAutor] = useState<Record<string, string>>({});
@@ -178,7 +182,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
         supabase.from("clientes").select("papeis ( pessoa_id, pessoas ( nome, foto_url ) )").eq("id", id).maybeSingle(),
         supabase
           .from("tarefas")
-          .select("id, titulo, status_id, prazo, descricao, status_conteudo ( nome, cor )")
+          .select("id, titulo, status_id, prazo, descricao, eh_projeto, status_conteudo ( nome, cor )")
           .eq("cliente_id", id)
           .is("tarefa_pai_id", null)
           .eq("arquivada", false)
@@ -237,6 +241,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       status_id: string;
       prazo: string | null;
       descricao: string | null;
+      eh_projeto: boolean;
       status_conteudo: { nome: string; cor: string } | null;
     }[]).map((t) => ({
       id: t.id,
@@ -244,6 +249,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       status_id: t.status_id,
       prazo: t.prazo,
       descricao: t.descricao,
+      eh_projeto: t.eh_projeto,
       statusNome: t.status_conteudo?.nome ?? "—",
       statusCor: t.status_conteudo?.cor ?? "cinza",
     }));
@@ -268,6 +274,35 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       statusCor: p.status_conteudo?.cor ?? "cinza",
     }));
     setPosts(listaPosts);
+
+    const progressoPostsMap: Record<string, { total: number; completos: number }> = {};
+    for (const p of listaPosts) {
+      if (!p.post_pai_id) continue;
+      if (!progressoPostsMap[p.post_pai_id]) progressoPostsMap[p.post_pai_id] = { total: 0, completos: 0 };
+      progressoPostsMap[p.post_pai_id].total++;
+      if (normalizar(p.statusCor) === "verde") progressoPostsMap[p.post_pai_id].completos++;
+    }
+    setProgressoPosts(progressoPostsMap);
+
+    const idsTarefasProjeto = listaTarefas.filter((t) => t.eh_projeto).map((t) => t.id);
+    if (idsTarefasProjeto.length > 0) {
+      const { data: subtarefasData } = await supabase
+        .from("tarefas")
+        .select("tarefa_pai_id, status_id, eh_pasta")
+        .in("tarefa_pai_id", idsTarefasProjeto)
+        .is("excluido_em", null);
+      const progressoTarefasMap: Record<string, { total: number; completos: number }> = {};
+      for (const s of (subtarefasData ?? []) as { tarefa_pai_id: string; status_id: string; eh_pasta: boolean }[]) {
+        if (s.eh_pasta) continue;
+        if (!progressoTarefasMap[s.tarefa_pai_id]) progressoTarefasMap[s.tarefa_pai_id] = { total: 0, completos: 0 };
+        progressoTarefasMap[s.tarefa_pai_id].total++;
+        const st = (statusData ?? []).find((st) => st.id === s.status_id);
+        if (st && normalizar(st.cor) === "verde") progressoTarefasMap[s.tarefa_pai_id].completos++;
+      }
+      setProgressoTarefas(progressoTarefasMap);
+    } else {
+      setProgressoTarefas({});
+    }
 
     const contFilhosDocs: Record<string, number> = {};
     for (const d of (docsData ?? []) as { doc_pai_id: string | null }[]) {
@@ -572,8 +607,10 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
     { chave: "docs", label: "Docs", contagem: docs.length },
   ];
 
+  const kanbanEmTelaCheia = (aba === "tarefas" && visualizacaoTarefas === "kanban") || (aba === "conteudo" && visualizacaoConteudo === "kanban");
+
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
+    <main className={`mx-auto px-6 py-10 transition-all ${kanbanEmTelaCheia ? "max-w-[1800px]" : "max-w-5xl"}`}>
       <button onClick={() => router.push("/central-clientes")} className="text-sm font-semibold text-ink/50 hover:text-ink mb-4">
         ← Central de Clientes
       </button>
@@ -846,6 +883,8 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
                 subtitulo: t.prazo ? formatarData(t.prazo) : "",
                 responsaveis: responsaveisPorTarefa[t.id] ?? [],
                 temDescricao: !!t.descricao,
+                progresso: progressoTarefas[t.id],
+                prefixo: t.eh_projeto ? "📋" : undefined,
               }))}
               onMover={moverTarefaStatus}
               onAbrir={(itemId) => router.push(`/tarefas/${itemId}`)}
@@ -859,19 +898,38 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
                 <span>Responsáveis</span>
                 <span>Status</span>
               </div>
-              {tarefasFiltradas.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => router.push(`/tarefas/${t.id}`)}
-                  className="w-full grid grid-cols-[1fr_90px_100px_110px_100px] items-center gap-2 px-5 py-3 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
-                >
-                  <span className="text-sm text-ink truncate">{t.titulo}</span>
-                  <span className="text-ink/30">{t.descricao ? "☰" : ""}</span>
-                  <span className="text-xs text-ink/40">{t.prazo ? formatarData(t.prazo) : "—"}</span>
-                  <AvatarStack pessoas={responsaveisPorTarefa[t.id] ?? []} />
-                  <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(t.statusCor).cor}`}>{t.statusNome}</span>
-                </button>
-              ))}
+              {tarefasFiltradas.map((t) => {
+                const prog = progressoTarefas[t.id];
+                const pct = prog && prog.total > 0 ? Math.round((prog.completos / prog.total) * 100) : null;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => router.push(`/tarefas/${t.id}`)}
+                    className="w-full grid grid-cols-[1fr_90px_100px_110px_100px] items-center gap-2 px-5 py-3 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
+                  >
+                    <span className="min-w-0">
+                      <span className="text-sm text-ink truncate flex items-center gap-1.5">
+                        {t.eh_projeto && <IconeProjeto tamanho={13} />}
+                        <span className="truncate">{t.titulo}</span>
+                      </span>
+                      {pct !== null && (
+                        <span className="flex items-center gap-1.5 mt-1">
+                          <span className="h-1 flex-1 max-w-[120px] rounded-full bg-black/5 overflow-hidden">
+                            <span className={`block h-full rounded-full ${pct === 100 ? "bg-forest" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
+                          </span>
+                          <span className="text-[10px] text-ink/40 shrink-0">
+                            {prog!.completos}/{prog!.total}
+                          </span>
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-ink/30">{t.descricao ? "☰" : ""}</span>
+                    <span className="text-xs text-ink/40">{t.prazo ? formatarData(t.prazo) : "—"}</span>
+                    <AvatarStack pessoas={responsaveisPorTarefa[t.id] ?? []} />
+                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(t.statusCor).cor}`}>{t.statusNome}</span>
+                  </button>
+                );
+              })}
             </div>
             );
           })()}
@@ -934,6 +992,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
                 subtitulo: formatarData(p.data_publicacao),
                 responsaveis: responsaveisPorPost[p.id] ?? [],
                 temDescricao: !!p.observacoes_internas,
+                progresso: progressoPosts[p.id],
                 prefixo: p.post_pai_id ? "↳" : undefined,
               }))}
               onMover={moverPostStatus}
@@ -948,22 +1007,38 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
                 <span>Responsáveis</span>
                 <span>Status</span>
               </div>
-              {postsVisiveis.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => router.push(`/conteudo/calendario/post/${p.id}`)}
-                  className="w-full grid grid-cols-[1fr_90px_100px_110px_100px] items-center gap-2 px-5 py-3 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
-                >
-                  <span className="text-sm text-ink truncate flex items-center gap-1.5">
-                    {p.post_pai_id && <span className="text-forest text-xs">↳</span>}
-                    {p.titulo || "Sem título"}
-                  </span>
-                  <span className="text-ink/30">{p.observacoes_internas ? "☰" : ""}</span>
-                  <span className="text-xs text-ink/40">{formatarData(p.data_publicacao)}</span>
-                  <AvatarStack pessoas={responsaveisPorPost[p.id] ?? []} />
-                  <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(p.statusCor).cor}`}>{p.statusNome}</span>
-                </button>
-              ))}
+              {postsVisiveis.map((p) => {
+                const prog = progressoPosts[p.id];
+                const pct = prog && prog.total > 0 ? Math.round((prog.completos / prog.total) * 100) : null;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => router.push(`/conteudo/calendario/post/${p.id}`)}
+                    className="w-full grid grid-cols-[1fr_90px_100px_110px_100px] items-center gap-2 px-5 py-3 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
+                  >
+                    <span className="min-w-0">
+                      <span className="text-sm text-ink truncate flex items-center gap-1.5">
+                        {p.post_pai_id && <span className="text-forest text-xs">↳</span>}
+                        <span className="truncate">{p.titulo || "Sem título"}</span>
+                      </span>
+                      {pct !== null && (
+                        <span className="flex items-center gap-1.5 mt-1">
+                          <span className="h-1 flex-1 max-w-[120px] rounded-full bg-black/5 overflow-hidden">
+                            <span className={`block h-full rounded-full ${pct === 100 ? "bg-forest" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
+                          </span>
+                          <span className="text-[10px] text-ink/40 shrink-0">
+                            {prog!.completos}/{prog!.total}
+                          </span>
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-ink/30">{p.observacoes_internas ? "☰" : ""}</span>
+                    <span className="text-xs text-ink/40">{formatarData(p.data_publicacao)}</span>
+                    <AvatarStack pessoas={responsaveisPorPost[p.id] ?? []} />
+                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(p.statusCor).cor}`}>{p.statusNome}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1076,6 +1151,7 @@ interface ItemKanban {
   subtitulo: string;
   responsaveis: Responsavel[];
   temDescricao: boolean;
+  progresso?: { total: number; completos: number };
   prefixo?: string;
 }
 
@@ -1163,6 +1239,24 @@ function MiniKanbanCard({ item, statusAtual, onAbrir }: { item: ItemKanban; stat
         {item.prefixo && <span className="text-forest">{item.prefixo} </span>}
         {item.titulo}
       </p>
+      {item.progresso &&
+        item.progresso.total > 0 &&
+        (() => {
+          const pct = Math.round((item.progresso!.completos / item.progresso!.total) * 100);
+          return (
+            <div className="mt-1.5">
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[10px] font-semibold text-ink/40">
+                  {item.progresso!.completos}/{item.progresso!.total}
+                </span>
+                <span className="text-[10px] font-bold text-amber-600">{pct}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-black/5 overflow-hidden">
+                <div className={`h-full rounded-full transition-all ${pct === 100 ? "bg-forest" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          );
+        })()}
       <div className="flex items-center justify-between mt-2">
         <span className="flex items-center gap-1.5 text-ink/40">
           {item.temDescricao && <span className="text-xs">☰</span>}

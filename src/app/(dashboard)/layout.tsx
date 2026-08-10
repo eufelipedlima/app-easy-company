@@ -285,13 +285,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen relative">
+    <div className="flex h-screen overflow-hidden relative">
       {colapsado && hoverExpandido && <div className="w-[68px] shrink-0" />}
 
       <aside
         onMouseEnter={() => colapsado && setHoverExpandido(true)}
         onMouseLeave={() => setHoverExpandido(false)}
-        className={`shrink-0 bg-ink text-white flex flex-col min-h-screen transition-all duration-200 ${
+        className={`shrink-0 bg-ink text-white flex flex-col h-full transition-all duration-200 ${
           expandidoVisual ? "w-64" : "w-[68px]"
         } ${colapsado && hoverExpandido ? "absolute z-30 left-0 top-0 h-full shadow-2xl" : "relative"}`}
       >
@@ -480,7 +480,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0">{children}</div>
+      <div className="flex-1 min-w-0 h-full overflow-y-auto">{children}</div>
     </div>
   );
 }
