@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { BuscaCliente } from "@/components/busca-cliente";
@@ -438,7 +439,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     setEnviandoAnexo(true);
     const supabase = createClient();
     for (const arquivo of Array.from(arquivos)) {
-      const caminho = `${id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${arquivo.name}`;
+      const caminho = `${id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${sanearNomeArquivo(arquivo.name)}`;
       const { error } = await supabase.storage.from("tarefas-anexos").upload(caminho, arquivo);
       if (!error) {
         await supabase.from("tarefas_anexos").insert({

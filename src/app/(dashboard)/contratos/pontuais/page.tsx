@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { normalizar } from "@/lib/normalizar";
 import { PessoaForm } from "@/components/pessoa-form";
 import { useTabelaConfig, LINHAS_POR_PAGINA_OPCOES, type ColunaDef } from "@/lib/use-tabela-config";
@@ -764,7 +765,7 @@ function ContratoPontualForm({
 
   async function enviarArquivo(contratoId: string, arquivo: File) {
     const supabase = createClient();
-    const path = `${contratoId}/${arquivo.name}`;
+    const path = `${contratoId}/${Date.now()}-${sanearNomeArquivo(arquivo.name)}`;
     const { error: uploadError } = await supabase.storage
       .from("contratos")
       .upload(path, arquivo, { upsert: true });

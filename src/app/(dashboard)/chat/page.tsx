@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { normalizar } from "@/lib/normalizar";
 
 interface Canal {
@@ -701,7 +702,7 @@ export default function ChatPage() {
     if (!arquivo || !canalAtivoId || !meuId) return;
     setEnviandoArquivo(true);
     const supabase = createClient();
-    const caminho = `${canalAtivoId}/${Date.now()}-${Math.random().toString(36).slice(2)}-${arquivo.name}`;
+    const caminho = `${canalAtivoId}/${Date.now()}-${Math.random().toString(36).slice(2)}-${sanearNomeArquivo(arquivo.name)}`;
     const { error: uploadError } = await supabase.storage.from("chat-arquivos").upload(caminho, arquivo);
     if (!uploadError) {
       const { data } = supabase.storage.from("chat-arquivos").getPublicUrl(caminho);

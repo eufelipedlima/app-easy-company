@@ -8,6 +8,7 @@ import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { EstadoVazio } from "@/components/estado-vazio";
 import { EsqueletoLinha, EsqueletoLista } from "@/components/esqueleto";
+import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import {
   DndContext,
   DragOverlay,
@@ -1403,7 +1404,7 @@ function PostModal({
 
       for (let i = 0; i < novosArquivos.length; i++) {
         const arquivo = novosArquivos[i];
-        const path = `${postId}/${Date.now()}-${arquivo.name}`;
+        const path = `${postId}/${Date.now()}-${sanearNomeArquivo(arquivo.name)}`;
         const { error: uploadError } = await supabase.storage.from("conteudo-midia").upload(path, arquivo);
         if (uploadError) throw uploadError;
         await supabase.from("posts_conteudo_midias").insert({
