@@ -934,18 +934,54 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
               <p className="text-xs text-ink/40">Nenhum anexo ainda.</p>
             ) : (
               <div className="space-y-1.5">
-                {anexos.map((a) => (
-                  <div key={a.id} className="flex items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2">
-                    <a href={a.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 min-w-0 hover:underline">
-                      <span className="text-sm shrink-0">📄</span>
-                      <span className="text-sm text-ink truncate">{a.arquivo_nome ?? "arquivo"}</span>
-                      {a.tamanho_bytes && <span className="text-xs text-ink/40 shrink-0">{formatarTamanho(a.tamanho_bytes)}</span>}
-                    </a>
-                    <button onClick={() => removerAnexo(a)} className="text-ink/30 hover:text-red-600 text-xs shrink-0 px-1">
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                {anexos.map((a) => {
+                  const ehImagem = a.arquivo_tipo?.startsWith("image/");
+                  const ehPdf = a.arquivo_tipo === "application/pdf";
+                  return (
+                    <div key={a.id} className="flex items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {ehImagem ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={a.url} alt={a.arquivo_nome ?? "anexo"} className="h-9 w-9 rounded-lg object-cover shrink-0 border border-black/5" />
+                        ) : (
+                          <span className="h-9 w-9 rounded-lg bg-white border border-black/5 flex items-center justify-center text-base shrink-0">
+                            {ehPdf ? "📕" : "📄"}
+                          </span>
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-sm text-ink truncate">{a.arquivo_nome ?? "arquivo"}</p>
+                          {a.tamanho_bytes && <p className="text-xs text-ink/40">{formatarTamanho(a.tamanho_bytes)}</p>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <a
+                          href={a.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Visualizar"
+                          className="h-7 w-7 rounded-full flex items-center justify-center text-ink/50 hover:text-ink hover:bg-white transition-colors"
+                        >
+                          👁️
+                        </a>
+                        <a
+                          href={a.url}
+                          download={a.arquivo_nome ?? undefined}
+                          title="Baixar"
+                          className="h-7 w-7 rounded-full flex items-center justify-center text-ink/50 hover:text-ink hover:bg-white transition-colors"
+                        >
+                          ⬇
+                        </a>
+                        <button
+                          onClick={() => removerAnexo(a)}
+                          title="Remover"
+                          className="h-7 w-7 rounded-full flex items-center justify-center text-ink/30 hover:text-red-600 hover:bg-white transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
