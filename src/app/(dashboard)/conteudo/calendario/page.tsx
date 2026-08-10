@@ -209,6 +209,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   const [mostrarSubconteudosCalendario, setMostrarSubconteudosCalendario] = useState(true);
   const [responsaveisPorPost, setResponsaveisPorPost] = useState<Record<string, Responsavel[]>>({});
   const [contagemSubconteudos, setContagemSubconteudos] = useState<Record<string, number>>({});
+  const [progressoPlanejamentos, setProgressoPlanejamentos] = useState<Record<string, { total: number; completos: number }>>({});
   const [tituloPaiPorPost, setTituloPaiPorPost] = useState<Record<string, string>>({});
   const [loadingKanban, setLoadingKanban] = useState(false);
   const [mesKanban, setMesKanban] = useState(hoje.getMonth());
@@ -247,7 +248,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
         .from("posts_conteudo_responsaveis")
         .select("post_id, funcionarios ( id, papeis ( pessoas ( nome, apelido, foto_url ) ) )")
         .in("post_id", ids),
-      supabase.from("posts_conteudo").select("post_pai_id").in("post_pai_id", ids).is("excluido_em", null),
+      supabase.from("posts_conteudo").select("post_pai_id, status_id").in("post_pai_id", ids).is("excluido_em", null),
       idsPais.length > 0 ? supabase.from("posts_conteudo").select("id, titulo").in("id", idsPais) : Promise.resolve({ data: [] }),
     ]);
     const mapa: Record<string, Responsavel[]> = {};
@@ -263,10 +264,16 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     }
     setResponsaveisPorPost(mapa);
     const contFilhos: Record<string, number> = {};
-    for (const f of filhos ?? []) {
-      if (f.post_pai_id) contFilhos[f.post_pai_id] = (contFilhos[f.post_pai_id] ?? 0) + 1;
+    const progresso: Record<string, { total: number; completos: number }> = {};
+    for (const f of (filhos ?? []) as { post_pai_id: string | null; status_id: string }[]) {
+      if (!f.post_pai_id) continue;
+      contFilhos[f.post_pai_id] = (contFilhos[f.post_pai_id] ?? 0) + 1;
+      if (!progresso[f.post_pai_id]) progresso[f.post_pai_id] = { total: 0, completos: 0 };
+      progresso[f.post_pai_id].total++;
+      if (statusList.find((s) => s.id === f.status_id)?.cor === "verde") progresso[f.post_pai_id].completos++;
     }
     setContagemSubconteudos(contFilhos);
+    setProgressoPlanejamentos(progresso);
 
     const mapaPais: Record<string, string> = {};
     for (const pai of (paisData ?? []) as { id: string; titulo: string | null }[]) {
@@ -277,7 +284,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
       if (p.post_pai_id && mapaPais[p.post_pai_id]) tituloPorPost[p.id] = mapaPais[p.post_pai_id];
     }
     setTituloPaiPorPost(tituloPorPost);
-  }, []);
+  }, [statusList]);
 
   const carregarKanban = useCallback(async () => {
     setLoadingKanban(true);
@@ -1015,6 +1022,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
                 camposVisiveis={camposVisiveis}
                 responsaveisPorPost={responsaveisPorPost}
                 contagemSubconteudos={contagemSubconteudos}
+                progressoPlanejamentos={progressoPlanejamentos}
                 tituloPaiPorPost={tituloPaiPorPost}
                 acoes={{
                   statusList,
@@ -1783,6 +1791,7 @@ function KanbanBoard({
   camposVisiveis,
   responsaveisPorPost,
   contagemSubconteudos,
+  progressoPlanejamentos,
   tituloPaiPorPost,
   acoes,
 }: {
@@ -1793,6 +1802,7 @@ function KanbanBoard({
   camposVisiveis: CamposVisiveis;
   responsaveisPorPost: Record<string, Responsavel[]>;
   contagemSubconteudos: Record<string, number>;
+  progressoPlanejamentos: Record<string, { total: number; completos: number }>;
   tituloPaiPorPost: Record<string, string>;
   acoes: AcoesPost;
 }) {
@@ -1824,6 +1834,7 @@ function KanbanBoard({
             camposVisiveis={camposVisiveis}
             responsaveisPorPost={responsaveisPorPost}
             contagemSubconteudos={contagemSubconteudos}
+            progressoPlanejamentos={progressoPlanejamentos}
             tituloPaiPorPost={tituloPaiPorPost}
             acoes={acoes}
           />
@@ -1836,6 +1847,7 @@ function KanbanBoard({
             camposVisiveis={camposVisiveis}
             responsaveis={responsaveisPorPost[postAtivo.id] ?? []}
             qtdSubconteudos={contagemSubconteudos[postAtivo.id] ?? 0}
+            progresso={progressoPlanejamentos[postAtivo.id]}
             arrastando
           />
         )}
@@ -1851,6 +1863,7 @@ function KanbanColuna({
   camposVisiveis,
   responsaveisPorPost,
   contagemSubconteudos,
+  progressoPlanejamentos,
   tituloPaiPorPost,
   acoes,
 }: {
@@ -1860,6 +1873,7 @@ function KanbanColuna({
   camposVisiveis: CamposVisiveis;
   responsaveisPorPost: Record<string, Responsavel[]>;
   contagemSubconteudos: Record<string, number>;
+  progressoPlanejamentos: Record<string, { total: number; completos: number }>;
   tituloPaiPorPost: Record<string, string>;
   acoes: AcoesPost;
 }) {
@@ -1888,6 +1902,7 @@ function KanbanColuna({
             camposVisiveis={camposVisiveis}
             responsaveis={responsaveisPorPost[p.id] ?? []}
             qtdSubconteudos={contagemSubconteudos[p.id] ?? 0}
+            progresso={progressoPlanejamentos[p.id]}
             tituloPai={tituloPaiPorPost[p.id]}
             acoes={acoes}
           />
@@ -1904,6 +1919,7 @@ function KanbanCardArrastavel({
   camposVisiveis,
   responsaveis,
   qtdSubconteudos,
+  progresso,
   tituloPai,
   acoes,
 }: {
@@ -1913,6 +1929,7 @@ function KanbanCardArrastavel({
   camposVisiveis: CamposVisiveis;
   responsaveis: Responsavel[];
   qtdSubconteudos: number;
+  progresso?: { total: number; completos: number };
   tituloPai?: string;
   acoes: AcoesPost;
 }) {
@@ -1929,7 +1946,15 @@ function KanbanCardArrastavel({
       onClick={() => !isDragging && onAbrirCard(post)}
       className={`touch-none transition-opacity ${isDragging ? "opacity-30" : "opacity-100"}`}
     >
-      <KanbanCardConteudo post={post} camposVisiveis={camposVisiveis} responsaveis={responsaveis} qtdSubconteudos={qtdSubconteudos} tituloPai={tituloPai} acoes={acoes} />
+      <KanbanCardConteudo
+        post={post}
+        camposVisiveis={camposVisiveis}
+        responsaveis={responsaveis}
+        qtdSubconteudos={qtdSubconteudos}
+        progresso={progresso}
+        tituloPai={tituloPai}
+        acoes={acoes}
+      />
     </div>
   );
 }
@@ -2199,6 +2224,7 @@ function KanbanCardConteudo({
   camposVisiveis,
   responsaveis = [],
   qtdSubconteudos = 0,
+  progresso,
   tituloPai,
   acoes,
   arrastando,
@@ -2207,6 +2233,7 @@ function KanbanCardConteudo({
   camposVisiveis: CamposVisiveis;
   responsaveis?: Responsavel[];
   qtdSubconteudos?: number;
+  progresso?: { total: number; completos: number };
   tituloPai?: string;
   acoes?: AcoesPost;
   arrastando?: boolean;
@@ -2237,6 +2264,25 @@ function KanbanCardConteudo({
         {mostrarTitulo ? post.titulo : nomeCliente(post) || "Sem título"}
       </p>
       {mostrarCliente && <p className="text-xs text-ink/50 truncate mt-0.5">{nomeCliente(post)}</p>}
+
+      {progresso &&
+        progresso.total > 0 &&
+        (() => {
+          const pct = Math.round((progresso.completos / progresso.total) * 100);
+          return (
+            <div className="mt-1.5">
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[10px] font-semibold text-ink/40">
+                  {progresso.completos}/{progresso.total} concluídos
+                </span>
+                <span className="text-[10px] font-bold text-amber-600">{pct}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-black/5 overflow-hidden">
+                <div className={`h-full rounded-full transition-all ${pct === 100 ? "bg-forest" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          );
+        })()}
 
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {mostrarFormato && (

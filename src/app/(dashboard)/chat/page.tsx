@@ -38,6 +38,10 @@ interface Mensagem {
   resposta_a_id: string | null;
   audio_url: string | null;
   audio_duracao: number | null;
+  arquivo_url: string | null;
+  arquivo_nome: string | null;
+  arquivo_tipo: string | null;
+  arquivo_tamanho: number | null;
 }
 
 interface Colega {
@@ -131,6 +135,61 @@ function formatarDuracao(segundos: number) {
   const min = Math.floor(segundos / 60);
   const seg = Math.floor(segundos % 60);
   return `${min}:${String(seg).padStart(2, "0")}`;
+}
+
+function formatarTamanhoArquivo(bytes: number | null) {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function CardArquivoChat({
+  url,
+  nome,
+  tipo,
+  tamanho,
+}: {
+  url: string;
+  nome: string | null;
+  tipo: string | null;
+  tamanho: number | null;
+}) {
+  const ehImagem = tipo?.startsWith("image/");
+
+  if (ehImagem) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" className="block max-w-xs rounded-2xl overflow-hidden border border-black/10">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt={nome ?? "imagem"} className="w-full max-h-64 object-cover" />
+      </a>
+    );
+  }
+
+  const ehPdf = tipo === "application/pdf";
+  return (
+    <div className="flex items-center gap-3 rounded-2xl bg-white border border-black/10 px-3 py-2.5 max-w-xs">
+      <span className={`h-10 w-10 rounded-xl flex items-center justify-center text-white text-lg font-bold shrink-0 ${ehPdf ? "bg-red-500" : "bg-ink/70"}`}>
+        {ehPdf ? "PDF" : "📄"}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-ink truncate">{nome ?? "arquivo"}</p>
+        <p className="text-xs text-ink/40">{formatarTamanhoArquivo(tamanho)}</p>
+      </div>
+      <a
+        href={url}
+        download={nome ?? undefined}
+        title="Baixar"
+        className="h-8 w-8 rounded-full flex items-center justify-center text-ink/40 hover:text-ink hover:bg-surface transition-colors shrink-0"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+      </a>
+    </div>
+  );
 }
 
 function PlayerAudio({ url, duracao }: { url: string; duracao: number | null }) {
@@ -234,6 +293,7 @@ export default function ChatPage() {
   const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
   const [canais, setCanais] = useState<CanalComInfo[]>([]);
   const [canalAtivoId, setCanalAtivoId] = useState<string | null>(null);
+  const [qtdParticipantesAtivo, setQtdParticipantesAtivo] = useState<number | null>(null);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [reacoes, setReacoes] = useState<Reacao[]>([]);
   const [colegas, setColegas] = useState<Colega[]>([]);
@@ -242,6 +302,8 @@ export default function ChatPage() {
   const [gravando, setGravando] = useState(false);
   const [tempoGravacao, setTempoGravacao] = useState(0);
   const [enviandoAudio, setEnviandoAudio] = useState(false);
+  const [enviandoArquivo, setEnviandoArquivo] = useState(false);
+  const inputArquivoRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerGravacaoRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -352,11 +414,12 @@ export default function ChatPage() {
       lista.map(async (c) => {
         const { data: ultimasMsgs } = await supabase
           .from("chat_mensagens")
-          .select("texto, created_at")
+          .select("texto, created_at, audio_url, arquivo_url, arquivo_nome")
           .eq("canal_id", c.id)
           .order("created_at", { ascending: false })
           .limit(1);
         const ultima = ultimasMsgs?.[0];
+        const previaUltima = ultima?.audio_url ? "🎤 Áudio" : ultima?.arquivo_url ? `📎 ${ultima.arquivo_nome ?? "Arquivo"}` : ultima?.texto ?? null;
 
         const minhaLeitura = leituraPorCanal.get(c.id) ?? new Date(0).toISOString();
         const { count } = await supabase
@@ -387,7 +450,7 @@ export default function ChatPage() {
           nomeExibicao,
           subtitulo,
           fotoUrl,
-          ultimaMensagem: ultima?.texto ?? null,
+          ultimaMensagem: previaUltima,
           ultimaMensagemHora: ultima?.created_at ?? null,
           naoLidas: count ?? 0,
         };
@@ -417,11 +480,28 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canais.length]);
 
+  useEffect(() => {
+    async function carregarQtdParticipantes() {
+      if (!canalAtivoId || canalAtivo?.tipo === "dm") {
+        setQtdParticipantesAtivo(null);
+        return;
+      }
+      const supabase = createClient();
+      const { count } = await supabase
+        .from("chat_participantes")
+        .select("id", { count: "exact", head: true })
+        .eq("canal_id", canalAtivoId);
+      setQtdParticipantesAtivo(count ?? 0);
+    }
+    carregarQtdParticipantes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canalAtivoId, configCanalAberto, adicionarParticipanteAberto]);
+
   const carregarMensagens = useCallback(async (canalId: string) => {
     const supabase = createClient();
     const { data } = await supabase
       .from("chat_mensagens")
-      .select("id, canal_id, autor_id, texto, created_at, resposta_a_id, audio_url, audio_duracao")
+      .select("id, canal_id, autor_id, texto, created_at, resposta_a_id, audio_url, audio_duracao, arquivo_url, arquivo_nome, arquivo_tipo, arquivo_tamanho")
       .eq("canal_id", canalId)
       .order("created_at", { ascending: true });
     setMensagens(data ?? []);
@@ -617,6 +697,32 @@ export default function ChatPage() {
     recorder.stop();
   }
 
+  async function enviarArquivo(arquivo: File | null) {
+    if (!arquivo || !canalAtivoId || !meuId) return;
+    setEnviandoArquivo(true);
+    const supabase = createClient();
+    const caminho = `${canalAtivoId}/${Date.now()}-${Math.random().toString(36).slice(2)}-${arquivo.name}`;
+    const { error: uploadError } = await supabase.storage.from("chat-arquivos").upload(caminho, arquivo);
+    if (!uploadError) {
+      const { data } = supabase.storage.from("chat-arquivos").getPublicUrl(caminho);
+      await supabase.from("chat_mensagens").insert({
+        canal_id: canalAtivoId,
+        autor_id: meuId,
+        texto: "",
+        arquivo_url: data.publicUrl,
+        arquivo_nome: arquivo.name,
+        arquivo_tipo: arquivo.type,
+        arquivo_tamanho: arquivo.size,
+        resposta_a_id: respondendoA?.id ?? null,
+      });
+      setRespondendoA(null);
+    } else {
+      alert(`Não foi possível enviar o arquivo: ${uploadError.message}`);
+    }
+    setEnviandoArquivo(false);
+    if (inputArquivoRef.current) inputArquivoRef.current.value = "";
+  }
+
   async function alternarReacao(mensagemId: string, emoji: string) {
     if (!meuId) return;
     const supabase = createClient();
@@ -765,35 +871,67 @@ export default function ChatPage() {
               {canais.length === 0 ? "Nenhuma conversa ainda. Comece uma nova!" : "Nenhuma conversa encontrada."}
             </p>
           ) : (
-            canaisFiltrados.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => abrirCanal(c.id)}
-                className={`w-full text-left mx-2 mb-0.5 px-3 py-2.5 rounded-xl transition-colors flex items-start gap-2.5 ${
-                  canalAtivoId === c.id ? "bg-white/15" : "hover:bg-white/5"
-                }`}
-                style={{ width: "calc(100% - 1rem)" }}
-              >
-                {c.tipo === "dm" ? (
-                  <Avatar nome={c.nomeExibicao} fotoUrl={c.fotoUrl} tamanho={32} />
-                ) : (
-                  <span className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center text-sm shrink-0">
-                    {c.tipo === "cliente" ? "🏢" : "#"}
+            (() => {
+              const grupos = canaisFiltrados.filter((c) => c.tipo === "grupo");
+              const clientes = canaisFiltrados.filter((c) => c.tipo === "cliente");
+              const pessoas = canaisFiltrados.filter((c) => c.tipo === "dm");
+              const agrupar = filtroConversa === "tudo" || filtroConversa === "canais";
+
+              const LinhaCanal = (c: CanalComInfo) => (
+                <button
+                  key={c.id}
+                  onClick={() => abrirCanal(c.id)}
+                  className={`w-full text-left mx-2 mb-0.5 px-3 py-2.5 rounded-xl transition-colors flex items-start gap-2.5 ${
+                    canalAtivoId === c.id ? "bg-white/15" : "hover:bg-white/5"
+                  }`}
+                  style={{ width: "calc(100% - 1rem)" }}
+                >
+                  {c.tipo === "dm" ? (
+                    <Avatar nome={c.nomeExibicao} fotoUrl={c.fotoUrl} tamanho={32} />
+                  ) : (
+                    <span className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center text-sm shrink-0">
+                      {c.tipo === "cliente" ? "🏢" : "#"}
+                    </span>
+                  )}
+                  <span className="flex-1 min-w-0">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-white truncate">{c.nomeExibicao}</span>
+                      {c.naoLidas > 0 && (
+                        <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">
+                          {c.naoLidas}
+                        </span>
+                      )}
+                    </span>
+                    {c.ultimaMensagem && <span className="block text-xs text-white/50 truncate mt-0.5">{c.ultimaMensagem}</span>}
                   </span>
-                )}
-                <span className="flex-1 min-w-0">
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-white truncate">{c.nomeExibicao}</span>
-                    {c.naoLidas > 0 && (
-                      <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">
-                        {c.naoLidas}
-                      </span>
-                    )}
-                  </span>
-                  {c.ultimaMensagem && <span className="block text-xs text-white/50 truncate mt-0.5">{c.ultimaMensagem}</span>}
-                </span>
-              </button>
-            ))
+                </button>
+              );
+
+              if (!agrupar) return canaisFiltrados.map(LinhaCanal);
+
+              return (
+                <>
+                  {grupos.length > 0 && (
+                    <div className="mb-1">
+                      <p className="px-5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white/30">Canais da Agência</p>
+                      {grupos.map(LinhaCanal)}
+                    </div>
+                  )}
+                  {clientes.length > 0 && (
+                    <div className="mb-1">
+                      <p className="px-5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white/30">Clientes</p>
+                      {clientes.map(LinhaCanal)}
+                    </div>
+                  )}
+                  {pessoas.length > 0 && filtroConversa === "tudo" && (
+                    <div className="mb-1">
+                      <p className="px-5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white/30">Pessoas</p>
+                      {pessoas.map(LinhaCanal)}
+                    </div>
+                  )}
+                </>
+              );
+            })()
           )}
         </div>
       </div>
@@ -823,6 +961,21 @@ export default function ChatPage() {
                 </div>
               </button>
               <div className="flex items-center gap-2">
+                {canalAtivo.tipo !== "dm" && qtdParticipantesAtivo !== null && (
+                  <button
+                    onClick={() => setConfigCanalAberto(true)}
+                    title="Ver membros do canal"
+                    className="flex items-center gap-1.5 rounded-full border border-black/10 hover:bg-surface px-3 py-1.5 text-ink/60 hover:text-ink transition-colors"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                    <span className="text-xs font-bold">{qtdParticipantesAtivo}</span>
+                  </button>
+                )}
                 {canalAtivo.tipo !== "dm" && (
                   <button
                     onClick={() => setAdicionarParticipanteAberto(true)}
@@ -901,6 +1054,8 @@ export default function ChatPage() {
 
                         {m.audio_url ? (
                           <PlayerAudio url={m.audio_url} duracao={m.audio_duracao} />
+                        ) : m.arquivo_url ? (
+                          <CardArquivoChat url={m.arquivo_url} nome={m.arquivo_nome} tipo={m.arquivo_tipo} tamanho={m.arquivo_tamanho} />
                         ) : (
                           <p className="text-sm text-ink whitespace-pre-wrap break-words leading-relaxed">
                             {renderizarMensagem(m.texto, todosOsNomes)}
@@ -1062,6 +1217,27 @@ export default function ChatPage() {
                         </div>
                       )}
                     </div>
+                    <input
+                      ref={inputArquivoRef}
+                      type="file"
+                      onChange={(e) => enviarArquivo(e.target.files?.[0] ?? null)}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => inputArquivoRef.current?.click()}
+                      disabled={enviandoArquivo}
+                      className="rounded-full h-10 w-10 flex items-center justify-center border border-black/10 hover:bg-surface text-ink/60 hover:text-ink shrink-0 disabled:opacity-50"
+                      title="Anexar arquivo"
+                    >
+                      {enviandoArquivo ? (
+                        <span className="text-xs">...</span>
+                      ) : (
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95L9.64 17.61a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                        </svg>
+                      )}
+                    </button>
                     <button
                       type="button"
                       onClick={iniciarGravacao}

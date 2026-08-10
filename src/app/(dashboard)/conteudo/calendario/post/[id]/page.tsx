@@ -770,6 +770,27 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
             className="text-2xl font-extrabold text-ink w-full mb-5 outline-none focus:bg-white rounded-lg px-1 -mx-1 bg-transparent"
           />
 
+          {subConteudos.length > 0 &&
+            (() => {
+              const total = subConteudos.length;
+              const completos = subConteudos.filter((s) => statusList.find((st) => st.id === s.status_id)?.cor === "verde").length;
+              const pct = Math.round((completos / total) * 100);
+              return (
+                <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-bold text-ink">Progresso do planejamento</span>
+                    <span className="text-sm font-bold text-amber-600">{pct}%</span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-black/5 overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${pct === 100 ? "bg-forest" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
+                  </div>
+                  <p className="text-xs text-ink/40 mt-1.5">
+                    {completos} de {total} sub-conteúdos concluídos
+                  </p>
+                </div>
+              );
+            })()}
+
           <div className="grid grid-cols-2 gap-x-6 gap-y-4 mb-6 rounded-2xl bg-white p-4 shadow-sm">
             <div>
               <span className="block text-xs text-ink/50 mb-1">Status</span>
