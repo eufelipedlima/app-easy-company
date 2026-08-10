@@ -27,6 +27,11 @@ const MENU: Grupo[] = [
     href: "/inicio",
   },
   {
+    label: "Chat",
+    icon: <MessageCircle size={18} />,
+    href: "/chat",
+  },
+  {
     label: "Pauta",
     icon: <CalendarDays size={18} />,
     href: "/inicio/pauta",
@@ -37,9 +42,9 @@ const MENU: Grupo[] = [
     href: "/caixa-de-entrada",
   },
   {
-    label: "Chat",
-    icon: <MessageCircle size={18} />,
-    href: "/chat",
+    label: "Central de Clientes",
+    icon: <Building2 size={18} />,
+    href: "/central-clientes",
   },
   {
     label: "Conteúdo",
@@ -52,11 +57,6 @@ const MENU: Grupo[] = [
     icon: <ListChecks size={18} />,
     areaSlug: "tarefas",
     href: "/tarefas",
-  },
-  {
-    label: "Central de Clientes",
-    icon: <Building2 size={18} />,
-    href: "/central-clientes",
   },
   {
     label: "Contratos",
@@ -102,9 +102,7 @@ const MENU: Grupo[] = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [aberto, setAberto] = useState<string | null>(
-    MENU.find((g) => g.itens?.some((i) => pathname?.startsWith(i.href)))?.label ?? "Pessoas"
-  );
+  const [aberto, setAberto] = useState<string | null>(null);
 
   const [contasAbertas, setContasAbertas] = useState(false);
   const [colapsado, setColapsado] = useState(false);

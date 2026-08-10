@@ -203,7 +203,8 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   const [filtroFormato, setFiltroFormato] = useState("");
   const [filtroResponsavelId, setFiltroResponsavelId] = useState("");
   const [filtroDropdownAberto, setFiltroDropdownAberto] = useState<null | "status" | "formato" | "pessoa" | "vinculacao">(null);
-  const [mostrarSubconteudos, setMostrarSubconteudos] = useState(true);
+  const [mostrarSubconteudosKanban, setMostrarSubconteudosKanban] = useState(false);
+  const [mostrarSubconteudosCalendario, setMostrarSubconteudosCalendario] = useState(true);
   const [responsaveisPorPost, setResponsaveisPorPost] = useState<Record<string, Responsavel[]>>({});
   const [contagemSubconteudos, setContagemSubconteudos] = useState<Record<string, number>>({});
   const [tituloPaiPorPost, setTituloPaiPorPost] = useState<Record<string, string>>({});
@@ -291,7 +292,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
       .eq("arquivado", false)
       .is("excluido_em", null)
       .order("data_publicacao");
-    if (!mostrarSubconteudos) query = query.is("post_pai_id", null);
+    if (!mostrarSubconteudosKanban) query = query.is("post_pai_id", null);
     if (clienteFiltroId) query = query.eq("cliente_id", clienteFiltroId);
     const { data, error } = await query;
     if (error) console.error("Erro ao carregar kanban:", error);
@@ -299,7 +300,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     setPostsKanban(lista);
     setLoadingKanban(false);
     carregarExtras(lista);
-  }, [clienteFiltroId, carregarExtras, mostrarSubconteudos]);
+  }, [clienteFiltroId, carregarExtras, mostrarSubconteudosKanban]);
 
   async function moverCardStatus(postId: string, novoStatusId: string) {
     setPostsKanban((atual) => atual.map((p) => (p.id === postId ? { ...p, status_id: novoStatusId } : p)));
@@ -451,7 +452,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
       .eq("arquivado", false)
       .is("excluido_em", null)
       .order("data_publicacao");
-    if (!mostrarSubconteudos) query = query.is("post_pai_id", null);
+    if (!mostrarSubconteudosCalendario) query = query.is("post_pai_id", null);
     if (clienteFiltroId) query = query.eq("cliente_id", clienteFiltroId);
 
     const { data, error } = await query;
@@ -463,7 +464,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     setPosts(lista);
     setLoading(false);
     carregarExtras(lista);
-  }, [mes, ano, clienteFiltroId, carregarExtras, mostrarSubconteudos]);
+  }, [mes, ano, clienteFiltroId, carregarExtras, mostrarSubconteudosCalendario]);
 
   const router = useRouter();
 
@@ -494,7 +495,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     async function carregarConfig() {
       const supabase = createClient();
       const { data } = await supabase.from("configuracoes_conteudo").select("mostrar_subconteudos_no_calendario").eq("id", true).maybeSingle();
-      if (data) setMostrarSubconteudos(data.mostrar_subconteudos_no_calendario);
+      if (data) setMostrarSubconteudosCalendario(data.mostrar_subconteudos_no_calendario);
     }
     carregarConfig();
   }, [carregarClientes, carregarStatus, carregarFuncionariosComAcesso]);
@@ -769,8 +770,10 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
         <label className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold border border-black/10 text-ink/60 hover:bg-surface cursor-pointer transition-colors">
           <input
             type="checkbox"
-            checked={mostrarSubconteudos}
-            onChange={(e) => setMostrarSubconteudos(e.target.checked)}
+            checked={visualizacao === "calendario" ? mostrarSubconteudosCalendario : mostrarSubconteudosKanban}
+            onChange={(e) =>
+              visualizacao === "calendario" ? setMostrarSubconteudosCalendario(e.target.checked) : setMostrarSubconteudosKanban(e.target.checked)
+            }
             className="h-3.5 w-3.5 rounded accent-forest"
           />
           Sub-conteúdos
