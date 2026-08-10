@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Users, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle, UserCircle, Inbox, ListChecks, Home } from "lucide-react";
+import { Users, Users2, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle, UserCircle, Inbox, ListChecks, Home } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -92,6 +92,12 @@ const MENU: Grupo[] = [
     ],
   },
   {
+    label: "Meu Time",
+    icon: <Users2 size={18} />,
+    areaSlug: "equipe",
+    href: "/equipe",
+  },
+  {
     label: "Configurações",
     icon: <Settings size={18} />,
     areaSlug: "configuracoes",
@@ -143,7 +149,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     async function carregarPermissoes() {
       const supabase = createClient();
-      const areas = ["financeiro", "contratos", "conteudo", "pessoas", "configuracoes", "tarefas", "docs"];
+      const areas = ["financeiro", "contratos", "conteudo", "pessoas", "configuracoes", "tarefas", "docs", "equipe"];
       const resultados = await Promise.all(areas.map((slug) => supabase.rpc("meu_nivel_acesso", { area_slug: slug })));
       const mapa: Record<string, "nenhum" | "visualizar" | "completo"> = {};
       areas.forEach((slug, i) => {
