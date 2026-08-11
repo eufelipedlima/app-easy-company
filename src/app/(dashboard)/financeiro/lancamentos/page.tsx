@@ -557,7 +557,7 @@ export default function LancamentosPage() {
   const pendenteDespesas = somar(pendentes, "despesa");
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
+    <main className="mx-auto max-w-[1800px] px-6 py-10">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-extrabold text-ink">Lançamentos</h1>
@@ -924,6 +924,7 @@ export default function LancamentosPage() {
           <table className="w-full text-sm whitespace-nowrap">
             <thead>
               <tr className="text-left text-ink/50 border-b border-black/5">
+                <th className="px-4 py-3 font-medium"></th>
                 {colunas
                   .filter((c) => c.visivel)
                   .map((c) => (
@@ -931,7 +932,6 @@ export default function LancamentosPage() {
                       {COLUNAS_DISPONIVEIS.find((d) => d.key === c.key)?.label}
                     </th>
                   ))}
-                <th className="px-4 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -941,13 +941,6 @@ export default function LancamentosPage() {
                   onClick={() => setDetalhe(l)}
                   className="border-b border-black/5 last:border-0 hover:bg-surface/60 cursor-pointer"
                 >
-                  {colunas
-                    .filter((c) => c.visivel)
-                    .map((c) => (
-                      <td key={c.key} className="px-4 py-3">
-                        {renderCelulaLancamento(c.key, l, valorPagoDe(l), valorRestanteDe(l))}
-                      </td>
-                    ))}
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1.5">
                       <button
@@ -964,6 +957,13 @@ export default function LancamentosPage() {
                       </button>
                     </div>
                   </td>
+                  {colunas
+                    .filter((c) => c.visivel)
+                    .map((c) => (
+                      <td key={c.key} className="px-4 py-3">
+                        {renderCelulaLancamento(c.key, l, valorPagoDe(l), valorRestanteDe(l))}
+                      </td>
+                    ))}
                 </tr>
               ))}
             </tbody>
