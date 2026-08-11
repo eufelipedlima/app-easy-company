@@ -37,9 +37,15 @@ export function EsqueletoLista({ linhas = 4 }: { linhas?: number }) {
   );
 }
 
-export function EsqueletoGrade({ itens = 6 }: { itens?: number }) {
+export function EsqueletoGrade({
+  itens = 6,
+  colsClassName = "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
+}: {
+  itens?: number;
+  colsClassName?: string;
+}) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className={`grid ${colsClassName} gap-4`}>
       {Array.from({ length: itens }).map((_, i) => (
         <EsqueletoCard key={i} />
       ))}
