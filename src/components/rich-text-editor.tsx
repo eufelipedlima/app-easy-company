@@ -5,6 +5,26 @@ import { createClient } from "@/lib/supabase/client";
 
 const ALTURA_COLAPSADA = 130;
 
+const CORES_TEXTO = [
+  { nome: "Padrão", valor: "" },
+  { nome: "Vermelho", valor: "#e03131" },
+  { nome: "Laranja", valor: "#f08c00" },
+  { nome: "Verde", valor: "#2f9e44" },
+  { nome: "Azul", valor: "#1971c2" },
+  { nome: "Roxo", valor: "#7048e8" },
+  { nome: "Cinza", valor: "#868e96" },
+];
+
+const CORES_FUNDO = [
+  { nome: "Sem cor", valor: "" },
+  { nome: "Amarelo", valor: "#fff3bf" },
+  { nome: "Verde", valor: "#d3f9d8" },
+  { nome: "Azul", valor: "#d0ebff" },
+  { nome: "Rosa", valor: "#ffe3e3" },
+  { nome: "Roxo", valor: "#eee0ff" },
+  { nome: "Cinza", valor: "#eceef0" },
+];
+
 export function RichTextEditor({
   valorHtml,
   onChange,
@@ -23,8 +43,10 @@ export function RichTextEditor({
   const [recolhido, setRecolhido] = useState(false);
   const [transborda, setTransborda] = useState(false);
   const [enviandoImagem, setEnviandoImagem] = useState(false);
+  const [popoverAberto, setPopoverAberto] = useState<"texto" | "fundo" | null>(null);
   const montadoRef = useRef(false);
   const selecaoSalvaRef = useRef<Range | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!montadoRef.current && editorRef.current) {
@@ -34,6 +56,26 @@ export function RichTextEditor({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    // garante que foreColor/hiliteColor apliquem como estilo inline (necessário em alguns navegadores)
+    try {
+      document.execCommand("styleWithCSS", false, "true");
+    } catch {
+      // navegador não suporta, segue com o padrão
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!popoverAberto) return;
+    function aoClicarFora(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setPopoverAberto(null);
+      }
+    }
+    document.addEventListener("mousedown", aoClicarFora);
+    return () => document.removeEventListener("mousedown", aoClicarFora);
+  }, [popoverAberto]);
 
   function salvarSelecao() {
     const sel = window.getSelection();
@@ -66,7 +108,6 @@ export function RichTextEditor({
     if (!url) return;
     editorRef.current?.focus();
     document.execCommand("createLink", false, url);
-    // marca os links recém-criados pra abrir em nova aba
     editorRef.current?.querySelectorAll("a:not([target])").forEach((a) => {
       a.setAttribute("target", "_blank");
       a.setAttribute("rel", "noopener noreferrer");
@@ -93,7 +134,66 @@ export function RichTextEditor({
     setEnviandoImagem(false);
   }
 
+  function toggleChecklist() {
+    editorRef.current?.focus();
+    restaurarSelecao();
+    document.execCommand("insertUnorderedList", false);
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      let node: Node | null = sel.getRangeAt(0).commonAncestorContainer;
+      while (node && node !== editorRef.current) {
+        if (node instanceof HTMLUListElement) {
+          node.classList.add("checklist");
+          Array.from(node.children).forEach((li) => {
+            if (!(li as HTMLElement).hasAttribute("data-done")) {
+              (li as HTMLElement).setAttribute("data-done", "false");
+            }
+          });
+          break;
+        }
+        node = node.parentNode;
+      }
+    }
+    handleInput();
+  }
+
+  function aplicarCorTexto(cor: string) {
+    editorRef.current?.focus();
+    restaurarSelecao();
+    document.execCommand("foreColor", false, cor || "#02170b");
+    setPopoverAberto(null);
+    handleInput();
+  }
+
+  function aplicarCorFundo(cor: string) {
+    editorRef.current?.focus();
+    restaurarSelecao();
+    document.execCommand("hiliteColor", false, cor || "transparent");
+    setPopoverAberto(null);
+    handleInput();
+  }
+
+  function handleClickEditor(e: React.MouseEvent<HTMLDivElement>) {
+    const alvoLink = (e.target as HTMLElement).closest("a");
+    if (alvoLink) {
+      e.preventDefault();
+      window.open(alvoLink.getAttribute("href") ?? "#", "_blank", "noopener,noreferrer");
+      return;
+    }
+    const li = (e.target as HTMLElement).closest("ul.checklist > li") as HTMLElement | null;
+    if (li) {
+      const rect = li.getBoundingClientRect();
+      if (e.clientX - rect.left < 28) {
+        e.preventDefault();
+        const feito = li.getAttribute("data-done") === "true";
+        li.setAttribute("data-done", feito ? "false" : "true");
+        handleInput();
+      }
+    }
+  }
+
   const botao = "h-7 min-w-7 px-2 rounded-lg text-xs font-bold text-ink/60 hover:bg-surface transition-colors";
+  const divisor = <span className="w-px h-4 bg-black/10 mx-0.5" />;
 
   return (
     <div>
@@ -113,7 +213,16 @@ export function RichTextEditor({
         >
           U
         </button>
-        <span className="w-px h-4 bg-black/10 mx-0.5" />
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => exec("strikeThrough")}
+          className={`${botao} line-through`}
+          title="Tachado"
+        >
+          S
+        </button>
+        {divisor}
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
@@ -141,7 +250,117 @@ export function RichTextEditor({
         >
           Normal
         </button>
-        <span className="w-px h-4 bg-black/10 mx-0.5" />
+        {divisor}
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => exec("insertUnorderedList")}
+          className={botao}
+          title="Lista com marcadores"
+        >
+          • Lista
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => exec("insertOrderedList")}
+          className={botao}
+          title="Lista numerada"
+        >
+          1. Lista
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={toggleChecklist}
+          className={botao}
+          title="Checklist"
+        >
+          ☑ Check
+        </button>
+        {divisor}
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => exec("formatBlock", "BLOCKQUOTE")}
+          className={botao}
+          title="Citação"
+        >
+          " Citação
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => exec("formatBlock", "PRE")}
+          className={botao}
+          title="Bloco de código"
+        >
+          {"</>"}
+        </button>
+        {divisor}
+        <div className="relative">
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              salvarSelecao();
+            }}
+            onClick={() => setPopoverAberto((v) => (v === "texto" ? null : "texto"))}
+            className={botao}
+            title="Cor do texto"
+          >
+            Cor
+          </button>
+          {popoverAberto === "texto" && (
+            <div ref={popoverRef} className="absolute z-20 top-9 left-0 bg-white rounded-xl shadow-lg border border-black/10 p-2 flex gap-1.5">
+              {CORES_TEXTO.map((c) => (
+                <button
+                  key={c.valor || "padrao"}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => aplicarCorTexto(c.valor)}
+                  title={c.nome}
+                  className="w-6 h-6 rounded-full border border-black/10 flex items-center justify-center text-[10px] font-bold"
+                  style={{ backgroundColor: c.valor || "#ffffff", color: c.valor ? "#fff" : "#02170b" }}
+                >
+                  {!c.valor && "A"}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="relative">
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              salvarSelecao();
+            }}
+            onClick={() => setPopoverAberto((v) => (v === "fundo" ? null : "fundo"))}
+            className={botao}
+            title="Cor de fundo"
+          >
+            Fundo
+          </button>
+          {popoverAberto === "fundo" && (
+            <div ref={popoverRef} className="absolute z-20 top-9 left-0 bg-white rounded-xl shadow-lg border border-black/10 p-2 flex gap-1.5">
+              {CORES_FUNDO.map((c) => (
+                <button
+                  key={c.valor || "sem-cor"}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => aplicarCorFundo(c.valor)}
+                  title={c.nome}
+                  className="w-6 h-6 rounded-full border border-black/15 flex items-center justify-center text-[10px] font-bold text-ink/40"
+                  style={{ backgroundColor: c.valor || "#ffffff" }}
+                >
+                  {!c.valor && "✕"}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {divisor}
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
@@ -172,13 +391,7 @@ export function RichTextEditor({
         contentEditable
         onInput={handleInput}
         onBlur={onSalvar}
-        onClick={(e) => {
-          const alvo = (e.target as HTMLElement).closest("a");
-          if (alvo) {
-            e.preventDefault();
-            window.open(alvo.getAttribute("href") ?? "#", "_blank", "noopener,noreferrer");
-          }
-        }}
+        onClick={handleClickEditor}
         className={`rich-text-editor resize-none overflow-hidden ${semCaixa ? "rich-text-editor--livre" : "input"}`}
         style={recolhido && transborda ? { maxHeight: ALTURA_COLAPSADA, overflow: "hidden" } : undefined}
         data-placeholder={placeholder}
@@ -249,6 +462,73 @@ export function RichTextEditor({
           max-width: 100%;
           border-radius: 0.75rem;
           margin: 0.5em 0;
+        }
+        .rich-text-editor ul:not(.checklist) {
+          list-style: disc;
+          padding-left: 1.4em;
+          margin: 0.3em 0;
+        }
+        .rich-text-editor ol {
+          list-style: decimal;
+          padding-left: 1.4em;
+          margin: 0.3em 0;
+        }
+        .rich-text-editor ul:not(.checklist) li,
+        .rich-text-editor ol li {
+          margin: 0.15em 0;
+        }
+        .rich-text-editor blockquote {
+          border-left: 3px solid #143421;
+          padding: 0.15em 0 0.15em 1em;
+          margin: 0.5em 0;
+          color: rgba(2, 23, 11, 0.7);
+          font-style: italic;
+        }
+        .rich-text-editor pre {
+          background: rgba(2, 23, 11, 0.06);
+          border-radius: 0.6rem;
+          padding: 0.75em 1em;
+          margin: 0.5em 0;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-size: 0.85em;
+          white-space: pre-wrap;
+          overflow-x: auto;
+        }
+        .rich-text-editor ul.checklist {
+          list-style: none;
+          padding-left: 0;
+          margin: 0.3em 0;
+        }
+        .rich-text-editor ul.checklist li {
+          position: relative;
+          padding-left: 1.75rem;
+          margin: 0.25em 0;
+        }
+        .rich-text-editor ul.checklist li::before {
+          content: "";
+          position: absolute;
+          left: 0;
+          top: 0.15em;
+          width: 1.05rem;
+          height: 1.05rem;
+          border-radius: 0.3rem;
+          border: 1.5px solid rgba(2, 23, 11, 0.3);
+          background: #fff;
+          cursor: pointer;
+        }
+        .rich-text-editor ul.checklist li[data-done="true"] {
+          color: rgba(2, 23, 11, 0.4);
+          text-decoration: line-through;
+        }
+        .rich-text-editor ul.checklist li[data-done="true"]::before {
+          content: "✓";
+          background: #143421;
+          border-color: #143421;
+          color: #fff;
+          font-size: 0.75rem;
+          line-height: 1rem;
+          text-align: center;
+          text-decoration: none;
         }
       `}</style>
     </div>
