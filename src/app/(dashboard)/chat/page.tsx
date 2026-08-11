@@ -291,6 +291,7 @@ function renderizarMensagem(texto: string, todosOsNomes: string[]) {
 export default function ChatPage() {
   const [meuId, setMeuId] = useState<string | null>(null);
   const [meuNome, setMeuNome] = useState<string>("Você");
+  const [souAdmin, setSouAdmin] = useState(false);
   const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
   const [canais, setCanais] = useState<CanalComInfo[]>([]);
   const [canalAtivoId, setCanalAtivoId] = useState<string | null>(null);
@@ -353,6 +354,13 @@ export default function ChatPage() {
       return;
     }
     setMeuId(user.id);
+    const { data: perfilData } = await supabase
+      .from("funcionarios")
+      .select("perfis_acesso ( nome )")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+    const nomePerfil = (perfilData as unknown as { perfis_acesso: { nome: string } | null } | null)?.perfis_acesso?.nome;
+    setSouAdmin(nomePerfil === "Administrador");
 
     const { data: participacoes } = await supabase
       .from("chat_participantes")
@@ -828,13 +836,15 @@ export default function ChatPage() {
                 <span className="rounded-full bg-red-500 text-white text-xs font-bold px-2 py-0.5">{totalNaoLidas}</span>
               )}
             </div>
-            <button
-              onClick={() => setNovaConversaAberta(true)}
-              title="Nova conversa"
-              className="h-8 w-8 rounded-full bg-forest text-white flex items-center justify-center text-lg font-semibold hover:brightness-110 transition-colors"
-            >
-              +
-            </button>
+            {souAdmin && (
+              <button
+                onClick={() => setNovaConversaAberta(true)}
+                title="Nova conversa"
+                className="h-8 w-8 rounded-full bg-forest text-white flex items-center justify-center text-lg font-semibold hover:brightness-110 transition-colors"
+              >
+                +
+              </button>
+            )}
           </div>
           <input
             value={buscaConversa}
@@ -869,7 +879,11 @@ export default function ChatPage() {
             <p className="p-4 text-sm text-white/40">Carregando...</p>
           ) : canaisFiltrados.length === 0 ? (
             <p className="p-4 text-sm text-white/40">
-              {canais.length === 0 ? "Nenhuma conversa ainda. Comece uma nova!" : "Nenhuma conversa encontrada."}
+              {canais.length === 0
+                ? souAdmin
+                  ? "Nenhuma conversa ainda. Comece uma nova!"
+                  : "Nenhum chat disponível ainda. Peça pra um administrador te adicionar a uma conversa."
+                : "Nenhuma conversa encontrada."}
             </p>
           ) : (
             (() => {
@@ -1305,7 +1319,7 @@ export default function ChatPage() {
         )}
       </div>
 
-      {novaConversaAberta && (
+      {novaConversaAberta && souAdmin && (
         <NovaConversaModal
           colegas={colegas}
           onClose={() => setNovaConversaAberta(false)}

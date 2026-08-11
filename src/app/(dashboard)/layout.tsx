@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { tocarSomCaixaEntrada, tocarSomMensagemPrivada, tocarSomMensagemGrupo } from "@/lib/sons";
 import { Users, Users2, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle, UserCircle, Inbox, ListChecks, Home } from "lucide-react";
 
 interface SubItem {
@@ -145,6 +146,57 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
     verificarPerfilCompleto();
   }, [router]);
+
+  // Sons de notificação — tocam em qualquer tela do sistema, não só
+  // quando a pessoa está no Chat ou na Caixa de Entrada.
+  useEffect(() => {
+    let canalNotificacoes: ReturnType<ReturnType<typeof createClient>["channel"]> | null = null;
+    let canalMensagens: ReturnType<ReturnType<typeof createClient>["channel"]> | null = null;
+
+    async function iniciar() {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: participacoes } = await supabase
+        .from("chat_participantes")
+        .select("canal_id, chat_canais ( tipo )")
+        .eq("auth_user_id", user.id);
+      const tipoPorCanal = new Map<string, string>();
+      for (const p of (participacoes ?? []) as unknown as { canal_id: string; chat_canais: { tipo: string } | null }[]) {
+        if (p.chat_canais?.tipo) tipoPorCanal.set(p.canal_id, p.chat_canais.tipo);
+      }
+
+      canalNotificacoes = supabase
+        .channel("som-notificacoes")
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "notificacoes", filter: `destinatario_id=eq.${user.id}` },
+          () => tocarSomCaixaEntrada()
+        )
+        .subscribe();
+
+      canalMensagens = supabase
+        .channel("som-mensagens")
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_mensagens" }, (payload) => {
+          const nova = payload.new as { autor_id: string; canal_id: string };
+          if (nova.autor_id === user.id) return;
+          const tipo = tipoPorCanal.get(nova.canal_id);
+          if (!tipo) return;
+          if (tipo === "dm") tocarSomMensagemPrivada();
+          else tocarSomMensagemGrupo();
+        })
+        .subscribe();
+    }
+    iniciar();
+
+    return () => {
+      if (canalNotificacoes) createClient().removeChannel(canalNotificacoes);
+      if (canalMensagens) createClient().removeChannel(canalMensagens);
+    };
+  }, []);
 
   useEffect(() => {
     async function carregarPermissoes() {

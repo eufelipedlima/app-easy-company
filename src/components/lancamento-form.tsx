@@ -518,6 +518,39 @@ export function LancamentoForm({
         </button>
       </div>
 
+      <div className={`rounded-2xl p-3 ${situacao === "pago" ? "bg-mint" : "bg-surface"}`}>
+        <span className="block text-sm font-semibold text-ink mb-1.5">
+          {tipo === "receita" ? "Esse valor já entrou?" : tipo === "despesa" ? "Essa conta já foi paga?" : "Já foi feita?"}
+        </span>
+        <div className="flex items-center gap-1 rounded-full bg-white p-1 w-fit shadow-sm">
+          <button
+            type="button"
+            onClick={() => setSituacao("pendente")}
+            className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+              situacao === "pendente" ? "bg-ink text-white" : "text-ink/60"
+            }`}
+          >
+            Ainda não
+          </button>
+          <button
+            type="button"
+            onClick={() => setSituacao("pago")}
+            className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+              situacao === "pago" ? "bg-forest text-white" : "text-ink/60"
+            }`}
+          >
+            ✓ Já foi — dar baixa agora
+          </button>
+        </div>
+        {situacao === "pago" && (
+          <div className="mt-3">
+            <Campo label="Data de quitação" required>
+              <input type="date" required value={dataQuitacao} onChange={(e) => setDataQuitacao(e.target.value)} className="input" />
+            </Campo>
+          </div>
+        )}
+      </div>
+
       {tipo !== "transferencia" && (
         <div className="relative">
           <Busca
@@ -587,34 +620,6 @@ export function LancamentoForm({
             </span>
           )}
         </Campo>
-        <div>
-          <span className="block text-sm font-medium text-ink/70 mb-1">Situação</span>
-          <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
-            <button
-              type="button"
-              onClick={() => setSituacao("pendente")}
-              className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                situacao === "pendente" ? "bg-ink text-white" : "text-ink/60"
-              }`}
-            >
-              Pendente
-            </button>
-            <button
-              type="button"
-              onClick={() => setSituacao("pago")}
-              className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                situacao === "pago" ? "bg-forest text-white" : "text-ink/60"
-              }`}
-            >
-              Pago
-            </button>
-          </div>
-        </div>
-        {situacao === "pago" && (
-          <Campo label="Data de quitação" required>
-            <input type="date" required value={dataQuitacao} onChange={(e) => setDataQuitacao(e.target.value)} className="input" />
-          </Campo>
-        )}
       </div>
 
       {situacao === "pago" && tipo !== "transferencia" && (

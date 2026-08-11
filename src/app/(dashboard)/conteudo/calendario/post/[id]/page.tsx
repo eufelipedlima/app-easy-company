@@ -46,7 +46,7 @@ interface Post {
   titulo: string | null;
   legenda: string | null;
   observacoes_internas: string | null;
-  cliente_id: string;
+  cliente_id: string | null;
   objetivo: string | null;
   formato: string | null;
   status_id: string;

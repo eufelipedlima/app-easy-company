@@ -39,7 +39,7 @@ interface StatusItem {
 
 interface Post {
   id: string;
-  cliente_id: string;
+  cliente_id: string | null;
   titulo: string | null;
   data_publicacao: string;
   data_inicio: string | null;
@@ -486,7 +486,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
     const { data: novo, error } = await supabase
       .from("posts_conteudo")
       .insert({
-        cliente_id: clienteFiltroId && clienteFiltroId !== "internas" ? clienteFiltroId : clientes[0]?.id ?? null,
+        cliente_id: clienteFiltroId && clienteFiltroId !== "internas" ? clienteFiltroId : null,
         data_publicacao: dataISO,
         status_id: statusList[0]?.id,
       })
@@ -552,7 +552,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
+    <main className="mx-auto max-w-[2000px] px-6 py-6">
       <div className="mb-4">
         <h1 className="text-lg font-extrabold text-ink">Conteúdos</h1>
         <p className="text-xs text-ink/50">Visão centralizada de todos os conteúdos.</p>
@@ -1887,7 +1887,7 @@ function KanbanColuna({
   return (
     <div
       ref={setNodeRef}
-      className={`w-72 shrink-0 rounded-3xl border-2 p-3 min-h-[60vh] transition-all duration-150 ${cor.colBg} ${
+      className={`w-72 shrink-0 rounded-3xl border-2 p-3 min-h-[75vh] transition-all duration-150 ${cor.colBg} ${
         isOver ? `${cor.colBorder} scale-[1.02] shadow-lg` : "border-transparent"
       }`}
     >
@@ -1896,7 +1896,7 @@ function KanbanColuna({
         <p className="text-sm font-bold text-ink truncate">{coluna.nome}</p>
         <span className={`ml-auto text-xs font-bold rounded-full px-2 py-0.5 shrink-0 ${cor.cor}`}>{cards.length}</span>
       </div>
-      <div data-coluna-scroll className="space-y-2 min-h-[80px] max-h-[65vh] overflow-y-auto pr-1">
+      <div data-coluna-scroll className="space-y-2 min-h-[80px] max-h-[75vh] overflow-y-auto pr-1">
         {cards.map((p) => (
           <KanbanCardArrastavel
             key={p.id}

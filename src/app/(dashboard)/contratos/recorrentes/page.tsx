@@ -1159,7 +1159,20 @@ function ContratoRecorrenteForm({
         }
 
         if (gerarCentralClientes) {
-          await supabase.from("clientes").update({ ativo_central_clientes: true }).eq("id", clienteId);
+          const { data: clienteAtualizado, error: erroAtivarCentral } = await supabase
+            .from("clientes")
+            .update({ ativo_central_clientes: true })
+            .eq("id", clienteId)
+            .select("id")
+            .maybeSingle();
+          if (erroAtivarCentral) {
+            throw new Error(`Contrato salvo, mas não consegui ativar a Central de Clientes: ${erroAtivarCentral.message}`);
+          }
+          if (!clienteAtualizado) {
+            throw new Error(
+              "Contrato salvo, mas não encontrei o cadastro do cliente pra ativar a Central de Clientes. Ativa manualmente pelo botão \"+ Adicionar cliente\" na Central."
+            );
+          }
         }
 
         // Gera os lançamentos automaticamente. Em contratos normais: entrada (se houver) +

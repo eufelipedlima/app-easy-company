@@ -541,7 +541,7 @@ export default function TarefasPage() {
   };
 
   return (
-    <main className="mx-auto max-w-7xl px-6 py-10">
+    <main className="mx-auto max-w-[2000px] px-6 py-6">
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-extrabold text-ink mb-1">Tarefas e Projetos</h1>
@@ -906,7 +906,7 @@ function TarefasColuna({
         <p className="text-sm font-bold text-ink truncate">{coluna.nome}</p>
         <span className={`ml-auto text-xs font-bold rounded-full px-2 py-0.5 shrink-0 ${cor.cor}`}>{cards.length}</span>
       </div>
-      <div data-coluna-scroll className="space-y-2 min-h-[80px] max-h-[65vh] overflow-y-auto pr-1">
+      <div data-coluna-scroll className="space-y-2 min-h-[80px] max-h-[75vh] overflow-y-auto pr-1">
         {cards.map((t) => (
           <TarefaCardArrastavel
             key={t.id}
