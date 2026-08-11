@@ -160,6 +160,32 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     carregarPermissoes();
   }, []);
 
+  // Trava de verdade: mesmo digitando o link direto, quem não tem
+  // permissão pra área é mandado de volta pro Início — não é só
+  // esconder do menu, o acesso à página em si fica bloqueado.
+  const PREFIXO_PARA_AREA: Record<string, string> = {
+    "/financeiro": "financeiro",
+    "/contratos": "contratos",
+    "/conteudo": "conteudo",
+    "/pessoas": "pessoas",
+    "/configuracoes": "configuracoes",
+    "/tarefas": "tarefas",
+    "/docs": "docs",
+    "/equipe": "equipe",
+  };
+  useEffect(() => {
+    if (!permissoes || !pathname) return;
+    const prefixo = Object.keys(PREFIXO_PARA_AREA).find((p) => pathname.startsWith(p));
+    if (prefixo && permissoes[PREFIXO_PARA_AREA[prefixo]] === "nenhum") {
+      router.replace("/inicio");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permissoes, pathname]);
+
+  const acessoBloqueado =
+    !!permissoes &&
+    !!Object.keys(PREFIXO_PARA_AREA).find((p) => pathname?.startsWith(p) && permissoes[PREFIXO_PARA_AREA[p]] === "nenhum");
+
   const menuVisivel = MENU.filter((grupo) => !grupo.areaSlug || !permissoes || permissoes[grupo.areaSlug] !== "nenhum");
 
   const [chatNaoLidas, setChatNaoLidas] = useState(0);
@@ -480,7 +506,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0 h-full overflow-y-auto">{children}</div>
+      <div className="flex-1 min-w-0 h-full overflow-y-auto">{acessoBloqueado ? null : children}</div>
     </div>
   );
 }

@@ -22,6 +22,7 @@ export interface Lancamento {
   numero_parcela: number | null;
   total_parcelas: number | null;
   grupo_id: string | null;
+  grupo: string | null;
   recorrencia_tipo: "mensal" | "semanal" | "anual" | null;
   clientes: { papeis: { pessoas: { id: string; nome: string; pix: string | null; tipo_pessoa: "PF" | "PJ" } | null } | null } | null;
   pessoas: { id: string; nome: string; pix: string | null; tipo_pessoa: "PF" | "PJ" } | null;
@@ -111,6 +112,8 @@ export function LancamentoForm({
 
   const [descricao, setDescricao] = useState(lancamentoEditando?.descricao ?? "");
   const [valor, setValor] = useState(lancamentoEditando ? String(lancamentoEditando.valor) : "");
+  const [grupo, setGrupo] = useState(lancamentoEditando?.grupo ?? "");
+  const [gruposExistentes, setGruposExistentes] = useState<string[]>([]);
   const [situacao, setSituacao] = useState<"pendente" | "pago">(lancamentoEditando?.situacao ?? "pendente");
   const hojeISOForm = new Date().toISOString().slice(0, 10);
   const [dataVencimento, setDataVencimento] = useState(lancamentoEditando?.data_vencimento ?? hojeISOForm);
@@ -130,16 +133,18 @@ export function LancamentoForm({
   useEffect(() => {
     async function carregarTudo() {
       const supabase = createClient();
-      const [{ data: p }, { data: b }, { data: pc }, { data: s }] = await Promise.all([
+      const [{ data: p }, { data: b }, { data: pc }, { data: s }, { data: gruposData }] = await Promise.all([
         supabase.from("pessoas").select("id, nome, tipo_pessoa").order("nome"),
         supabase.from("bancos").select("id, nome").eq("ativo", true).order("nome"),
         supabase.from("planos_conta").select("id, nome, tipo").order("nome"),
         supabase.from("servicos").select("id, nome, plano_conta_id").order("nome"),
+        supabase.from("lancamentos").select("grupo").not("grupo", "is", null),
       ]);
       setPessoas(p ?? []);
       setBancos(b ?? []);
       setPlanosConta((pc as PlanoContaOpcao[]) ?? []);
       setServicos((s as { id: string; nome: string; plano_conta_id: string | null }[]) ?? []);
+      setGruposExistentes(Array.from(new Set((gruposData ?? []).map((g) => g.grupo).filter((g): g is string => !!g))).sort());
 
       if (lancamentoEditando?.banco_id) {
         const banco = b?.find((x) => x.id === lancamentoEditando.banco_id);
@@ -300,6 +305,7 @@ export function LancamentoForm({
         plano_conta_id: tipo === "transferencia" ? null : planoContaFinalId,
         servico_id: tipo === "receita" ? servicoFinalId : null,
         pessoa_id: tipo === "transferencia" ? null : pessoaSelecionada?.id ?? null,
+        grupo: tipo === "transferencia" ? null : grupo.trim() || null,
         ...(clienteId ? { cliente_id: clienteId } : {}),
       };
 
@@ -341,6 +347,7 @@ export function LancamentoForm({
             banco_id: bancoFinalId,
             plano_conta_id: planoContaFinalId,
             data_inicio: dataVencimento,
+            grupo: grupo.trim() || null,
           })
           .select("id")
           .single();
@@ -866,6 +873,24 @@ export function LancamentoForm({
             </ListaSugestoes>
           )}
         </div>
+      )}
+
+      {tipo !== "transferencia" && (
+        <label className="block">
+          <span className="block text-sm font-medium text-ink/70 mb-1">Grupo (opcional)</span>
+          <input
+            value={grupo}
+            onChange={(e) => setGrupo(e.target.value)}
+            list="grupos-lancamento"
+            className="input"
+            placeholder="Ex: Cartão de Crédito"
+          />
+          <datalist id="grupos-lancamento">
+            {gruposExistentes.map((g) => (
+              <option key={g} value={g} />
+            ))}
+          </datalist>
+        </label>
       )}
 
       {erro && <p className="text-sm text-red-600">{erro}</p>}

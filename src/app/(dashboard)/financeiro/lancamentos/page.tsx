@@ -198,6 +198,12 @@ function renderCelulaLancamento(key: string, l: Lancamento, valorPago: number, v
       return <span className="text-ink/70">{l.bancos?.nome ?? "—"}</span>;
     case "plano_conta":
       return <span className="text-ink/70">{l.planos_conta?.nome ?? "—"}</span>;
+    case "grupo":
+      return l.grupo ? (
+        <span className="inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold bg-surface text-ink/60">{l.grupo}</span>
+      ) : (
+        <span className="text-ink/30">—</span>
+      );
     case "situacao":
       return (
         <span
@@ -233,6 +239,7 @@ const COLUNAS_DISPONIVEIS: ColunaDef[] = [
   { key: "quitacao", label: "Quitação" },
   { key: "banco", label: "Banco" },
   { key: "plano_conta", label: "Plano de conta" },
+  { key: "grupo", label: "Grupo" },
   { key: "situacao", label: "Situação" },
   { key: "codigo", label: "Código" },
 ];
@@ -243,6 +250,11 @@ const LINHAS_POR_PAGINA_OPCOES = [10, 25, 50, 100];
 
 export default function LancamentosPage() {
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [painelPagamentoLoteAberto, setPainelPagamentoLoteAberto] = useState(false);
+  const [bancoLote, setBancoLote] = useState("");
+  const [dataLote, setDataLote] = useState("");
+  const [salvandoLote, setSalvandoLote] = useState(false);
   const [pagamentosPorLancamento, setPagamentosPorLancamento] = useState<Record<string, number>>({});
 
   const [colunas, setColunas] = useState<{ key: string; visivel: boolean }[]>(COLUNAS_PADRAO);
@@ -367,6 +379,44 @@ export default function LancamentosPage() {
     carregar();
   }
 
+  const lancamentosSelecionados = lancamentos.filter((l) => selecionados.has(l.id) && l.situacao === "pendente");
+  const totalSelecionado = lancamentosSelecionados.reduce((s, l) => s + valorRestanteDe(l), 0);
+
+  function alternarSelecao(id: string) {
+    setSelecionados((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(id)) novo.delete(id);
+      else novo.add(id);
+      return novo;
+    });
+  }
+
+  async function confirmarPagamentoLote(e: React.FormEvent) {
+    e.preventDefault();
+    if (!dataLote) return;
+    setSalvandoLote(true);
+    const supabase = createClient();
+
+    for (const l of lancamentosSelecionados) {
+      const restante = valorRestanteDe(l);
+      if (restante <= 0) continue;
+      await supabase.from("lancamento_pagamentos").insert({
+        lancamento_id: l.id,
+        data_pagamento: dataLote,
+        banco_id: bancoLote || null,
+        valor: restante,
+      });
+      await supabase.from("lancamentos").update({ situacao: "pago", data_quitacao: dataLote }).eq("id", l.id);
+    }
+
+    setSalvandoLote(false);
+    setPainelPagamentoLoteAberto(false);
+    setSelecionados(new Set());
+    setBancoLote("");
+    setDataLote("");
+    carregar();
+  }
+
   async function removerPagamento(id: string) {
     if (!detalhe) return;
     if (!window.confirm("Excluir este registro de pagamento?")) return;
@@ -395,6 +445,7 @@ export default function LancamentosPage() {
   const [filtroBancoId, setFiltroBancoId] = useState("");
   const [filtroValor, setFiltroValor] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<"" | "receita" | "despesa" | "transferencia">("");
+  const [filtroGrupo, setFiltroGrupo] = useState("");
 
   function limparFiltrosAvancados() {
     setFiltroCliente("");
@@ -415,7 +466,7 @@ export default function LancamentosPage() {
       .from("lancamentos")
       .select(
         `id, descricao, valor, tipo, situacao, data_vencimento, data_quitacao, data_competencia, codigo_transacao,
-         banco_id, banco_destino_id, plano_conta_id, servico_id, numero_parcela, total_parcelas, recorrencia_tipo, grupo_id,
+         banco_id, banco_destino_id, plano_conta_id, servico_id, numero_parcela, total_parcelas, recorrencia_tipo, grupo_id, grupo,
          clientes ( papeis ( pessoas ( id, nome, pix, tipo_pessoa ) ) ),
          pessoas ( id, nome, pix, tipo_pessoa ),
          bancos:banco_id ( nome ),
@@ -514,6 +565,7 @@ export default function LancamentosPage() {
   const filtrados = lancamentosDoPeriodo
     .filter((l) => filtro === "todos" || l.situacao === filtro)
     .filter((l) => !filtroTipo || l.tipo === filtroTipo)
+    .filter((l) => !filtroGrupo || l.grupo === filtroGrupo)
     .filter(
       (l) =>
         !filtroCliente ||
@@ -539,7 +591,7 @@ export default function LancamentosPage() {
 
   useEffect(() => {
     setPaginaAtual(1);
-  }, [filtro, presetPeriodo, periodoPersonalizado.inicio, periodoPersonalizado.fim, filtroTipo, filtroCliente, filtroDescricao, filtroPlanoContaId, filtroBancoId, filtroValor]);
+  }, [filtro, presetPeriodo, periodoPersonalizado.inicio, periodoPersonalizado.fim, filtroTipo, filtroGrupo, filtroCliente, filtroDescricao, filtroPlanoContaId, filtroBancoId, filtroValor]);
 
   function somar(lista: Lancamento[], tipo: "receita" | "despesa") {
     return lista.filter((l) => l.tipo === tipo).reduce((soma, l) => soma + l.valor, 0);
@@ -786,6 +838,18 @@ export default function LancamentosPage() {
                 <option value="transferencia">Transferências</option>
               </select>
             </CampoEscuro>
+            <CampoEscuro label="Grupo">
+              <select value={filtroGrupo} onChange={(e) => setFiltroGrupo(e.target.value)} className="input-escuro">
+                <option value="">Todos</option>
+                {Array.from(new Set(lancamentos.map((l) => l.grupo).filter((g): g is string => !!g)))
+                  .sort()
+                  .map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+              </select>
+            </CampoEscuro>
             <CampoEscuro label="Situação do lançamento">
               <select value={filtro} onChange={(e) => setFiltro(e.target.value as Filtro)} className="input-escuro">
                 <option value="todos">Todas</option>
@@ -924,6 +988,21 @@ export default function LancamentosPage() {
           <table className="w-full text-sm whitespace-nowrap">
             <thead>
               <tr className="text-left text-ink/50 border-b border-black/5">
+                <th className="px-4 py-3 font-medium w-8">
+                  <input
+                    type="checkbox"
+                    checked={paginados.length > 0 && paginados.every((l) => selecionados.has(l.id))}
+                    onChange={(e) => {
+                      setSelecionados((atual) => {
+                        const novo = new Set(atual);
+                        if (e.target.checked) paginados.forEach((l) => novo.add(l.id));
+                        else paginados.forEach((l) => novo.delete(l.id));
+                        return novo;
+                      });
+                    }}
+                    className="h-4 w-4 rounded accent-forest"
+                  />
+                </th>
                 <th className="px-4 py-3 font-medium"></th>
                 {colunas
                   .filter((c) => c.visivel)
@@ -932,6 +1011,7 @@ export default function LancamentosPage() {
                       {COLUNAS_DISPONIVEIS.find((d) => d.key === c.key)?.label}
                     </th>
                   ))}
+                <th className="px-4 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -942,20 +1022,20 @@ export default function LancamentosPage() {
                   className="border-b border-black/5 last:border-0 hover:bg-surface/60 cursor-pointer"
                 >
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => clicarEditar(l)}
-                        className="rounded-full px-3 py-1.5 text-xs font-bold bg-forest text-white hover:bg-ink transition-colors shadow-sm"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => clicarExcluir(l)}
-                        className="rounded-full px-2.5 py-1.5 text-xs font-semibold text-ink/40 hover:text-red-600 transition-colors"
-                      >
-                        Excluir
-                      </button>
-                    </div>
+                    <input
+                      type="checkbox"
+                      checked={selecionados.has(l.id)}
+                      onChange={() => alternarSelecao(l.id)}
+                      className="h-4 w-4 rounded accent-forest"
+                    />
+                  </td>
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => clicarEditar(l)}
+                      className="rounded-full px-3 py-1.5 text-xs font-bold bg-forest text-white hover:bg-ink transition-colors shadow-sm"
+                    >
+                      Editar
+                    </button>
                   </td>
                   {colunas
                     .filter((c) => c.visivel)
@@ -964,6 +1044,14 @@ export default function LancamentosPage() {
                         {renderCelulaLancamento(c.key, l, valorPagoDe(l), valorRestanteDe(l))}
                       </td>
                     ))}
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => clicarExcluir(l)}
+                      className="rounded-full px-2.5 py-1.5 text-xs font-semibold text-ink/40 hover:text-red-600 transition-colors"
+                    >
+                      Excluir
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1244,6 +1332,89 @@ export default function LancamentosPage() {
             >
               Excluir lançamento
             </button>
+          </div>
+        </div>
+      )}
+
+      {selecionados.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 rounded-full bg-ink text-white shadow-2xl px-5 py-3 flex items-center gap-4">
+          <span className="text-sm font-semibold">
+            {selecionados.size} {selecionados.size === 1 ? "lançamento selecionado" : "lançamentos selecionados"}
+            {totalSelecionado > 0 && <span className="text-white/60"> · {formatarMoeda(totalSelecionado)}</span>}
+          </span>
+          <div className="flex items-center gap-2">
+            {selecionados.size === 1 && (
+              <button
+                onClick={() => {
+                  const l = lancamentos.find((x) => selecionados.has(x.id));
+                  if (l) clicarEditar(l);
+                }}
+                className="rounded-full border border-white/20 px-4 py-1.5 text-xs font-bold hover:bg-white/10 transition-colors"
+              >
+                Editar
+              </button>
+            )}
+            {lancamentosSelecionados.length > 0 && (
+              <button
+                onClick={() => {
+                  setDataLote(new Date().toISOString().slice(0, 10));
+                  setPainelPagamentoLoteAberto(true);
+                }}
+                className="rounded-full bg-forest px-4 py-1.5 text-xs font-bold hover:brightness-110 transition"
+              >
+                💰 Lançar pagamento
+              </button>
+            )}
+            <button
+              onClick={() => setSelecionados(new Set())}
+              className="rounded-full border border-white/20 px-4 py-1.5 text-xs font-bold hover:bg-white/10 transition-colors"
+            >
+              Limpar seleção
+            </button>
+          </div>
+        </div>
+      )}
+
+      {painelPagamentoLoteAberto && (
+        <div className="fixed inset-0 z-40 bg-ink/50 flex items-center justify-center p-6" onClick={() => setPainelPagamentoLoteAberto(false)}>
+          <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-ink mb-1">Lançar pagamento em lote</h2>
+            <p className="text-xs text-ink/50 mb-5">
+              {lancamentosSelecionados.length} {lancamentosSelecionados.length === 1 ? "lançamento" : "lançamentos"} pendente
+              {lancamentosSelecionados.length === 1 ? "" : "s"} · total de {formatarMoeda(totalSelecionado)}
+            </p>
+            <form onSubmit={confirmarPagamentoLote} className="space-y-4">
+              <label className="block">
+                <span className="block text-sm font-medium text-ink/70 mb-1">Data do pagamento</span>
+                <input type="date" required value={dataLote} onChange={(e) => setDataLote(e.target.value)} className="input" />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium text-ink/70 mb-1">Banco</span>
+                <select value={bancoLote} onChange={(e) => setBancoLote(e.target.value)} className="input">
+                  <option value="">Selecione...</option>
+                  {bancosOpcoesPagamento.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.nome}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="text-xs text-ink/40">
+                Cada lançamento é quitado pelo valor restante dele (considerando pagamentos parciais já feitos).
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={salvandoLote}
+                  className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+                >
+                  {salvandoLote ? "Salvando..." : "Confirmar pagamento"}
+                </button>
+                <button type="button" onClick={() => setPainelPagamentoLoteAberto(false)} className="text-sm font-semibold text-ink/60 hover:text-ink">
+                  Cancelar
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
