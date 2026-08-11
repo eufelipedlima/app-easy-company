@@ -25,21 +25,7 @@ function corAvatar(nome: string) {
   return CORES_AVATAR[Math.abs(hash) % CORES_AVATAR.length];
 }
 
-const GRADIENTES = [
-  "from-orange-300 via-amber-200 to-yellow-200",
-  "from-fuchsia-300 via-pink-200 to-rose-200",
-  "from-yellow-200 via-lime-200 to-emerald-200",
-  "from-sky-300 via-cyan-200 to-teal-200",
-  "from-rose-300 via-orange-200 to-amber-100",
-  "from-violet-300 via-purple-200 to-fuchsia-200",
-  "from-emerald-300 via-teal-200 to-cyan-200",
-  "from-indigo-300 via-blue-200 to-sky-200",
-];
-function gradienteCliente(nome: string) {
-  let hash = 0;
-  for (let i = 0; i < nome.length; i++) hash = (hash * 31 + nome.charCodeAt(i)) % GRADIENTES.length;
-  return GRADIENTES[Math.abs(hash) % GRADIENTES.length];
-}
+const GRID_COLS = "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
 
 export default function CentralClientesPage() {
   const router = useRouter();
@@ -114,7 +100,7 @@ export default function CentralClientesPage() {
   const filtrados = clientes.filter((c) => normalizar(c.nome).includes(normalizar(busca)));
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
+    <main className="w-full px-6 sm:px-8 lg:px-12 py-10">
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-extrabold text-ink mb-1">Central de Clientes</h1>
@@ -138,11 +124,11 @@ export default function CentralClientesPage() {
       />
 
       {loading ? (
-        <EsqueletoGrade itens={6} />
+        <EsqueletoGrade itens={10} colsClassName={GRID_COLS} />
       ) : filtrados.length === 0 ? (
         <EstadoVazio emoji="🔍" titulo="Nenhum cliente encontrado" descricao="Tenta buscar por outro nome." />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className={`grid ${GRID_COLS} gap-5`}>
           {filtrados.map((c) => {
             const contagem = contagemPorCliente[c.id] ?? {};
             const statusComItens = statusList.filter((s) => contagem[s.id]);
@@ -150,17 +136,24 @@ export default function CentralClientesPage() {
               <button
                 key={c.id}
                 onClick={() => router.push(`/central-clientes/${c.id}`)}
-                className="group text-left rounded-3xl bg-card border border-black/5 overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
+                className="group text-left rounded-3xl bg-card border border-black/5 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
               >
-                <div className={`h-16 bg-gradient-to-br ${gradienteCliente(c.nome)}`} />
+                <div className="relative h-20 overflow-hidden bg-gradient-to-br from-forest via-ink to-forest">
+                  <div className="absolute -right-6 -top-10 h-32 w-32 rounded-full bg-mint/30 blur-2xl transition-all duration-500 ease-out group-hover:scale-125 group-hover:-right-2 group-hover:-top-6" />
+                  <div className="absolute -left-8 bottom-[-3rem] h-24 w-24 rounded-full bg-mint/10 blur-2xl transition-all duration-500 ease-out group-hover:scale-125 group-hover:bottom-[-2rem]" />
+                </div>
                 <div className="px-4 pb-4">
-                  <div className="-mt-8 mb-2 flex items-end justify-between">
+                  <div className="-mt-9 mb-2 flex items-end justify-between">
                     {c.fotoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.fotoUrl} alt={c.nome} className="h-16 w-16 rounded-2xl object-cover ring-4 ring-white shadow-sm" />
+                      <img
+                        src={c.fotoUrl}
+                        alt={c.nome}
+                        className="h-16 w-16 rounded-2xl object-cover ring-4 ring-white shadow-sm transition-transform duration-300 group-hover:scale-105"
+                      />
                     ) : (
                       <div
-                        className={`h-16 w-16 rounded-2xl ${corAvatar(c.nome)} text-white flex items-center justify-center font-bold text-xl ring-4 ring-white shadow-sm shrink-0`}
+                        className={`h-16 w-16 rounded-2xl ${corAvatar(c.nome)} text-white flex items-center justify-center font-bold text-xl ring-4 ring-white shadow-sm shrink-0 transition-transform duration-300 group-hover:scale-105`}
                       >
                         {c.nome.slice(0, 2).toUpperCase()}
                       </div>
