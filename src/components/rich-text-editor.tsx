@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 const ALTURA_COLAPSADA = 130;
@@ -25,6 +25,24 @@ const CORES_FUNDO = [
   { nome: "Cinza", valor: "#eceef0" },
 ];
 
+type ComandoItem = {
+  id: string;
+  icone: string;
+  label: string;
+  descricao: string;
+  palavras: string[];
+  executar: () => void;
+};
+
+type EstadoMenu = {
+  textNode: Text;
+  inicio: number;
+  fim: number;
+  query: string;
+  top: number;
+  left: number;
+};
+
 export function RichTextEditor({
   valorHtml,
   onChange,
@@ -38,12 +56,16 @@ export function RichTextEditor({
   placeholder?: string;
   semCaixa?: boolean;
 }) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const inputArquivoRef = useRef<HTMLInputElement>(null);
   const [recolhido, setRecolhido] = useState(false);
   const [transborda, setTransborda] = useState(false);
   const [enviandoImagem, setEnviandoImagem] = useState(false);
   const [popoverAberto, setPopoverAberto] = useState<"texto" | "fundo" | null>(null);
+  const [toolbarAberta, setToolbarAberta] = useState(false);
+  const [menu, setMenu] = useState<EstadoMenu | null>(null);
+  const [indiceSelecionado, setIndiceSelecionado] = useState(0);
   const montadoRef = useRef(false);
   const selecaoSalvaRef = useRef<Range | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -58,7 +80,6 @@ export function RichTextEditor({
   }, []);
 
   useEffect(() => {
-    // garante que foreColor/hiliteColor apliquem como estilo inline (necessário em alguns navegadores)
     try {
       document.execCommand("styleWithCSS", false, "true");
     } catch {
@@ -96,10 +117,57 @@ export function RichTextEditor({
     handleInput();
   }
 
+  function fecharMenu() {
+    setMenu(null);
+    setIndiceSelecionado(0);
+  }
+
+  function verificarComandoBarra() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) {
+      fecharMenu();
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const node = range.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE || !editorRef.current?.contains(node)) {
+      fecharMenu();
+      return;
+    }
+    const texto = node.textContent || "";
+    const offset = range.startOffset;
+    const antes = texto.slice(0, offset);
+    const match = antes.match(/(?:^|\s)\/(\w{0,24})$/);
+    if (!match) {
+      fecharMenu();
+      return;
+    }
+    const query = match[1];
+    const inicioSlash = offset - query.length - 1;
+
+    const rangePos = document.createRange();
+    rangePos.setStart(node, inicioSlash);
+    rangePos.setEnd(node, offset);
+    const rect = rangePos.getBoundingClientRect();
+    const wrapperRect = wrapperRef.current?.getBoundingClientRect();
+    if (!wrapperRect) return;
+
+    setMenu({
+      textNode: node as Text,
+      inicio: inicioSlash,
+      fim: offset,
+      query,
+      top: rect.bottom - wrapperRect.top + 6,
+      left: Math.min(rect.left - wrapperRect.left, wrapperRect.width - 232),
+    });
+    setIndiceSelecionado(0);
+  }
+
   function handleInput() {
     if (!editorRef.current) return;
     onChange(editorRef.current.innerHTML);
     setTransborda(editorRef.current.scrollHeight > ALTURA_COLAPSADA + 20);
+    verificarComandoBarra();
   }
 
   function inserirLink() {
@@ -192,205 +260,220 @@ export function RichTextEditor({
     }
   }
 
-  const botao = "h-7 min-w-7 px-2 rounded-lg text-xs font-bold text-ink/60 hover:bg-surface transition-colors";
+  const itensComando: ComandoItem[] = useMemo(
+    () => [
+      { id: "titulo", icone: "H1", label: "Título", descricao: "Título grande de seção", palavras: ["titulo", "h1", "h2"], executar: () => exec("formatBlock", "H2") },
+      { id: "subtitulo", icone: "H2", label: "Subtítulo", descricao: "Título menor", palavras: ["subtitulo", "h3"], executar: () => exec("formatBlock", "H3") },
+      { id: "texto", icone: "P", label: "Texto normal", descricao: "Parágrafo comum", palavras: ["texto", "normal", "paragrafo"], executar: () => exec("formatBlock", "P") },
+      { id: "marcadores", icone: "•", label: "Lista com marcadores", descricao: "Lista simples com bolinhas", palavras: ["lista", "marcadores", "bullet"], executar: () => exec("insertUnorderedList") },
+      { id: "numerada", icone: "1.", label: "Lista numerada", descricao: "Lista em ordem", palavras: ["lista", "numerada", "numero", "ordenada"], executar: () => exec("insertOrderedList") },
+      { id: "checklist", icone: "☑", label: "Checklist", descricao: "Lista de tarefas marcável", palavras: ["checklist", "check", "tarefa", "todo"], executar: () => toggleChecklist() },
+      { id: "citacao", icone: "❝", label: "Citação", descricao: "Bloco de citação com destaque", palavras: ["citacao", "quote"], executar: () => exec("formatBlock", "BLOCKQUOTE") },
+      { id: "codigo", icone: "</>", label: "Bloco de código", descricao: "Texto em fonte monoespaçada", palavras: ["codigo", "code"], executar: () => exec("formatBlock", "PRE") },
+      { id: "divisoria", icone: "―", label: "Linha divisória", descricao: "Separa seções do texto", palavras: ["divisoria", "linha", "separador"], executar: () => exec("insertHorizontalRule") },
+      { id: "link", icone: "🔗", label: "Link", descricao: "Inserir um link", palavras: ["link", "url"], executar: () => inserirLink() },
+      { id: "imagem", icone: "🖼️", label: "Imagem", descricao: "Enviar uma imagem", palavras: ["imagem", "foto", "upload"], executar: () => inputArquivoRef.current?.click() },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  const itensFiltrados = useMemo(() => {
+    if (!menu) return [];
+    const q = menu.query.toLowerCase();
+    if (!q) return itensComando;
+    return itensComando.filter((i) => i.label.toLowerCase().includes(q) || i.palavras.some((p) => p.startsWith(q)));
+  }, [menu, itensComando]);
+
+  function executarComando(item: ComandoItem) {
+    if (!menu) return;
+    const range = document.createRange();
+    range.setStart(menu.textNode, menu.inicio);
+    range.setEnd(menu.textNode, menu.fim);
+    range.deleteContents();
+    range.collapse(true);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    salvarSelecao();
+    fecharMenu();
+    editorRef.current?.focus();
+    item.executar();
+  }
+
+  function handleKeyDownEditor(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (!menu) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setIndiceSelecionado((i) => Math.min(i + 1, Math.max(itensFiltrados.length - 1, 0)));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setIndiceSelecionado((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      if (itensFiltrados[indiceSelecionado]) {
+        e.preventDefault();
+        executarComando(itensFiltrados[indiceSelecionado]);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      fecharMenu();
+    }
+  }
+
+  const botao = "h-7 min-w-7 px-2 rounded-lg text-xs font-bold text-ink/60 hover:bg-white transition-colors";
   const divisor = <span className="w-px h-4 bg-black/10 mx-0.5" />;
 
   return (
-    <div>
-      <div className="flex items-center gap-0.5 mb-2 rounded-full bg-surface w-fit p-1 flex-wrap">
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("bold")} className={botao} title="Negrito">
-          B
-        </button>
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("italic")} className={`${botao} italic`} title="Itálico">
-          I
-        </button>
+    <div ref={wrapperRef} className="relative">
+      <div className="flex items-center gap-2 mb-2">
         <button
           type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => exec("underline")}
-          className={`${botao} underline`}
-          title="Sublinhado"
+          onClick={() => setToolbarAberta((v) => !v)}
+          className="h-7 px-2.5 rounded-lg text-xs font-semibold bg-surface text-ink/60 hover:text-ink hover:bg-surface/80 transition-colors inline-flex items-center gap-1"
+          title="Mostrar/ocultar opções de formatação"
         >
-          U
+          Aa Formatar
+          <span className={`text-[10px] transition-transform duration-150 ${toolbarAberta ? "rotate-180" : ""}`}>▾</span>
         </button>
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => exec("strikeThrough")}
-          className={`${botao} line-through`}
-          title="Tachado"
-        >
-          S
-        </button>
-        {divisor}
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => exec("formatBlock", "H2")}
-          className={botao}
-          title="Título"
-        >
-          Título
-        </button>
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => exec("formatBlock", "H3")}
-          className={botao}
-          title="Subtítulo"
-        >
-          Subtítulo
-        </button>
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => exec("formatBlock", "P")}
-          className={botao}
-          title="Texto normal"
-        >
-          Normal
-        </button>
-        {divisor}
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => exec("insertUnorderedList")}
-          className={botao}
-          title="Lista com marcadores"
-        >
-          • Lista
-        </button>
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => exec("insertOrderedList")}
-          className={botao}
-          title="Lista numerada"
-        >
-          1. Lista
-        </button>
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={toggleChecklist}
-          className={botao}
-          title="Checklist"
-        >
-          ☑ Check
-        </button>
-        {divisor}
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => exec("formatBlock", "BLOCKQUOTE")}
-          className={botao}
-          title="Citação"
-        >
-          " Citação
-        </button>
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => exec("formatBlock", "PRE")}
-          className={botao}
-          title="Bloco de código"
-        >
-          {"</>"}
-        </button>
-        {divisor}
-        <div className="relative">
-          <button
-            type="button"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              salvarSelecao();
-            }}
-            onClick={() => setPopoverAberto((v) => (v === "texto" ? null : "texto"))}
-            className={botao}
-            title="Cor do texto"
-          >
-            Cor
-          </button>
-          {popoverAberto === "texto" && (
-            <div ref={popoverRef} className="absolute z-20 top-9 left-0 bg-white rounded-xl shadow-lg border border-black/10 p-2 flex gap-1.5">
-              {CORES_TEXTO.map((c) => (
-                <button
-                  key={c.valor || "padrao"}
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => aplicarCorTexto(c.valor)}
-                  title={c.nome}
-                  className="w-6 h-6 rounded-full border border-black/10 flex items-center justify-center text-[10px] font-bold"
-                  style={{ backgroundColor: c.valor || "#ffffff", color: c.valor ? "#fff" : "#02170b" }}
-                >
-                  {!c.valor && "A"}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="relative">
-          <button
-            type="button"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              salvarSelecao();
-            }}
-            onClick={() => setPopoverAberto((v) => (v === "fundo" ? null : "fundo"))}
-            className={botao}
-            title="Cor de fundo"
-          >
-            Fundo
-          </button>
-          {popoverAberto === "fundo" && (
-            <div ref={popoverRef} className="absolute z-20 top-9 left-0 bg-white rounded-xl shadow-lg border border-black/10 p-2 flex gap-1.5">
-              {CORES_FUNDO.map((c) => (
-                <button
-                  key={c.valor || "sem-cor"}
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => aplicarCorFundo(c.valor)}
-                  title={c.nome}
-                  className="w-6 h-6 rounded-full border border-black/15 flex items-center justify-center text-[10px] font-bold text-ink/40"
-                  style={{ backgroundColor: c.valor || "#ffffff" }}
-                >
-                  {!c.valor && "✕"}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        {divisor}
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => exec("insertHorizontalRule")}
-          className={botao}
-          title="Linha divisória"
-        >
-          ―
-        </button>
-        <button type="button" onMouseDown={salvarSelecao} onClick={inserirLink} className={botao} title="Inserir link">
-          🔗
-        </button>
-        <button
-          type="button"
-          onMouseDown={salvarSelecao}
-          onClick={() => inputArquivoRef.current?.click()}
-          disabled={enviandoImagem}
-          className={botao}
-          title="Inserir imagem"
-        >
-          {enviandoImagem ? "..." : "🖼️"}
-        </button>
-        <input ref={inputArquivoRef} type="file" accept="image/*" onChange={selecionarImagem} className="hidden" />
+        <span className="text-[11px] text-ink/35">
+          ou digite <kbd className="px-1 py-0.5 rounded bg-surface font-mono text-[10px]">/</kbd> no texto pra ver as opções
+        </span>
       </div>
+
+      <div className={`overflow-hidden transition-all duration-200 ease-out ${toolbarAberta ? "max-h-24 opacity-100 mb-2" : "max-h-0 opacity-0"}`}>
+        <div className="flex items-center gap-0.5 rounded-full bg-surface w-fit p-1 flex-wrap">
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("bold")} className={botao} title="Negrito">
+            B
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("italic")} className={`${botao} italic`} title="Itálico">
+            I
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("underline")} className={`${botao} underline`} title="Sublinhado">
+            U
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("strikeThrough")} className={`${botao} line-through`} title="Tachado">
+            S
+          </button>
+          {divisor}
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("formatBlock", "H2")} className={botao} title="Título">
+            Título
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("formatBlock", "H3")} className={botao} title="Subtítulo">
+            Subtítulo
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("formatBlock", "P")} className={botao} title="Texto normal">
+            Normal
+          </button>
+          {divisor}
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("insertUnorderedList")} className={botao} title="Lista com marcadores">
+            • Lista
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("insertOrderedList")} className={botao} title="Lista numerada">
+            1. Lista
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={toggleChecklist} className={botao} title="Checklist">
+            ☑ Check
+          </button>
+          {divisor}
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("formatBlock", "BLOCKQUOTE")} className={botao} title="Citação">
+            ❝ Citação
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("formatBlock", "PRE")} className={botao} title="Bloco de código">
+            {"</>"}
+          </button>
+          {divisor}
+          <div className="relative">
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                salvarSelecao();
+              }}
+              onClick={() => setPopoverAberto((v) => (v === "texto" ? null : "texto"))}
+              className={botao}
+              title="Cor do texto"
+            >
+              Cor
+            </button>
+            {popoverAberto === "texto" && (
+              <div ref={popoverRef} className="absolute z-20 top-9 left-0 bg-white rounded-xl shadow-lg border border-black/10 p-2 flex gap-1.5">
+                {CORES_TEXTO.map((c) => (
+                  <button
+                    key={c.valor || "padrao"}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => aplicarCorTexto(c.valor)}
+                    title={c.nome}
+                    className="w-6 h-6 rounded-full border border-black/10 flex items-center justify-center text-[10px] font-bold"
+                    style={{ backgroundColor: c.valor || "#ffffff", color: c.valor ? "#fff" : "#02170b" }}
+                  >
+                    {!c.valor && "A"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="relative">
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                salvarSelecao();
+              }}
+              onClick={() => setPopoverAberto((v) => (v === "fundo" ? null : "fundo"))}
+              className={botao}
+              title="Cor de fundo"
+            >
+              Fundo
+            </button>
+            {popoverAberto === "fundo" && (
+              <div ref={popoverRef} className="absolute z-20 top-9 left-0 bg-white rounded-xl shadow-lg border border-black/10 p-2 flex gap-1.5">
+                {CORES_FUNDO.map((c) => (
+                  <button
+                    key={c.valor || "sem-cor"}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => aplicarCorFundo(c.valor)}
+                    title={c.nome}
+                    className="w-6 h-6 rounded-full border border-black/15 flex items-center justify-center text-[10px] font-bold text-ink/40"
+                    style={{ backgroundColor: c.valor || "#ffffff" }}
+                  >
+                    {!c.valor && "✕"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {divisor}
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("insertHorizontalRule")} className={botao} title="Linha divisória">
+            ―
+          </button>
+          <button type="button" onMouseDown={salvarSelecao} onClick={inserirLink} className={botao} title="Inserir link">
+            🔗
+          </button>
+          <button
+            type="button"
+            onMouseDown={salvarSelecao}
+            onClick={() => inputArquivoRef.current?.click()}
+            disabled={enviandoImagem}
+            className={botao}
+            title="Inserir imagem"
+          >
+            {enviandoImagem ? "..." : "🖼️"}
+          </button>
+        </div>
+      </div>
+      <input ref={inputArquivoRef} type="file" accept="image/*" onChange={selecionarImagem} className="hidden" />
 
       <div
         ref={editorRef}
         contentEditable
         onInput={handleInput}
-        onBlur={onSalvar}
+        onBlur={() => {
+          onSalvar?.();
+          fecharMenu();
+        }}
+        onKeyDown={handleKeyDownEditor}
         onClick={handleClickEditor}
         className={`rich-text-editor resize-none overflow-hidden ${semCaixa ? "rich-text-editor--livre" : "input"}`}
         style={recolhido && transborda ? { maxHeight: ALTURA_COLAPSADA, overflow: "hidden" } : undefined}
@@ -401,6 +484,35 @@ export function RichTextEditor({
         <button onClick={() => setRecolhido((v) => !v)} className="mt-1 text-xs font-semibold text-ink/50 hover:text-ink flex items-center gap-1">
           {recolhido ? "▼ Expandir" : "▲ Recolher"}
         </button>
+      )}
+
+      {menu && (
+        <div
+          style={{ top: menu.top, left: Math.max(menu.left, 0) }}
+          className="absolute z-30 w-60 bg-white rounded-xl shadow-lg border border-black/10 py-1.5 max-h-72 overflow-y-auto"
+        >
+          {itensFiltrados.length === 0 && <div className="px-3 py-2 text-xs text-ink/40">Nada encontrado</div>}
+          {itensFiltrados.map((item, i) => (
+            <button
+              key={item.id}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setIndiceSelecionado(i)}
+              onClick={() => executarComando(item)}
+              className={`w-full text-left px-2.5 py-1.5 flex items-center gap-2.5 transition-colors ${
+                i === indiceSelecionado ? "bg-surface" : "hover:bg-surface/60"
+              }`}
+            >
+              <span className="w-7 h-7 shrink-0 rounded-lg bg-surface flex items-center justify-center text-[11px] font-bold text-ink/60">
+                {item.icone}
+              </span>
+              <span>
+                <span className="block text-sm font-semibold text-ink leading-tight">{item.label}</span>
+                <span className="block text-[11px] text-ink/40 leading-tight">{item.descricao}</span>
+              </span>
+            </button>
+          ))}
+        </div>
       )}
 
       <style jsx global>{`
