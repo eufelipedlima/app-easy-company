@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { tocarSomCaixaEntrada, tocarSomMensagemPrivada, tocarSomMensagemGrupo } from "@/lib/sons";
+import { BarraCronometro } from "@/components/barra-cronometro";
 import { Users, Users2, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle, UserCircle, Inbox, ListChecks, Home, Menu, X } from "lucide-react";
 
 interface SubItem {
@@ -588,6 +589,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       <div className="scrollbar-fina-clara flex-1 min-w-0 h-full overflow-y-auto pt-14 lg:pt-0">{acessoBloqueado ? null : children}</div>
+      {!acessoBloqueado && <BarraCronometro />}
     </div>
   );
 }
