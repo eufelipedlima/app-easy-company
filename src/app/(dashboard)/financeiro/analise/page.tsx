@@ -378,10 +378,10 @@ function FolhaDePagamento({
         </Link>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <Metrica icon={<Users size={16} />} label="Colaboradores" valor={String(totalColaboradores)} />
-        <Metrica icon={<Wallet size={16} />} label="Valor total (salário + FGTS + benefícios)" valor={formatarMoeda(totalFolha)} />
-        <Metrica icon={<TrendingUp size={16} />} label="Média por colaborador" valor={formatarMoeda(mediaFolha)} />
+      <div className="anim-stagger grid grid-cols-3 gap-4">
+        <Metrica icon={<Users size={16} />} label="Colaboradores" valorNumerico={totalColaboradores} formatar={(v) => String(Math.round(v))} />
+        <Metrica icon={<Wallet size={16} />} label="Valor total (salário + FGTS + benefícios)" valorNumerico={totalFolha} formatar={formatarMoeda} />
+        <Metrica icon={<TrendingUp size={16} />} label="Média por colaborador" valorNumerico={mediaFolha} formatar={formatarMoeda} />
       </div>
     </section>
   );
