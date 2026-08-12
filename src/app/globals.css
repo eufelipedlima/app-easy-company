@@ -70,6 +70,72 @@ body {
   color: var(--ec-white);
 }
 
+/* ─── Scrollbar fina e discreta ─── */
+/* Some some enquanto não rola, e vira só um traço fino no hover/scroll — sem seta, sem moldura. */
+
+.scrollbar-fina {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.scrollbar-fina:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.scrollbar-fina::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-fina::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-fina::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 999px;
+}
+
+.scrollbar-fina:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+.scrollbar-fina::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.32) !important;
+}
+
+/* Variante escura, pra áreas de conteúdo com fundo claro (não a sidebar) */
+.scrollbar-fina-clara {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.scrollbar-fina-clara:hover {
+  scrollbar-color: rgba(2, 23, 11, 0.18) transparent;
+}
+
+.scrollbar-fina-clara::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-fina-clara::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-fina-clara::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 999px;
+}
+
+.scrollbar-fina-clara:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(2, 23, 11, 0.18);
+}
+
+.scrollbar-fina-clara::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(2, 23, 11, 0.32) !important;
+}
+
 /* ─── Animações reutilizáveis ─── */
 
 @keyframes entrada-subida {

@@ -431,7 +431,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </button>
         )}
 
-        <nav className="flex-1 px-3 space-y-1 overflow-y-auto min-h-0">
+        <nav className="scrollbar-fina flex-1 px-3 space-y-1 overflow-y-auto min-h-0">
           {menuVisivel.map((grupo) => {
             if (grupo.href) {
               const ativo = pathname?.startsWith(grupo.href);
@@ -587,7 +587,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0 h-full overflow-y-auto pt-14 lg:pt-0">{acessoBloqueado ? null : children}</div>
+      <div className="scrollbar-fina-clara flex-1 min-w-0 h-full overflow-y-auto pt-14 lg:pt-0">{acessoBloqueado ? null : children}</div>
     </div>
   );
 }
