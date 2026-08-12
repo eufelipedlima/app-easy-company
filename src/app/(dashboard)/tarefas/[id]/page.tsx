@@ -971,7 +971,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             </div>
 
             <div>
-              <span className="block text-xs text-ink/50 mb-1">Início</span>
+              <span className="block text-xs text-ink/50 mb-1">Data de início</span>
               <input
                 type="date"
                 value={dataInicio}
@@ -984,7 +984,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             </div>
 
             <div>
-              <span className="block text-xs text-ink/50 mb-1">Prazo</span>
+              <span className="block text-xs text-ink/50 mb-1">Data de vencimento</span>
               <input
                 type="date"
                 value={prazo}
@@ -1089,7 +1089,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                   <div className="grid grid-cols-[1fr_110px_150px_110px] gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/40">
                     <span>Nome</span>
                     <span>Responsáveis</span>
-                    <span>Prazo</span>
+                    <span>Vencimento</span>
                     <span>Status</span>
                   </div>
                 )}

@@ -21,6 +21,8 @@ interface ItemPauta {
   statusNome: string;
   statusCor: string;
   dataExibicao: string;
+  dataInicio: string | null;
+  dataFim: string | null;
   link: string;
   responsavelIds: string[];
   temDescricao: boolean;
@@ -229,6 +231,8 @@ export default function PautaPage() {
       statusNome: t.status_conteudo?.nome ?? "—",
       statusCor: t.status_conteudo?.cor ?? "cinza",
       dataExibicao: t.dataExibicao!,
+      dataInicio: t.data_inicio,
+      dataFim: t.prazo,
       link: `/tarefas/${t.id}?from=pauta`,
       responsavelIds: mapaRespT.get(t.id) ?? [],
       temDescricao: !!t.descricao,
@@ -241,6 +245,8 @@ export default function PautaPage() {
       statusNome: p.status_conteudo?.nome ?? "—",
       statusCor: p.status_conteudo?.cor ?? "cinza",
       dataExibicao: p.dataExibicao!,
+      dataInicio: p.data_inicio,
+      dataFim: p.data_publicacao,
       link: `/conteudo/calendario/post/${p.id}?from=pauta`,
       responsavelIds: mapaRespP.get(p.id) ?? [],
       temDescricao: !!p.observacoes_internas,
@@ -279,6 +285,50 @@ export default function PautaPage() {
     for (const respId of ids) {
       const chave = `${respId}|${item.dataExibicao}`;
       itensPorPessoaEDia.set(chave, [...(itensPorPessoaEDia.get(chave) ?? []), item]);
+    }
+  }
+
+  // Itens com início E vencimento diferentes viram uma barra esticada pelos dias,
+  // só faz sentido na visão semanal (nas células de mês não cabe isso).
+  const semanaISO = diasSemana.map((d) => toISODateLocal(d));
+  type Faixa = { item: ItemPauta; colStart: number; colSpan: number; lane: number };
+  const idsEmFaixaSemana = new Set<string>();
+  const faixasPorPessoa = new Map<string, { faixas: Faixa[]; qtdLanes: number }>();
+
+  if (visualizacao === "semana") {
+    const porPessoa = new Map<string, ItemPauta[]>();
+    for (const item of itens) {
+      if (!item.dataInicio || !item.dataFim || item.dataInicio === item.dataFim) continue;
+      const ids = item.responsavelIds.length > 0 ? item.responsavelIds : ["_sem"];
+      for (const respId of ids) {
+        porPessoa.set(respId, [...(porPessoa.get(respId) ?? []), item]);
+      }
+    }
+    for (const [respId, itensPessoa] of porPessoa) {
+      const barras = itensPessoa
+        .map((item) => {
+          const inicioClip = item.dataInicio! < semanaISO[0] ? semanaISO[0] : item.dataInicio!;
+          const fimClip = item.dataFim! > semanaISO[6] ? semanaISO[6] : item.dataFim!;
+          const colStart = semanaISO.indexOf(inicioClip) + 1;
+          const colFim = semanaISO.indexOf(fimClip) + 1;
+          return { item, colStart, colSpan: colFim - colStart + 1 };
+        })
+        .filter((b) => b.colStart > 0 && b.colSpan > 0)
+        .sort((a, b) => a.colStart - b.colStart || b.colSpan - a.colSpan);
+
+      const lanes: { fimCol: number }[] = [];
+      const faixas: Faixa[] = barras.map((b) => {
+        let lane = lanes.findIndex((l) => l.fimCol < b.colStart);
+        if (lane === -1) {
+          lane = lanes.length;
+          lanes.push({ fimCol: b.colStart + b.colSpan - 1 });
+        } else {
+          lanes[lane].fimCol = b.colStart + b.colSpan - 1;
+        }
+        idsEmFaixaSemana.add(`${b.item.tipo}-${b.item.id}-${respId}`);
+        return { ...b, lane };
+      });
+      faixasPorPessoa.set(respId, { faixas, qtdLanes: lanes.length });
     }
   }
 
@@ -416,10 +466,32 @@ export default function PautaPage() {
                   <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={26} />
                   <p className="text-sm font-bold text-ink">{f.nome}</p>
                 </div>
+                {visualizacao === "semana" && (faixasPorPessoa.get(f.id)?.qtdLanes ?? 0) > 0 && (
+                  <div
+                    className="grid grid-cols-7 gap-y-1 px-2 pt-2 shrink-0 border-b border-black/5"
+                    style={{ gridTemplateRows: `repeat(${faixasPorPessoa.get(f.id)!.qtdLanes}, minmax(22px, auto))` }}
+                  >
+                    {faixasPorPessoa.get(f.id)!.faixas.map((fx) => (
+                      <button
+                        key={`${fx.item.tipo}-${fx.item.id}`}
+                        onClick={() => router.push(fx.item.link)}
+                        style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 1 }}
+                        className={`mx-0.5 mb-1 rounded-lg px-2 py-1 text-left overflow-hidden ${corDoStatus(fx.item.statusCor).cor}`}
+                        title={fx.item.titulo}
+                      >
+                        <span className="text-[11px] font-semibold truncate flex items-center gap-1">
+                          {fx.item.tipo === "tarefa" ? <IconeTarefa tamanho={11} /> : "📅"} {fx.item.titulo}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className={`grid grid-cols-7 divide-x divide-black/5 flex-1 ${funcionariosExibidos.length > 1 ? "" : ""}`}>
                   {diasAtivos.map((dia) => {
                     const iso = toISODateLocal(dia);
-                    const itensCelula = itensPorPessoaEDia.get(`${f.id}|${iso}`) ?? [];
+                    const itensCelula = (itensPorPessoaEDia.get(`${f.id}|${iso}`) ?? []).filter(
+                      (it) => !(visualizacao === "semana" && idsEmFaixaSemana.has(`${it.tipo}-${it.id}-${f.id}`))
+                    );
                     const doMesAtivo = visualizacao === "semana" || dia.getMonth() === mes;
                     return (
                       <div

@@ -1173,7 +1173,7 @@ function TarefaCardConteudo({
             const atraso = diasAtraso(tarefa.prazo);
             return (
               <span className={`text-[10px] ${atraso ? "text-red-600 font-bold" : "text-ink/40"}`}>
-                Fim: {formatarPrazo(tarefa.prazo)}
+                Vencimento: {formatarPrazo(tarefa.prazo)}
                 {atraso && ` · ${atraso}d atrasado`}
               </span>
             );
@@ -1285,7 +1285,7 @@ function TarefasSemana({
 
       {semPrazo.length > 0 && (
         <details className="mb-4 rounded-2xl bg-surface p-3">
-          <summary className="text-sm font-semibold text-ink/60 cursor-pointer">Sem prazo definido ({semPrazo.length})</summary>
+          <summary className="text-sm font-semibold text-ink/60 cursor-pointer">Sem vencimento definido ({semPrazo.length})</summary>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
             {semPrazo.map((t) => (
               <div key={t.id} onClick={() => onAbrirTarefa(t)} className="cursor-pointer">

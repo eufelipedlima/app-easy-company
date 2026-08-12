@@ -995,7 +995,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
             </div>
 
             <div>
-              <span className="block text-xs text-ink/50 mb-1">Início (produção)</span>
+              <span className="block text-xs text-ink/50 mb-1">Data de início</span>
               <input
                 type="date"
                 value={dataInicio}
@@ -1009,7 +1009,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <span className="block text-xs text-ink/50 mb-1">Publicação</span>
+                <span className="block text-xs text-ink/50 mb-1">Data de vencimento</span>
                 <input
                   type="date"
                   value={dataPublicacao}

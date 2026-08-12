@@ -892,7 +892,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
               <div className="grid grid-cols-[1fr_90px_100px_110px_100px] gap-2 px-5 py-2 text-[11px] font-bold uppercase tracking-wide text-ink/40 bg-surface/60">
                 <span>Nome</span>
                 <span>☰</span>
-                <span>Prazo</span>
+                <span>Vencimento</span>
                 <span>Responsáveis</span>
                 <span>Status</span>
               </div>

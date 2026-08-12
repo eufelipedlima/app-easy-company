@@ -1521,7 +1521,7 @@ function PostModal({
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="block text-sm font-medium text-ink/70 mb-1">Data de publicação *</span>
+              <span className="block text-sm font-medium text-ink/70 mb-1">Data de vencimento *</span>
               <input
                 type="date"
                 required
