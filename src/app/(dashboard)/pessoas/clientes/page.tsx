@@ -34,6 +34,37 @@ interface Pessoa {
 
 type FiltroPapel = "todos" | "cliente" | "funcionario" | "prestador" | "sem_papel";
 
+// Cadastrar a pessoa não basta — ela só conta como "cliente" de verdade (e só aí
+// consegue entrar na Central de Clientes) quando também tem um papel "cliente" e
+// uma linha na tabela clientes vinculada a esse papel. Isso normalmente é criado
+// na hora de fechar um contrato — aqui garantimos que quem é cadastrado direto
+// pela aba Clientes já saia com os dois, sem precisar passar por um contrato antes.
+async function garantirPapelCliente(pessoaId: string) {
+  const supabase = createClient();
+  const { data: papelExistente } = await supabase
+    .from("papeis")
+    .select("id")
+    .eq("pessoa_id", pessoaId)
+    .eq("papel", "cliente")
+    .maybeSingle();
+
+  let papelId = papelExistente?.id as string | undefined;
+  if (!papelId) {
+    const { data: novoPapel, error } = await supabase
+      .from("papeis")
+      .insert({ pessoa_id: pessoaId, papel: "cliente" })
+      .select("id")
+      .single();
+    if (error || !novoPapel) return;
+    papelId = novoPapel.id;
+  }
+
+  const { data: clienteExistente } = await supabase.from("clientes").select("id").eq("papel_id", papelId).maybeSingle();
+  if (!clienteExistente) {
+    await supabase.from("clientes").insert({ papel_id: papelId });
+  }
+}
+
 function formatarData(data: string | null) {
   if (!data) return "—";
   return new Date(data + "T00:00:00").toLocaleDateString("pt-BR");
@@ -329,7 +360,8 @@ export default function PessoasPage() {
             </h2>
             <PessoaForm
               pessoaEditando={editando}
-              onSaved={() => {
+              onSaved={async (pessoa) => {
+                await garantirPapelCliente(pessoa.id);
                 setPainelAberto(false);
                 setEditando(null);
                 carregar();
