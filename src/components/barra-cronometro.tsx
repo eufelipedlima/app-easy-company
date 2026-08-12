@@ -126,10 +126,7 @@ export function BarraCronometro() {
 
   if (!ativo) return null;
 
-  // Já está na própria tela da tarefa/conteúdo ativo — o cronômetro de lá já mostra tudo, não precisa duplicar aqui
   const rotaDoAtivo = ativo.origem === "tarefa" ? `/tarefas/${ativo.id}` : `/conteudo/calendario/post/${ativo.id}`;
-  if (pathname === rotaDoAtivo) return null;
-
   const segundosCorrendo = Math.floor((agora - new Date(ativo.timerIniciadoEm).getTime()) / 1000);
   const totalExibido = ativo.tempoTotalSegundos + segundosCorrendo;
 
