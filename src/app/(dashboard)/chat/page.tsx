@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { comLinks } from "@/lib/linkify";
 import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { normalizar } from "@/lib/normalizar";
 
@@ -270,7 +271,7 @@ function renderizarMensagem(texto: string, todosOsNomes: string[]) {
     if (parte.startsWith("_") && parte.endsWith("_") && parte.length > 2) {
       return <em key={i}>{parte.slice(1, -1)}</em>;
     }
-    if (todosOsNomes.length === 0) return <span key={i}>{parte}</span>;
+    if (todosOsNomes.length === 0) return <span key={i}>{comLinks(parte, `m${i}`)}</span>;
     const nomesEscapados = [...todosOsNomes]
       .sort((a, b) => b.length - a.length)
       .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
@@ -282,7 +283,7 @@ function renderizarMensagem(texto: string, todosOsNomes: string[]) {
           @{sub}
         </span>
       ) : (
-        <span key={`${i}-${j}`}>{sub}</span>
+        <span key={`${i}-${j}`}>{comLinks(sub, `m${i}-${j}`)}</span>
       )
     );
   });

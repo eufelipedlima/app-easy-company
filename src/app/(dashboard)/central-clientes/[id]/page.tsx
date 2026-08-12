@@ -607,10 +607,8 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
     { chave: "docs", label: "Docs", contagem: docs.length },
   ];
 
-  const kanbanEmTelaCheia = (aba === "tarefas" && visualizacaoTarefas === "kanban") || (aba === "conteudo" && visualizacaoConteudo === "kanban");
-
   return (
-    <main className={`mx-auto px-6 py-10 transition-all ${kanbanEmTelaCheia ? "max-w-[1800px]" : "max-w-5xl"}`}>
+    <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
       <button onClick={() => router.push("/central-clientes")} className="text-sm font-semibold text-ink/50 hover:text-ink mb-4">
         ← Central de Clientes
       </button>

@@ -160,7 +160,7 @@ export default function DREPage() {
   const base = receitaBruta || 1;
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-10 print:py-0 print:px-0">
+    <main className="w-full px-6 sm:px-8 lg:px-10 py-10 print:py-0 print:px-0">
       <div className="flex items-center justify-between mb-6 print:hidden">
         <div>
           <h1 className="text-2xl font-extrabold text-ink mb-1">DRE Gerencial</h1>

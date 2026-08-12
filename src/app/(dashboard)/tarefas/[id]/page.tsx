@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { comLinks } from "@/lib/linkify";
 import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
@@ -143,7 +144,7 @@ function formatarQuando(iso: string) {
 }
 
 function renderizarTexto(texto: string, todosOsNomes: string[]) {
-  if (todosOsNomes.length === 0) return texto;
+  if (todosOsNomes.length === 0) return comLinks(texto, "txt");
   const nomesEscapados = [...todosOsNomes].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const regexMencao = new RegExp(`@(${nomesEscapados.join("|")})`, "g");
   const partes = texto.split(regexMencao);
@@ -153,7 +154,7 @@ function renderizarTexto(texto: string, todosOsNomes: string[]) {
         @{p}
       </span>
     ) : (
-      <span key={i}>{p}</span>
+      <span key={i}>{comLinks(p, `txt-${i}`)}</span>
     )
   );
 }

@@ -5,6 +5,27 @@ import { createClient } from "@/lib/supabase/client";
 
 const ALTURA_COLAPSADA = 130;
 
+const REGEX_URL = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
+
+function escaparHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function textoParaHtmlComLinks(texto: string) {
+  const partes = texto.split(REGEX_URL);
+  const html = partes
+    .map((parte) => {
+      const ehUrl = /^https?:\/\//i.test(parte) || /^www\./i.test(parte);
+      if (ehUrl) {
+        const href = parte.toLowerCase().startsWith("www.") ? `https://${parte}` : parte;
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escaparHtml(parte)}</a>`;
+      }
+      return escaparHtml(parte).replace(/\n/g, "<br>");
+    })
+    .join("");
+  return html;
+}
+
 const CORES_TEXTO = [
   { nome: "Padrão", valor: "" },
   { nome: "Vermelho", valor: "#e03131" },
@@ -168,6 +189,15 @@ export function RichTextEditor({
     onChange(editorRef.current.innerHTML);
     setTransborda(editorRef.current.scrollHeight > ALTURA_COLAPSADA + 20);
     verificarComandoBarra();
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    const texto = e.clipboardData.getData("text/plain");
+    if (!texto) return; // deixa o comportamento padrão (ex.: colar imagem)
+    e.preventDefault();
+    editorRef.current?.focus();
+    document.execCommand("insertHTML", false, textoParaHtmlComLinks(texto));
+    handleInput();
   }
 
   function inserirLink() {
@@ -473,6 +503,7 @@ export function RichTextEditor({
         ref={editorRef}
         contentEditable
         onInput={handleInput}
+        onPaste={handlePaste}
         onBlur={() => {
           onSalvar?.();
           fecharMenu();

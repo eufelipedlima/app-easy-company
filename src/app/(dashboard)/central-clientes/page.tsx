@@ -288,10 +288,31 @@ function AdicionarClienteModal({
 
   const sugestoes = opcoes.filter((o) => normalizar(o.nome).includes(normalizar(busca)));
 
-  async function adicionar(clienteId: string) {
+  async function adicionar(clienteId: string, nomeCliente: string) {
     setSalvando(true);
     const supabase = createClient();
     await supabase.from("clientes").update({ ativo_central_clientes: true }).eq("id", clienteId);
+
+    // Garante um canal de chat pro cliente, sem duplicar se ele já tiver um (ex.: foi recriado antes)
+    const { data: canalExistente } = await supabase
+      .from("chat_canais")
+      .select("id")
+      .eq("cliente_id", clienteId)
+      .eq("tipo", "cliente")
+      .maybeSingle();
+
+    if (!canalExistente) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      await supabase.from("chat_canais").insert({
+        tipo: "cliente",
+        nome: nomeCliente,
+        cliente_id: clienteId,
+        criado_por: user?.id ?? null,
+      });
+    }
+
     setSalvando(false);
     onAdicionado(clienteId);
   }
@@ -317,7 +338,7 @@ function AdicionarClienteModal({
             sugestoes.map((o) => (
               <button
                 key={o.id}
-                onClick={() => adicionar(o.id)}
+                onClick={() => adicionar(o.id, o.nome)}
                 disabled={salvando}
                 className="w-full text-left px-3 py-2.5 rounded-xl text-sm hover:bg-surface transition-colors disabled:opacity-50"
               >

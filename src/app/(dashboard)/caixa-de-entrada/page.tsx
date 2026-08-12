@@ -139,7 +139,7 @@ export default function CaixaDeEntradaPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
+    <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-extrabold text-ink mb-1">Caixa de Entrada</h1>

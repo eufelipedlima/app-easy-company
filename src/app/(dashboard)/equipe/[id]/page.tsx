@@ -288,7 +288,7 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
   const listaFiltrada = filtro === "concluidas" ? concluidas : filtro === "atrasadas" ? atrasadas : itensAbertos;
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
+    <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
       <button onClick={() => router.push("/equipe")} className="text-xs font-semibold text-ink/50 hover:text-ink mb-5">
         ← Meu Time
       </button>
