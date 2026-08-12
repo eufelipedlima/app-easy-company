@@ -12,7 +12,7 @@ export default function ConfiguracoesLayout({ children }: { children: React.Reac
   const pathname = usePathname();
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
+    <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
       <div className="mb-8">
         <h1 className="text-2xl font-extrabold text-ink mb-1">Configurações financeiras</h1>
         <p className="text-sm text-ink/60 mb-4">

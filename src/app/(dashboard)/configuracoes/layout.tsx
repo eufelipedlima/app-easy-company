@@ -25,11 +25,11 @@ export default function ConfiguracoesLayout({ children }: { children: React.Reac
   const abaAtual = ABAS.find((a) => pathname?.startsWith(a.href));
 
   if (naPaginaInicial) {
-    return <main className="mx-auto max-w-3xl px-6 py-10">{children}</main>;
+    return <main className="w-full px-6 sm:px-8 lg:px-10 py-10">{children}</main>;
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
+    <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
       <Link
         href="/configuracoes"
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink/50 hover:text-ink mb-5"

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { NumeroAnimado } from "@/components/numero-animado";
 import { normalizar } from "@/lib/normalizar";
 import { LancamentoForm } from "@/components/lancamento-form";
 
@@ -148,7 +149,7 @@ export default function DespesasFixasPage() {
   const totalAtivasMensal = despesas.filter((d) => d.status === "ativo").reduce((s, d) => s + d.valor_mensal, 0);
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
+    <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-extrabold text-ink mb-1">Despesas Fixas</h1>
@@ -173,9 +174,9 @@ export default function DespesasFixasPage() {
         </div>
       )}
 
-      <div className="rounded-2xl bg-card border border-black/5 p-4 mb-6 w-fit">
+      <div className="rounded-2xl bg-card border border-black/5 p-4 mb-6 w-fit anim-entrada">
         <p className="text-xs text-ink/50 mb-0.5">Total mensal (ativas)</p>
-        <p className="text-xl font-extrabold text-red-600">{formatarMoeda(totalAtivasMensal)}</p>
+        <NumeroAnimado valor={totalAtivasMensal} formatar={formatarMoeda} className="block text-xl font-extrabold text-red-600" />
       </div>
 
       <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner mb-6">

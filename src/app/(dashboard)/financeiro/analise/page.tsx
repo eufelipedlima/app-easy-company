@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { NumeroAnimado } from "@/components/numero-animado";
 import Link from "next/link";
 import {
   Bar,
@@ -190,14 +191,14 @@ export default function AnaliseFinanceiraPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-6xl px-6 py-10">
+      <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
         <p className="text-sm text-ink/50">Carregando...</p>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
+    <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
       <div className="mb-6">
         <h1 className="text-2xl font-extrabold text-ink">Análise financeira</h1>
         <p className="text-sm text-ink/60 mt-1">Visão geral de faturamento, custos e margem.</p>
@@ -278,11 +279,11 @@ export default function AnaliseFinanceiraPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Metrica icon={<Wallet size={16} />} label="Faturamento" valor={formatarMoeda(faturamento)} />
-        <Metrica icon={<ArrowDownCircle size={16} />} label="Custo total" valor={formatarMoeda(custoTotal)} />
-        <Metrica icon={<Percent size={16} />} label="Margem de lucro" valor={`${margemLucro.toFixed(1)}%`} />
-        <Metrica icon={<TrendingUp size={16} />} label="Ticket médio" valor={formatarMoeda(ticketMedio)} />
+      <div className="anim-stagger grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <Metrica icon={<Wallet size={16} />} label="Faturamento" valorNumerico={faturamento} formatar={formatarMoeda} />
+        <Metrica icon={<ArrowDownCircle size={16} />} label="Custo total" valorNumerico={custoTotal} formatar={formatarMoeda} />
+        <Metrica icon={<Percent size={16} />} label="Margem de lucro" valorNumerico={margemLucro} formatar={(v) => `${v.toFixed(1)}%`} />
+        <Metrica icon={<TrendingUp size={16} />} label="Ticket médio" valorNumerico={ticketMedio} formatar={formatarMoeda} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
@@ -334,13 +335,23 @@ export default function AnaliseFinanceiraPage() {
   );
 }
 
-function Metrica({ icon, label, valor }: { icon: React.ReactNode; label: string; valor: string }) {
+function Metrica({
+  icon,
+  label,
+  valorNumerico,
+  formatar,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  valorNumerico: number;
+  formatar: (v: number) => string;
+}) {
   return (
     <div className="group rounded-2xl bg-card border border-black/5 p-4 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:border-forest/20">
       <div className="inline-flex items-center justify-center h-9 w-9 rounded-xl bg-mint text-forest mb-3 transition-transform duration-200 group-hover:scale-110 group-hover:bg-forest group-hover:text-white">
         {icon}
       </div>
-      <p className="text-xl font-extrabold text-ink leading-tight">{valor}</p>
+      <NumeroAnimado valor={valorNumerico} formatar={formatar} className="block text-xl font-extrabold text-ink leading-tight" />
       <p className="text-xs text-ink/50 mt-1">{label}</p>
     </div>
   );

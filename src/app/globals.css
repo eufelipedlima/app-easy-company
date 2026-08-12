@@ -69,3 +69,96 @@ body {
   background: var(--ec-ink);
   color: var(--ec-white);
 }
+
+/* ─── Animações reutilizáveis ─── */
+
+@keyframes entrada-subida {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes entrada-escala {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulso-suave {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Entrada em bloco único (cards de detalhe, seções, modais) */
+.anim-entrada {
+  animation: entrada-subida 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.anim-entrada-escala {
+  animation: entrada-escala 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/*
+  Entrada escalonada para grades/listas: aplique "anim-stagger" no
+  container e cada filho direto entra em sequência (até 16 itens).
+  Ex.: <div className="anim-stagger grid ..."> {itens.map(...)} </div>
+*/
+.anim-stagger > * {
+  animation: entrada-subida 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.anim-stagger > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.anim-stagger > *:nth-child(2) {
+  animation-delay: 35ms;
+}
+.anim-stagger > *:nth-child(3) {
+  animation-delay: 70ms;
+}
+.anim-stagger > *:nth-child(4) {
+  animation-delay: 105ms;
+}
+.anim-stagger > *:nth-child(5) {
+  animation-delay: 140ms;
+}
+.anim-stagger > *:nth-child(6) {
+  animation-delay: 175ms;
+}
+.anim-stagger > *:nth-child(7) {
+  animation-delay: 210ms;
+}
+.anim-stagger > *:nth-child(8) {
+  animation-delay: 245ms;
+}
+.anim-stagger > *:nth-child(9) {
+  animation-delay: 280ms;
+}
+.anim-stagger > *:nth-child(10) {
+  animation-delay: 315ms;
+}
+.anim-stagger > *:nth-child(n + 11) {
+  animation-delay: 350ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-entrada,
+  .anim-entrada-escala,
+  .anim-stagger > * {
+    animation: none;
+  }
+}

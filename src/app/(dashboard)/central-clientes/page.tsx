@@ -128,7 +128,7 @@ export default function CentralClientesPage() {
       ) : filtrados.length === 0 ? (
         <EstadoVazio emoji="🔍" titulo="Nenhum cliente encontrado" descricao="Tenta buscar por outro nome." />
       ) : (
-        <div className={`grid ${GRID_COLS} gap-5`}>
+        <div className={`anim-stagger grid ${GRID_COLS} gap-5`}>
           {filtrados.map((c) => {
             const contagem = contagemPorCliente[c.id] ?? {};
             const statusComItens = statusList.filter((s) => contagem[s.id]);
@@ -138,22 +138,16 @@ export default function CentralClientesPage() {
                 onClick={() => router.push(`/central-clientes/${c.id}`)}
                 className="group text-left rounded-3xl bg-card border border-black/5 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
               >
-                <div className="relative h-20 overflow-hidden bg-gradient-to-br from-forest via-ink to-forest">
-                  <div
-                    className="absolute inset-0 transition-transform duration-500 ease-out group-hover:scale-110"
-                    style={{
-                      background:
-                        "radial-gradient(140px 140px at 88% -20%, rgba(228,255,239,0.35), transparent 70%), radial-gradient(120px 120px at -8% 140%, rgba(228,255,239,0.18), transparent 70%)",
-                    }}
-                  />
-                </div>
+                <div className="h-20 bg-gradient-to-br from-forest via-ink to-forest" />
                 <div className="relative z-10 px-4 pb-4">
                   <div className="-mt-9 mb-2 flex items-end justify-between">
                     {c.fotoUrl ? (
-                      <div className="h-16 w-16 rounded-2xl bg-white ring-4 ring-white shadow-sm overflow-hidden shrink-0 transition-transform duration-300 group-hover:scale-105">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={c.fotoUrl} alt={c.nome} className="h-full w-full object-contain p-1.5" />
-                      </div>
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={c.fotoUrl}
+                        alt={c.nome}
+                        className="h-16 w-16 rounded-2xl object-cover ring-4 ring-white shadow-sm shrink-0 transition-transform duration-300 group-hover:scale-105"
+                      />
                     ) : (
                       <div
                         className={`h-16 w-16 rounded-2xl ${corAvatar(c.nome)} text-white flex items-center justify-center font-bold text-xl ring-4 ring-white shadow-sm shrink-0 transition-transform duration-300 group-hover:scale-105`}

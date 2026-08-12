@@ -357,14 +357,14 @@ export default function AnaliseContratosPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <div className="anim-stagger grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <Metrica icon={<Users size={16} />} label="Contratos ativos" valor={String(metricas.contratosAtivos)} />
           <Metrica icon={<Wallet size={16} />} label="MRR (contratos ativos)" valor={formatarMoeda(metricas.mrrAtivos)} />
           <Metrica icon={<UserPlus size={16} />} label="Novos contratos" valor={String(metricas.novosContratos)} />
           <Metrica icon={<Wallet size={16} />} label="MRR (novos contratos)" valor={formatarMoeda(metricas.mrrNovos)} />
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        <div className="anim-stagger grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
           <Metrica
             icon={<Clock size={16} />}
             label="Tempo de casa"
@@ -384,7 +384,7 @@ export default function AnaliseContratosPage() {
       <section>
         <h2 className="text-sm font-bold uppercase tracking-wide text-ink/40 mb-4">Pontuais</h2>
 
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        <div className="anim-stagger grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
           <Metrica icon={<Clock size={16} />} label="Contratos em andamento" valor={String(metricasPontuais.emAndamento)} />
           <Metrica icon={<UserPlus size={16} />} label="Novos contratos" valor={String(metricasPontuais.novosContratos)} />
           <Metrica

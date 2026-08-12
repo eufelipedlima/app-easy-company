@@ -81,7 +81,7 @@ export default function InadimplenciaPage() {
       : 0;
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
+    <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
       <div className="mb-8">
         <h1 className="text-2xl font-extrabold text-ink mb-1">Inadimplência</h1>
         <p className="text-sm text-ink/60">Lançamentos vencidos e ainda não pagos.</p>
@@ -91,7 +91,7 @@ export default function InadimplenciaPage() {
         <p className="text-sm text-ink/50">Carregando...</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="anim-stagger grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <Metrica icon={<Users size={16} />} label="Clientes inadimplentes" valor={String(clientesInadimplentes)} />
             <Metrica icon={<Wallet size={16} />} label="Valor inadimplente" valor={formatarMoeda(valorInadimplente)} destaque="ruim" />
             <Metrica icon={<AlertTriangle size={16} />} label="Contas da agência em atraso" valor={String(contasEmAtraso)} />

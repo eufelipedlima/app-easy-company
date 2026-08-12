@@ -13,7 +13,7 @@ export default function ContratosLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
+    <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
       <div className="mb-8">
         <h1 className="text-2xl font-extrabold text-ink mb-4">Contratos</h1>
         <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">

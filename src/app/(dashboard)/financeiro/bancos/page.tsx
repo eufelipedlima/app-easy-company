@@ -337,7 +337,7 @@ export default function BancosPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
+    <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-extrabold text-ink mb-1">Bancos</h1>
@@ -366,7 +366,7 @@ export default function BancosPage() {
         </label>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="anim-stagger grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="rounded-2xl bg-card border border-black/5 p-4 flex items-center justify-between">
           <div>
             <p className="text-xs text-ink/40 font-semibold mb-1">Saldo total</p>

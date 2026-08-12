@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { tocarSomCaixaEntrada, tocarSomMensagemPrivada, tocarSomMensagemGrupo } from "@/lib/sons";
-import { Users, Users2, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle, UserCircle, Inbox, ListChecks, Home } from "lucide-react";
+import { Users, Users2, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle, UserCircle, Inbox, ListChecks, Home, Menu, X } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -114,6 +114,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [contasAbertas, setContasAbertas] = useState(false);
   const [colapsado, setColapsado] = useState(false);
   const [hoverExpandido, setHoverExpandido] = useState(false);
+  const [menuMobileAberto, setMenuMobileAberto] = useState(false);
+
+  useEffect(() => {
+    setMenuMobileAberto(false);
+  }, [pathname]);
 
   useEffect(() => {
     const salvo = localStorage.getItem("menu-colapsado");
@@ -364,27 +369,51 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen overflow-hidden relative">
-      {colapsado && hoverExpandido && <div className="w-[68px] shrink-0" />}
+      {/* Barra superior — só no celular/tablet, abre a gaveta do menu */}
+      <div className="lg:hidden fixed top-0 inset-x-0 h-14 bg-ink text-white flex items-center justify-between px-4 z-20">
+        <button onClick={() => setMenuMobileAberto(true)} className="text-white/70 hover:text-white transition-colors" title="Abrir menu">
+          <Menu size={22} />
+        </button>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-reduzida.png" alt="Easy Company" className="h-7 w-auto object-contain" />
+        <span className="w-[22px]" />
+      </div>
+
+      {/* Fundo escurecido atrás da gaveta aberta no mobile */}
+      {menuMobileAberto && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/40 z-30 anim-entrada-escala"
+          onClick={() => setMenuMobileAberto(false)}
+        />
+      )}
+
+      {colapsado && hoverExpandido && <div className="hidden lg:block w-[68px] shrink-0" />}
 
       <aside
         onMouseEnter={() => colapsado && setHoverExpandido(true)}
         onMouseLeave={() => setHoverExpandido(false)}
-        className={`shrink-0 bg-ink text-white flex flex-col h-full transition-all duration-200 ${
-          expandidoVisual ? "w-64" : "w-[68px]"
-        } ${colapsado && hoverExpandido ? "absolute z-30 left-0 top-0 h-full shadow-2xl" : "relative"}`}
+        className={`shrink-0 bg-ink text-white flex flex-col h-full transition-all duration-200 fixed lg:static inset-y-0 left-0 z-40 w-64 ${
+          menuMobileAberto ? "translate-x-0" : "-translate-x-full"
+        } lg:translate-x-0 ${expandidoVisual ? "lg:w-64" : "lg:w-[68px]"} ${
+          colapsado && hoverExpandido ? "lg:absolute lg:z-30 lg:left-0 lg:top-0 lg:h-full lg:shadow-2xl" : "lg:relative"
+        }`}
       >
-        <div className={`px-6 py-7 flex items-center ${expandidoVisual ? "justify-between" : "justify-center px-0"}`}>
-          {expandidoVisual ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo-completa.png" alt="Easy Company" className="h-8 w-auto object-contain" />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo-reduzida.png" alt="Easy Company" className="h-9 w-auto object-contain" />
-          )}
+        <div className={`px-6 py-7 flex items-center justify-between ${expandidoVisual ? "" : "lg:justify-center lg:px-0"}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-completa.png" alt="Easy Company" className={`h-8 w-auto object-contain ${expandidoVisual ? "lg:block" : "lg:hidden"}`} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-reduzida.png" alt="Easy Company" className={`h-9 w-auto object-contain hidden ${expandidoVisual ? "" : "lg:block"}`} />
+          <button
+            onClick={() => setMenuMobileAberto(false)}
+            className="lg:hidden text-white/40 hover:text-white transition-colors shrink-0"
+            title="Fechar menu"
+          >
+            <X size={20} />
+          </button>
           {expandidoVisual && (
             <button
               onClick={alternarColapsado}
-              className="text-white/40 hover:text-white transition-colors shrink-0"
+              className="hidden lg:block text-white/40 hover:text-white transition-colors shrink-0"
               title={colapsado ? "Fixar menu expandido" : "Minimizar menu"}
             >
               <ChevronsLeft size={18} className={colapsado ? "rotate-180" : ""} />
@@ -395,7 +424,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {!expandidoVisual && (
           <button
             onClick={alternarColapsado}
-            className="mx-auto mb-2 text-white/30 hover:text-white transition-colors"
+            className="hidden lg:block mx-auto mb-2 text-white/30 hover:text-white transition-colors"
             title="Expandir menu"
           >
             <ChevronsLeft size={16} className="rotate-180" />
@@ -558,7 +587,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0 h-full overflow-y-auto">{acessoBloqueado ? null : children}</div>
+      <div className="flex-1 min-w-0 h-full overflow-y-auto pt-14 lg:pt-0">{acessoBloqueado ? null : children}</div>
     </div>
   );
 }

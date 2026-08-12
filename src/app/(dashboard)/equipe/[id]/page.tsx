@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
+import { NumeroAnimado } from "@/components/numero-animado";
 
 interface ItemTrabalho {
   id: string;
@@ -340,26 +341,26 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="anim-stagger grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             <button
               onClick={() => setFiltro("abertas")}
               className={`rounded-2xl p-4 text-left transition-all ${filtro === "abertas" ? "bg-ink text-white" : "bg-card border border-black/5 hover:shadow-sm"}`}
             >
-              <p className="text-2xl font-extrabold">{itensAbertos.length}</p>
+              <NumeroAnimado valor={itensAbertos.length} className="block text-2xl font-extrabold" />
               <p className={`text-xs font-semibold ${filtro === "abertas" ? "text-white/70" : "text-ink/50"}`}>Em aberto</p>
             </button>
             <button
               onClick={() => setFiltro("concluidas")}
               className={`rounded-2xl p-4 text-left transition-all ${filtro === "concluidas" ? "bg-emerald-600 text-white" : "bg-card border border-black/5 hover:shadow-sm"}`}
             >
-              <p className="text-2xl font-extrabold">{concluidas.length}</p>
+              <NumeroAnimado valor={concluidas.length} className="block text-2xl font-extrabold" />
               <p className={`text-xs font-semibold ${filtro === "concluidas" ? "text-white/70" : "text-ink/50"}`}>Concluídas</p>
             </button>
             <button
               onClick={() => setFiltro("atrasadas")}
               className={`rounded-2xl p-4 text-left transition-all ${filtro === "atrasadas" ? "bg-red-600 text-white" : "bg-card border border-black/5 hover:shadow-sm"}`}
             >
-              <p className="text-2xl font-extrabold">{atrasadas.length}</p>
+              <NumeroAnimado valor={atrasadas.length} className="block text-2xl font-extrabold" />
               <p className={`text-xs font-semibold ${filtro === "atrasadas" ? "text-white/70" : "text-ink/50"}`}>Atrasadas</p>
             </button>
             <div className="rounded-2xl p-4 bg-card border border-black/5">

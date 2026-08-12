@@ -340,7 +340,11 @@ export function RichTextEditor({
         </span>
       </div>
 
-      <div className={`overflow-hidden transition-all duration-200 ease-out ${toolbarAberta ? "max-h-24 opacity-100 mb-2" : "max-h-0 opacity-0"}`}>
+      <div
+        className={`transition-all duration-200 ease-out ${
+          toolbarAberta ? "max-h-[500px] opacity-100 mb-2 overflow-visible" : "max-h-0 opacity-0 overflow-hidden"
+        }`}
+      >
         <div className="flex items-center gap-0.5 rounded-full bg-surface w-fit p-1 flex-wrap">
           <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("bold")} className={botao} title="Negrito">
             B

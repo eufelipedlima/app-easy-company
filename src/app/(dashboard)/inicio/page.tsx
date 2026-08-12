@@ -1,5 +1,7 @@
 "use client";
 
+import { NumeroAnimado } from "@/components/numero-animado";
+
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -306,7 +308,7 @@ export default function InicioPage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-mint/20 via-white to-white px-8 py-8">
-      <div className="max-w-[1400px] mx-auto">
+      <div className="max-w-[1400px] mx-auto anim-entrada">
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-xl font-extrabold text-ink">
             {saudacao()}
@@ -401,7 +403,7 @@ export default function InicioPage() {
                 <span className="text-lg">📊</span>
                 <h2 className="text-sm font-bold text-ink">Resumo</h2>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              <div className="anim-stagger grid grid-cols-2 sm:grid-cols-5 gap-2">
                 {[
                   ["Total em aberto", resumo.total, "bg-surface text-ink", "📋"],
                   ["Vencem hoje", resumo.hoje, "bg-amber-50 text-amber-700", "🎯"],
@@ -409,10 +411,10 @@ export default function InicioPage() {
                   ["Concluídos", resumo.concluidos, "bg-emerald-50 text-emerald-700", "✅"],
                   ["Sem prazo", resumo.semData, "bg-sky-50 text-sky-700", "🗂️"],
                 ].map(([label, valor, cor, icone]) => (
-                  <div key={label as string} className={`rounded-xl p-3 ${cor}`}>
+                  <div key={label as string} className={`rounded-xl p-3 transition-transform hover:-translate-y-0.5 ${cor}`}>
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-lg">{icone}</span>
-                      <span className="text-xl font-extrabold">{valor}</span>
+                      <NumeroAnimado valor={valor as number} className="text-xl font-extrabold" />
                     </div>
                     <p className="text-[11px] font-semibold opacity-70">{label}</p>
                   </div>
