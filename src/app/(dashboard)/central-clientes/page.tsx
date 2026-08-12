@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
-import { corDoStatus } from "@/lib/status-conteudo";
 import { EstadoVazio } from "@/components/estado-vazio";
 import { EsqueletoGrade } from "@/components/esqueleto";
+import { NumeroAnimado } from "@/components/numero-animado";
+import { Users2, ListChecks, MessageCircle, FileText } from "lucide-react";
 
 interface ClienteResumo {
   id: string;
@@ -19,20 +20,10 @@ const CORES_AVATAR = [
   "bg-red-400", "bg-orange-400", "bg-amber-500", "bg-lime-500", "bg-emerald-500",
   "bg-teal-500", "bg-sky-500", "bg-indigo-500", "bg-violet-500", "bg-pink-500",
 ];
-const CORES_ANEL = [
-  "ring-red-300", "ring-orange-300", "ring-amber-300", "ring-lime-300", "ring-emerald-300",
-  "ring-teal-300", "ring-sky-300", "ring-indigo-300", "ring-violet-300", "ring-pink-300",
-];
-function indiceCor(nome: string) {
+function corAvatar(nome: string) {
   let hash = 0;
   for (let i = 0; i < nome.length; i++) hash = (hash * 31 + nome.charCodeAt(i)) % CORES_AVATAR.length;
-  return Math.abs(hash) % CORES_AVATAR.length;
-}
-function corAvatar(nome: string) {
-  return CORES_AVATAR[indiceCor(nome)];
-}
-function corAnel(nome: string) {
-  return CORES_ANEL[indiceCor(nome)];
+  return CORES_AVATAR[Math.abs(hash) % CORES_AVATAR.length];
 }
 
 const GRID_COLS = "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
@@ -40,8 +31,9 @@ const GRID_COLS = "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:g
 export default function CentralClientesPage() {
   const router = useRouter();
   const [clientes, setClientes] = useState<ClienteResumo[]>([]);
-  const [statusList, setStatusList] = useState<{ id: string; nome: string; cor: string }[]>([]);
-  const [contagemPorCliente, setContagemPorCliente] = useState<Record<string, Record<string, number>>>({});
+  const [contagemTarefas, setContagemTarefas] = useState<Record<string, number>>({});
+  const [contagemConversas, setContagemConversas] = useState<Record<string, number>>({});
+  const [contagemDocs, setContagemDocs] = useState<Record<string, number>>({});
   const [busca, setBusca] = useState("");
   const [loading, setLoading] = useState(true);
   const [souAdmin, setSouAdmin] = useState(false);
@@ -49,14 +41,10 @@ export default function CentralClientesPage() {
 
   const carregar = useCallback(async () => {
     const supabase = createClient();
-    const [{ data }, { data: statusData }] = await Promise.all([
-      supabase
-        .from("clientes")
-        .select("id, papeis ( pessoas ( nome, foto_url, segmentos ( nome ) ) )")
-        .eq("ativo_central_clientes", true),
-      supabase.from("status_conteudo").select("id, nome, cor").order("ordem"),
-    ]);
-    setStatusList(statusData ?? []);
+    const { data } = await supabase
+      .from("clientes")
+      .select("id, papeis ( pessoas ( nome, foto_url, segmentos ( nome ) ) )")
+      .eq("ativo_central_clientes", true);
 
     const lista = ((data ?? []) as unknown as {
       id: string;
@@ -72,18 +60,42 @@ export default function CentralClientesPage() {
     setClientes(lista);
 
     if (lista.length > 0) {
-      const { data: posts } = await supabase
-        .from("posts_conteudo")
-        .select("cliente_id, status_id")
-        .in("cliente_id", lista.map((c) => c.id))
-        .eq("arquivado", false)
-        .is("excluido_em", null);
-      const mapa: Record<string, Record<string, number>> = {};
-      for (const p of posts ?? []) {
-        if (!mapa[p.cliente_id]) mapa[p.cliente_id] = {};
-        mapa[p.cliente_id][p.status_id] = (mapa[p.cliente_id][p.status_id] ?? 0) + 1;
+      const idsClientes = lista.map((c) => c.id);
+      const [{ data: tarefasData }, { data: docsData }, { data: canaisData }] = await Promise.all([
+        supabase.from("tarefas").select("cliente_id").in("cliente_id", idsClientes).is("excluido_em", null),
+        supabase.from("docs").select("cliente_id").in("cliente_id", idsClientes).is("excluido_em", null),
+        supabase.from("chat_canais").select("id, cliente_id").in("cliente_id", idsClientes),
+      ]);
+
+      const mapaTarefas: Record<string, number> = {};
+      for (const t of tarefasData ?? []) {
+        if (t.cliente_id) mapaTarefas[t.cliente_id] = (mapaTarefas[t.cliente_id] ?? 0) + 1;
       }
-      setContagemPorCliente(mapa);
+      setContagemTarefas(mapaTarefas);
+
+      const mapaDocs: Record<string, number> = {};
+      for (const d of docsData ?? []) {
+        if (d.cliente_id) mapaDocs[d.cliente_id] = (mapaDocs[d.cliente_id] ?? 0) + 1;
+      }
+      setContagemDocs(mapaDocs);
+
+      const canalParaCliente: Record<string, string> = {};
+      const canalIds: string[] = [];
+      for (const c of canaisData ?? []) {
+        if (c.cliente_id) {
+          canalParaCliente[c.id] = c.cliente_id;
+          canalIds.push(c.id);
+        }
+      }
+      if (canalIds.length > 0) {
+        const { data: mensagensData } = await supabase.from("chat_mensagens").select("canal_id").in("canal_id", canalIds);
+        const mapaConversas: Record<string, number> = {};
+        for (const m of mensagensData ?? []) {
+          const clienteId = canalParaCliente[m.canal_id];
+          if (clienteId) mapaConversas[clienteId] = (mapaConversas[clienteId] ?? 0) + 1;
+        }
+        setContagemConversas(mapaConversas);
+      }
     }
     setLoading(false);
   }, []);
@@ -108,6 +120,15 @@ export default function CentralClientesPage() {
   }, [carregar]);
 
   const filtrados = clientes.filter((c) => normalizar(c.nome).includes(normalizar(busca)));
+
+  const totais = useMemo(
+    () => ({
+      tarefas: Object.values(contagemTarefas).reduce((a, b) => a + b, 0),
+      conversas: Object.values(contagemConversas).reduce((a, b) => a + b, 0),
+      docs: Object.values(contagemDocs).reduce((a, b) => a + b, 0),
+    }),
+    [contagemTarefas, contagemConversas, contagemDocs]
+  );
 
   return (
     <main className="w-full px-6 sm:px-8 lg:px-12 py-10">
@@ -138,58 +159,90 @@ export default function CentralClientesPage() {
       ) : filtrados.length === 0 ? (
         <EstadoVazio emoji="🔍" titulo="Nenhum cliente encontrado" descricao="Tenta buscar por outro nome." />
       ) : (
-        <div className={`anim-stagger grid ${GRID_COLS} gap-5`}>
-          {filtrados.map((c) => {
-            const contagem = contagemPorCliente[c.id] ?? {};
-            const statusComItens = statusList.filter((s) => contagem[s.id]);
-            return (
-              <button
-                key={c.id}
-                onClick={() => router.push(`/central-clientes/${c.id}`)}
-                className="group text-left rounded-3xl bg-card border border-black/5 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
-              >
-                <div className={`h-1.5 ${corAvatar(c.nome)}`} />
-                <div className="p-4">
-                  <div className="mb-3 flex items-start justify-between">
-                    {c.fotoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={c.fotoUrl}
-                        alt={c.nome}
-                        className={`h-16 w-16 rounded-2xl object-cover ring-2 ${corAnel(c.nome)} shadow-sm shrink-0 transition-transform duration-300 group-hover:scale-105`}
-                      />
-                    ) : (
-                      <div
-                        className={`h-16 w-16 rounded-2xl ${corAvatar(c.nome)} text-white flex items-center justify-center font-bold text-xl shadow-sm shrink-0 transition-transform duration-300 group-hover:scale-105`}
-                      >
-                        {c.nome.slice(0, 2).toUpperCase()}
-                      </div>
-                    )}
-                    <span className="inline-flex items-center gap-1 rounded-full bg-mint text-forest px-2.5 py-1 text-[10px] font-bold">
-                      <span className="h-1.5 w-1.5 rounded-full bg-forest" /> Ativo
-                    </span>
+        <div className={`anim-stagger grid ${GRID_COLS} gap-4`}>
+          {filtrados.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => router.push(`/central-clientes/${c.id}`)}
+              className="group flex flex-col text-left rounded-2xl bg-card border border-black/5 p-4 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300"
+            >
+              <div className="flex items-start justify-between mb-3">
+                {c.fotoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={c.fotoUrl} alt={c.nome} className="h-14 w-14 rounded-2xl object-cover shadow-sm shrink-0" />
+                ) : (
+                  <div
+                    className={`h-14 w-14 rounded-2xl ${corAvatar(c.nome)} text-white flex items-center justify-center font-bold text-lg shadow-sm shrink-0`}
+                  >
+                    {c.nome.slice(0, 2).toUpperCase()}
                   </div>
+                )}
+                <span className="inline-flex items-center gap-1 rounded-full bg-mint text-forest px-2.5 py-1 text-[10px] font-bold shrink-0">
+                  <span className="h-1.5 w-1.5 rounded-full bg-forest" /> Ativo
+                </span>
+              </div>
 
-                  <p className="text-sm font-extrabold text-ink truncate group-hover:text-forest transition-colors">{c.nome}</p>
-                  {c.segmento && (
-                    <span className="inline-block mt-1.5 rounded-full bg-surface text-ink/50 px-2.5 py-1 text-[11px] font-semibold">
-                      {c.segmento}
-                    </span>
-                  )}
+              <p className="text-sm font-extrabold text-ink truncate group-hover:text-forest transition-colors">{c.nome}</p>
+              {c.segmento && (
+                <span className="inline-block w-fit mt-1.5 rounded-full bg-surface text-ink/50 px-2.5 py-1 text-[11px] font-semibold">
+                  {c.segmento}
+                </span>
+              )}
 
-                  {statusComItens.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-3">
-                      {statusComItens.map((s) => (
-                        <span key={s.id} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold ${corDoStatus(s.cor).cor}`}>
-                          {contagem[s.id]} {s.nome}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </button>
-            );
-          })}
+              <div className="mt-auto pt-3 flex items-center gap-3 border-t border-black/5 text-[11px] font-semibold text-ink/45">
+                <span className="flex items-center gap-1" title="Tarefas">
+                  <ListChecks size={13} /> {contagemTarefas[c.id] ?? 0}
+                </span>
+                <span className="flex items-center gap-1" title="Conversas">
+                  <MessageCircle size={13} /> {contagemConversas[c.id] ?? 0}
+                </span>
+                <span className="flex items-center gap-1" title="Documentos">
+                  <FileText size={13} /> {contagemDocs[c.id] ?? 0}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!loading && filtrados.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+          <div className="rounded-2xl bg-card border border-black/5 p-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-mint text-forest flex items-center justify-center shrink-0">
+              <Users2 size={16} />
+            </div>
+            <div>
+              <NumeroAnimado valor={clientes.length} className="block text-lg font-extrabold text-ink leading-tight" />
+              <p className="text-[11px] text-ink/50">Clientes ativos</p>
+            </div>
+          </div>
+          <div className="rounded-2xl bg-card border border-black/5 p-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-mint text-forest flex items-center justify-center shrink-0">
+              <ListChecks size={16} />
+            </div>
+            <div>
+              <NumeroAnimado valor={totais.tarefas} className="block text-lg font-extrabold text-ink leading-tight" />
+              <p className="text-[11px] text-ink/50">Tarefas no total</p>
+            </div>
+          </div>
+          <div className="rounded-2xl bg-card border border-black/5 p-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-mint text-forest flex items-center justify-center shrink-0">
+              <MessageCircle size={16} />
+            </div>
+            <div>
+              <NumeroAnimado valor={totais.conversas} className="block text-lg font-extrabold text-ink leading-tight" />
+              <p className="text-[11px] text-ink/50">Mensagens no total</p>
+            </div>
+          </div>
+          <div className="rounded-2xl bg-card border border-black/5 p-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-mint text-forest flex items-center justify-center shrink-0">
+              <FileText size={16} />
+            </div>
+            <div>
+              <NumeroAnimado valor={totais.docs} className="block text-lg font-extrabold text-ink leading-tight" />
+              <p className="text-[11px] text-ink/50">Documentos</p>
+            </div>
+          </div>
         </div>
       )}
 
