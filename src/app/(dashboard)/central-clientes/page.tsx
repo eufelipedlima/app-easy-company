@@ -19,10 +19,20 @@ const CORES_AVATAR = [
   "bg-red-400", "bg-orange-400", "bg-amber-500", "bg-lime-500", "bg-emerald-500",
   "bg-teal-500", "bg-sky-500", "bg-indigo-500", "bg-violet-500", "bg-pink-500",
 ];
-function corAvatar(nome: string) {
+const CORES_ANEL = [
+  "ring-red-300", "ring-orange-300", "ring-amber-300", "ring-lime-300", "ring-emerald-300",
+  "ring-teal-300", "ring-sky-300", "ring-indigo-300", "ring-violet-300", "ring-pink-300",
+];
+function indiceCor(nome: string) {
   let hash = 0;
   for (let i = 0; i < nome.length; i++) hash = (hash * 31 + nome.charCodeAt(i)) % CORES_AVATAR.length;
-  return CORES_AVATAR[Math.abs(hash) % CORES_AVATAR.length];
+  return Math.abs(hash) % CORES_AVATAR.length;
+}
+function corAvatar(nome: string) {
+  return CORES_AVATAR[indiceCor(nome)];
+}
+function corAnel(nome: string) {
+  return CORES_ANEL[indiceCor(nome)];
 }
 
 const GRID_COLS = "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
@@ -138,24 +148,24 @@ export default function CentralClientesPage() {
                 onClick={() => router.push(`/central-clientes/${c.id}`)}
                 className="group text-left rounded-3xl bg-card border border-black/5 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
               >
-                <div className="h-20 bg-gradient-to-br from-forest via-ink to-forest" />
-                <div className="relative z-10 px-4 pb-4">
-                  <div className="-mt-9 mb-2 flex items-end justify-between">
+                <div className={`h-1.5 ${corAvatar(c.nome)}`} />
+                <div className="p-4">
+                  <div className="mb-3 flex items-start justify-between">
                     {c.fotoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={c.fotoUrl}
                         alt={c.nome}
-                        className="h-16 w-16 rounded-2xl object-cover ring-4 ring-white shadow-sm shrink-0 transition-transform duration-300 group-hover:scale-105"
+                        className={`h-16 w-16 rounded-2xl object-cover ring-2 ${corAnel(c.nome)} shadow-sm shrink-0 transition-transform duration-300 group-hover:scale-105`}
                       />
                     ) : (
                       <div
-                        className={`h-16 w-16 rounded-2xl ${corAvatar(c.nome)} text-white flex items-center justify-center font-bold text-xl ring-4 ring-white shadow-sm shrink-0 transition-transform duration-300 group-hover:scale-105`}
+                        className={`h-16 w-16 rounded-2xl ${corAvatar(c.nome)} text-white flex items-center justify-center font-bold text-xl shadow-sm shrink-0 transition-transform duration-300 group-hover:scale-105`}
                       >
                         {c.nome.slice(0, 2).toUpperCase()}
                       </div>
                     )}
-                    <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-mint text-forest px-2.5 py-1 text-[10px] font-bold">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-mint text-forest px-2.5 py-1 text-[10px] font-bold">
                       <span className="h-1.5 w-1.5 rounded-full bg-forest" /> Ativo
                     </span>
                   </div>
