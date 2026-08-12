@@ -837,15 +837,13 @@ export default function ChatPage() {
                 <span className="rounded-full bg-red-500 text-white text-xs font-bold px-2 py-0.5">{totalNaoLidas}</span>
               )}
             </div>
-            {souAdmin && (
-              <button
-                onClick={() => setNovaConversaAberta(true)}
-                title="Nova conversa"
-                className="h-8 w-8 rounded-full bg-forest text-white flex items-center justify-center text-lg font-semibold hover:brightness-110 transition-colors"
-              >
-                +
-              </button>
-            )}
+            <button
+              onClick={() => setNovaConversaAberta(true)}
+              title="Nova conversa"
+              className="h-8 w-8 rounded-full bg-forest text-white flex items-center justify-center text-lg font-semibold hover:brightness-110 transition-colors"
+            >
+              +
+            </button>
           </div>
           <input
             value={buscaConversa}
@@ -880,11 +878,7 @@ export default function ChatPage() {
             <p className="p-4 text-sm text-white/40">Carregando...</p>
           ) : canaisFiltrados.length === 0 ? (
             <p className="p-4 text-sm text-white/40">
-              {canais.length === 0
-                ? souAdmin
-                  ? "Nenhuma conversa ainda. Comece uma nova!"
-                  : "Nenhum chat disponível ainda. Peça pra um administrador te adicionar a uma conversa."
-                : "Nenhuma conversa encontrada."}
+              {canais.length === 0 ? "Nenhuma conversa ainda. Comece uma nova!" : "Nenhuma conversa encontrada."}
             </p>
           ) : (
             (() => {
@@ -1320,9 +1314,10 @@ export default function ChatPage() {
         )}
       </div>
 
-      {novaConversaAberta && souAdmin && (
+      {novaConversaAberta && (
         <NovaConversaModal
           colegas={colegas}
+          souAdmin={souAdmin}
           onClose={() => setNovaConversaAberta(false)}
           onCriado={(canalId) => {
             setNovaConversaAberta(false);
@@ -1381,7 +1376,8 @@ function AdicionarParticipanteModal({
 }) {
   const [jaParticipam, setJaParticipam] = useState<string[]>([]);
   const [busca, setBusca] = useState("");
-  const [adicionando, setAdicionando] = useState<string | null>(null);
+  const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [adicionando, setAdicionando] = useState(false);
 
   useEffect(() => {
     async function carregar() {
@@ -1394,39 +1390,68 @@ function AdicionarParticipanteModal({
 
   const disponiveis = colegas.filter((c) => !jaParticipam.includes(c.authUserId) && normalizar(c.nome).includes(normalizar(busca)));
 
-  async function adicionar(authUserId: string) {
-    setAdicionando(authUserId);
+  function alternarSelecionado(id: string) {
+    setSelecionados((atual) => (atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]));
+  }
+
+  async function adicionarSelecionados() {
+    if (selecionados.length === 0) return;
+    setAdicionando(true);
     const supabase = createClient();
-    await supabase.from("chat_participantes").insert({ canal_id: canalId, auth_user_id: authUserId });
-    setJaParticipam((atual) => [...atual, authUserId]);
-    setAdicionando(null);
+    await supabase.from("chat_participantes").insert(selecionados.map((authUserId) => ({ canal_id: canalId, auth_user_id: authUserId })));
+    setAdicionando(false);
     onAdicionado();
   }
 
   return (
     <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-ink mb-4">Adicionar participante</h2>
+      <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl max-h-[80vh] overflow-y-auto flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-ink mb-1">Adicionar participante</h2>
+        <p className="text-xs text-ink/50 mb-4">Escolha quantas pessoas quiser antes de confirmar.</p>
         <input value={busca} onChange={(e) => setBusca(e.target.value)} className="input mb-3" placeholder="Buscar colega..." />
-        <div className="rounded-2xl border border-black/5 overflow-hidden">
+        <div className="rounded-2xl border border-black/5 overflow-hidden overflow-y-auto flex-1 min-h-0">
           {disponiveis.length === 0 ? (
             <p className="p-4 text-sm text-ink/50">Ninguém disponível pra adicionar.</p>
           ) : (
-            disponiveis.map((c) => (
-              <button
-                key={c.authUserId}
-                onClick={() => adicionar(c.authUserId)}
-                disabled={adicionando === c.authUserId}
-                className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface border-b border-black/5 last:border-0 disabled:opacity-50"
-              >
-                {adicionando === c.authUserId ? "Adicionando..." : c.nome}
-              </button>
-            ))
+            disponiveis.map((c) => {
+              const marcado = selecionados.includes(c.authUserId);
+              return (
+                <button
+                  key={c.authUserId}
+                  onClick={() => alternarSelecionado(c.authUserId)}
+                  className={`w-full text-left px-3 py-2.5 flex items-center gap-2.5 border-b border-black/5 last:border-0 transition-colors ${
+                    marcado ? "bg-mint" : "hover:bg-surface"
+                  }`}
+                >
+                  <span
+                    className={`h-4 w-4 rounded-md border shrink-0 flex items-center justify-center text-[10px] font-bold ${
+                      marcado ? "bg-forest border-forest text-white" : "border-black/20"
+                    }`}
+                  >
+                    {marcado && "✓"}
+                  </span>
+                  <Avatar nome={c.nome} fotoUrl={c.fotoUrl} tamanho={30} />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-ink truncate">{c.nome}</span>
+                    {c.cargo && <span className="block text-xs text-ink/40 truncate">{c.cargo}</span>}
+                  </span>
+                </button>
+              );
+            })
           )}
         </div>
-        <button onClick={onClose} className="mt-4 text-sm font-semibold text-ink/60 hover:text-ink">
-          Fechar
-        </button>
+        <div className="flex items-center gap-3 pt-4 shrink-0">
+          <button
+            onClick={adicionarSelecionados}
+            disabled={selecionados.length === 0 || adicionando}
+            className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-40"
+          >
+            {adicionando ? "Adicionando..." : selecionados.length > 0 ? `Adicionar (${selecionados.length})` : "Adicionar"}
+          </button>
+          <button onClick={onClose} className="text-sm font-semibold text-ink/60 hover:text-ink">
+            Fechar
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1604,10 +1629,12 @@ function ConfigCanalModal({
 
 function NovaConversaModal({
   colegas,
+  souAdmin,
   onClose,
   onCriado,
 }: {
   colegas: Colega[];
+  souAdmin: boolean;
   onClose: () => void;
   onCriado: (canalId: string) => void;
 }) {
@@ -1720,7 +1747,9 @@ function NovaConversaModal({
         <h2 className="text-lg font-bold text-ink mb-4">Nova conversa</h2>
 
         <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit mb-4">
-          {(["dm", "grupo", "cliente"] as const).map((t) => (
+          {(["dm", "grupo", "cliente"] as const)
+            .filter((t) => t !== "cliente" || souAdmin)
+            .map((t) => (
             <button
               key={t}
               onClick={() => {
@@ -1785,12 +1814,15 @@ function NovaConversaModal({
                     key={c.authUserId}
                     type="button"
                     onClick={() => (tipo === "dm" ? setSelecionados([c.authUserId]) : alternarSelecionado(c.authUserId))}
-                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface border-b border-black/5 last:border-0 flex items-center justify-between ${
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-surface border-b border-black/5 last:border-0 flex items-center gap-2.5 ${
                       selecionados.includes(c.authUserId) ? "bg-mint font-semibold" : ""
                     }`}
                   >
-                    <span>{c.nome}</span>
-                    {c.cargo && <span className="text-xs text-ink/40">{c.cargo}</span>}
+                    <Avatar nome={c.nome} fotoUrl={c.fotoUrl} tamanho={28} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{c.nome}</span>
+                      {c.cargo && <span className="block text-xs text-ink/40 truncate">{c.cargo}</span>}
+                    </span>
                   </button>
                 ))
               )}
