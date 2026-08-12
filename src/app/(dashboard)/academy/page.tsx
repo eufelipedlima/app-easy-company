@@ -12,7 +12,7 @@ import {
   Pencil,
   Trash2,
   ChevronRight,
-  Video as VideoIcon,
+  ChevronDown,
   Link as LinkIcon,
   X,
   Lock,
@@ -24,9 +24,17 @@ interface Cargo {
 }
 interface VideoItem {
   id: string;
-  paginaId: string;
+  temaId: string;
   titulo: string | null;
   url: string;
+  ordem: number;
+}
+interface Tema {
+  id: string;
+  paginaId: string;
+  titulo: string;
+  emoji: string | null;
+  conteudo: string | null;
   ordem: number;
 }
 interface Pagina {
@@ -77,17 +85,22 @@ export default function AcademyPage() {
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [paginas, setPaginas] = useState<Pagina[]>([]);
+  const [temas, setTemas] = useState<Tema[]>([]);
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
   const [categoriasColapsadas, setCategoriasColapsadas] = useState<Set<string>>(new Set());
   const [paginaAtivaId, setPaginaAtivaId] = useState<string | null>(null);
+  const [temaAbertoId, setTemaAbertoId] = useState<string | null>(null);
+  const [temaEditandoId, setTemaEditandoId] = useState<string | null>(null);
 
   const [novaCategoriaAberta, setNovaCategoriaAberta] = useState(false);
   const [editandoCategoria, setEditandoCategoria] = useState<Categoria | null>(null);
   const [novaPaginaCategoriaId, setNovaPaginaCategoriaId] = useState<string | null>(null);
   const [editandoTituloPagina, setEditandoTituloPagina] = useState(false);
-  const [novoVideoAberto, setNovoVideoAberto] = useState(false);
+  const [novoTemaAberto, setNovoTemaAberto] = useState(false);
+  const [renomeandoTema, setRenomeandoTema] = useState<Tema | null>(null);
+  const [novoVideoTemaId, setNovoVideoTemaId] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     const supabase = createClient();
@@ -113,13 +126,7 @@ export default function AcademyPage() {
     ]);
     setCargos(cargosData ?? []);
     setCategorias(
-      (categoriasData ?? []).map((c) => ({
-        id: c.id,
-        nome: c.nome,
-        emoji: c.emoji,
-        ordem: c.ordem,
-        cargosPermitidos: c.cargos_permitidos,
-      }))
+      (categoriasData ?? []).map((c) => ({ id: c.id, nome: c.nome, emoji: c.emoji, ordem: c.ordem, cargosPermitidos: c.cargos_permitidos }))
     );
     const listaPaginas = (paginasData ?? []).map((p) => ({
       id: p.id,
@@ -132,17 +139,35 @@ export default function AcademyPage() {
     setPaginas(listaPaginas);
 
     if (listaPaginas.length > 0) {
-      const { data: videosData } = await supabase
-        .from("academy_paginas_videos")
-        .select("id, pagina_id, titulo, url, ordem")
+      const { data: temasData } = await supabase
+        .from("academy_temas")
+        .select("id, pagina_id, titulo, emoji, conteudo, ordem")
         .in(
           "pagina_id",
           listaPaginas.map((p) => p.id)
         )
         .order("ordem");
-      setVideos(
-        (videosData ?? []).map((v) => ({ id: v.id, paginaId: v.pagina_id, titulo: v.titulo, url: v.url, ordem: v.ordem }))
-      );
+      const listaTemas = (temasData ?? []).map((t) => ({
+        id: t.id,
+        paginaId: t.pagina_id,
+        titulo: t.titulo,
+        emoji: t.emoji,
+        conteudo: t.conteudo,
+        ordem: t.ordem,
+      }));
+      setTemas(listaTemas);
+
+      if (listaTemas.length > 0) {
+        const { data: videosData } = await supabase
+          .from("academy_temas_videos")
+          .select("id, tema_id, titulo, url, ordem")
+          .in(
+            "tema_id",
+            listaTemas.map((t) => t.id)
+          )
+          .order("ordem");
+        setVideos((videosData ?? []).map((v) => ({ id: v.id, temaId: v.tema_id, titulo: v.titulo, url: v.url, ordem: v.ordem })));
+      }
     }
     setLoading(false);
   }, []);
@@ -154,11 +179,7 @@ export default function AcademyPage() {
   const categoriasVisiveis = useMemo(
     () =>
       categorias.filter(
-        (c) =>
-          souAdmin ||
-          !c.cargosPermitidos ||
-          c.cargosPermitidos.length === 0 ||
-          (meuCargoId && c.cargosPermitidos.includes(meuCargoId))
+        (c) => souAdmin || !c.cargosPermitidos || c.cargosPermitidos.length === 0 || (meuCargoId && c.cargosPermitidos.includes(meuCargoId))
       ),
     [categorias, souAdmin, meuCargoId]
   );
@@ -171,7 +192,7 @@ export default function AcademyPage() {
 
   const paginaAtual = paginas.find((p) => p.id === paginaAtivaId) ?? null;
   const categoriaAtual = paginaAtual ? categorias.find((c) => c.id === paginaAtual.categoriaId) : null;
-  const videosDaPagina = videos.filter((v) => v.paginaId === paginaAtivaId).sort((a, b) => a.ordem - b.ordem);
+  const temasDaPagina = temas.filter((t) => t.paginaId === paginaAtivaId).sort((a, b) => a.ordem - b.ordem);
 
   function alternarColapso(id: string) {
     setCategoriasColapsadas((atual) => {
@@ -182,15 +203,15 @@ export default function AcademyPage() {
     });
   }
 
-  async function salvarConteudoPagina(html: string) {
-    if (!paginaAtual) return;
-    setPaginas((atual) => atual.map((p) => (p.id === paginaAtual.id ? { ...p, conteudo: html } : p)));
-    const supabase = createClient();
-    await supabase.from("academy_paginas").update({ conteudo: html }).eq("id", paginaAtual.id);
+  function selecionarPagina(id: string) {
+    setPaginaAtivaId(id);
+    setEditandoTituloPagina(false);
+    setTemaAbertoId(null);
+    setTemaEditandoId(null);
   }
 
   async function excluirPagina(id: string) {
-    if (!window.confirm("Excluir essa página? Isso apaga o conteúdo e os vídeos dela também, sem volta.")) return;
+    if (!window.confirm("Excluir essa página? Isso apaga todos os temas e vídeos dela também, sem volta.")) return;
     const supabase = createClient();
     await supabase.from("academy_paginas").delete().eq("id", id);
     setPaginas((atual) => atual.filter((p) => p.id !== id));
@@ -206,10 +227,24 @@ export default function AcademyPage() {
     setEditandoCategoria(null);
   }
 
+  async function excluirTema(id: string) {
+    if (!window.confirm("Excluir esse tema/aula, com o texto e os vídeos dele?")) return;
+    const supabase = createClient();
+    await supabase.from("academy_temas").delete().eq("id", id);
+    setTemas((atual) => atual.filter((t) => t.id !== id));
+    if (temaAbertoId === id) setTemaAbertoId(null);
+  }
+
   async function removerVideo(id: string) {
     const supabase = createClient();
-    await supabase.from("academy_paginas_videos").delete().eq("id", id);
+    await supabase.from("academy_temas_videos").delete().eq("id", id);
     setVideos((atual) => atual.filter((v) => v.id !== id));
+  }
+
+  async function salvarConteudoTema(temaId: string, html: string) {
+    setTemas((atual) => atual.map((t) => (t.id === temaId ? { ...t, conteudo: html } : t)));
+    const supabase = createClient();
+    await supabase.from("academy_temas").update({ conteudo: html }).eq("id", temaId);
   }
 
   return (
@@ -246,14 +281,10 @@ export default function AcademyPage() {
           {loading ? (
             <p className="px-4 text-xs text-ink/40">Carregando...</p>
           ) : categoriasVisiveis.length === 0 ? (
-            <p className="px-4 text-xs text-ink/40">
-              {souAdmin ? "Crie a primeira categoria pra começar." : "Nada disponível pro seu cargo ainda."}
-            </p>
+            <p className="px-4 text-xs text-ink/40">{souAdmin ? "Crie a primeira categoria pra começar." : "Nada disponível pro seu cargo ainda."}</p>
           ) : (
             categoriasVisiveis.map((cat) => {
-              const paginasCat = (paginasPorCategoria.get(cat.id) ?? []).filter(
-                (p) => !busca || normalizar(p.titulo).includes(normalizar(busca))
-              );
+              const paginasCat = (paginasPorCategoria.get(cat.id) ?? []).filter((p) => !busca || normalizar(p.titulo).includes(normalizar(busca)));
               if (busca && paginasCat.length === 0) return null;
               const colapsada = categoriasColapsadas.has(cat.id);
               return (
@@ -284,10 +315,7 @@ export default function AcademyPage() {
                       {paginasCat.map((p) => (
                         <button
                           key={p.id}
-                          onClick={() => {
-                            setPaginaAtivaId(p.id);
-                            setEditandoTituloPagina(false);
-                          }}
+                          onClick={() => selecionarPagina(p.id)}
                           className={`w-full text-left rounded-lg px-2.5 py-1.5 text-sm flex items-center gap-2 transition-colors ${
                             paginaAtivaId === p.id ? "bg-forest text-white font-semibold" : "text-ink/70 hover:bg-white"
                           }`}
@@ -306,7 +334,7 @@ export default function AcademyPage() {
         </nav>
       </aside>
 
-      <div className="flex-1 min-w-0 overflow-y-auto scrollbar-fina-clara">
+      <div className="flex-1 min-w-0 overflow-y-auto scrollbar-fina-clara bg-surface/20">
         {!paginaAtual ? (
           <div className="h-full flex flex-col items-center justify-center text-ink/30 gap-2">
             <GraduationCap size={40} strokeWidth={1.2} />
@@ -314,9 +342,7 @@ export default function AcademyPage() {
           </div>
         ) : (
           <div className="max-w-3xl mx-auto px-10 py-12">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink/35 mb-2">
-              Academy {categoriaAtual && `/ ${categoriaAtual.nome}`}
-            </p>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/35 mb-2">Academy {categoriaAtual && `/ ${categoriaAtual.nome}`}</p>
 
             {editandoTituloPagina ? (
               <FormTituloPagina
@@ -328,7 +354,7 @@ export default function AcademyPage() {
                 }}
               />
             ) : (
-              <div className="flex items-start justify-between gap-3 mb-6">
+              <div className="flex items-start justify-between gap-3 mb-2">
                 <h1 className="text-3xl font-extrabold text-ink flex items-center gap-3 min-w-0">
                   <span className="shrink-0">{paginaAtual.emoji || "📄"}</span>
                   <span className="truncate">{paginaAtual.titulo}</span>
@@ -346,70 +372,129 @@ export default function AcademyPage() {
               </div>
             )}
 
-            {souAdmin ? (
-              <RichTextEditor
-                valorHtml={paginaAtual.conteudo ?? ""}
-                onChange={(html) => setPaginas((atual) => atual.map((p) => (p.id === paginaAtual.id ? { ...p, conteudo: html } : p)))}
-                onSalvar={() => salvarConteudoPagina(paginaAtual.conteudo ?? "")}
-                semCaixa
-                placeholder="Escreva o conteúdo dessa página..."
-              />
-            ) : (
-              <ConteudoFormatado html={paginaAtual.conteudo ?? "<p class='text-ink/40'>Essa página ainda não tem conteúdo.</p>"} />
-            )}
+            <p className="text-sm text-ink/50 mb-8">
+              {temasDaPagina.length} {temasDaPagina.length === 1 ? "tema" : "temas"}
+            </p>
 
-            <div className="mt-10 pt-8 border-t border-black/5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-ink flex items-center gap-2">
-                  <VideoIcon size={18} /> Vídeos
-                </h2>
-                {souAdmin && (
-                  <button onClick={() => setNovoVideoAberto(true)} className="text-xs font-semibold text-forest hover:underline">
-                    + Adicionar vídeo
-                  </button>
-                )}
-              </div>
-              {videosDaPagina.length === 0 ? (
-                <p className="text-sm text-ink/40">Nenhum vídeo nessa página ainda.</p>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {videosDaPagina.map((v) => {
-                    const embed = embedDeVideo(v.url);
-                    return (
-                      <div key={v.id} className="group/vid relative rounded-2xl border border-black/5 overflow-hidden bg-surface/30">
-                        {embed ? (
-                          <div className="aspect-video bg-black">
-                            <iframe
-                              src={embed}
-                              className="w-full h-full"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                            />
-                          </div>
-                        ) : (
-                          <a
-                            href={v.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 p-4 text-sm text-blue-600 hover:underline break-all"
-                          >
-                            <LinkIcon size={14} className="shrink-0" /> {v.url}
-                          </a>
-                        )}
-                        {v.titulo && <p className="px-3 py-2 text-sm font-semibold text-ink truncate">{v.titulo}</p>}
+            <div className="space-y-3">
+              {temasDaPagina.map((tema, i) => {
+                const videosDoTema = videos.filter((v) => v.temaId === tema.id).sort((a, b) => a.ordem - b.ordem);
+                const aberto = temaAbertoId === tema.id;
+                return (
+                  <div key={tema.id} className="rounded-2xl border border-black/5 bg-white overflow-hidden hover:shadow-sm transition-shadow">
+                    <button
+                      onClick={() => setTemaAbertoId(aberto ? null : tema.id)}
+                      className="w-full flex items-center justify-between gap-4 px-5 py-4 text-left"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <span className="h-8 w-8 shrink-0 rounded-full bg-mint text-forest flex items-center justify-center text-xs font-extrabold">
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <span className="font-bold text-ink truncate">{tema.titulo}</span>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-xs text-ink/40">
+                          {videosDoTema.length > 0 ? `${videosDoTema.length} vídeo${videosDoTema.length > 1 ? "s" : ""}` : "Sem vídeo"}
+                        </span>
+                        <ChevronDown size={16} className={`text-ink/30 transition-transform ${aberto ? "rotate-180" : ""}`} />
+                      </div>
+                    </button>
+
+                    {aberto && (
+                      <div className="px-5 pb-5 pt-1 border-t border-black/5">
                         {souAdmin && (
-                          <button
-                            onClick={() => removerVideo(v.id)}
-                            className="absolute top-2 right-2 h-6 w-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover/vid:opacity-100 transition-opacity"
-                          >
-                            <X size={12} />
-                          </button>
+                          <div className="flex items-center gap-4 py-3">
+                            <button
+                              onClick={() => setRenomeandoTema(tema)}
+                              className="text-xs font-semibold text-ink/50 hover:text-ink flex items-center gap-1"
+                            >
+                              <Pencil size={12} /> Renomear
+                            </button>
+                            <button
+                              onClick={() => setNovoVideoTemaId(tema.id)}
+                              className="text-xs font-semibold text-forest hover:underline flex items-center gap-1"
+                            >
+                              <Plus size={12} /> Adicionar vídeo
+                            </button>
+                            <button
+                              onClick={() => setTemaEditandoId(temaEditandoId === tema.id ? null : tema.id)}
+                              className="text-xs font-semibold text-ink/50 hover:text-ink"
+                            >
+                              {temaEditandoId === tema.id ? "Ver como ficou" : "Editar texto"}
+                            </button>
+                            <button onClick={() => excluirTema(tema.id)} className="text-xs font-semibold text-red-500 hover:underline flex items-center gap-1 ml-auto">
+                              <Trash2 size={12} /> Excluir
+                            </button>
+                          </div>
+                        )}
+
+                        {videosDoTema.length > 0 && (
+                          <div className={`grid gap-4 mb-5 ${videosDoTema.length > 1 ? "sm:grid-cols-2" : "grid-cols-1"}`}>
+                            {videosDoTema.map((v) => {
+                              const embed = embedDeVideo(v.url);
+                              return (
+                                <div key={v.id} className="group/vid relative rounded-xl border border-black/5 overflow-hidden bg-surface/30">
+                                  {embed ? (
+                                    <div className="aspect-video bg-black">
+                                      <iframe
+                                        src={embed}
+                                        className="w-full h-full"
+                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                        allowFullScreen
+                                      />
+                                    </div>
+                                  ) : (
+                                    <a
+                                      href={v.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-2 p-4 text-sm text-blue-600 hover:underline break-all"
+                                    >
+                                      <LinkIcon size={14} className="shrink-0" /> {v.url}
+                                    </a>
+                                  )}
+                                  {v.titulo && <p className="px-3 py-2 text-sm font-semibold text-ink truncate">{v.titulo}</p>}
+                                  {souAdmin && (
+                                    <button
+                                      onClick={() => removerVideo(v.id)}
+                                      className="absolute top-2 right-2 h-6 w-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover/vid:opacity-100 transition-opacity"
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {souAdmin && temaEditandoId === tema.id ? (
+                          <RichTextEditor
+                            valorHtml={tema.conteudo ?? ""}
+                            onChange={(html) => setTemas((atual) => atual.map((t) => (t.id === tema.id ? { ...t, conteudo: html } : t)))}
+                            onSalvar={() => salvarConteudoTema(tema.id, tema.conteudo ?? "")}
+                            semCaixa
+                            placeholder="Escreva o conteúdo desse tema..."
+                          />
+                        ) : (
+                          <ConteudoFormatado html={tema.conteudo || "<p class='text-ink/35'>Sem texto por aqui ainda.</p>"} />
                         )}
                       </div>
-                    );
-                  })}
-                </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {souAdmin && (
+                <button
+                  onClick={() => setNovoTemaAberto(true)}
+                  className="w-full rounded-2xl border-2 border-dashed border-black/10 py-4 text-sm font-semibold text-ink/40 hover:text-forest hover:border-forest/30 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Plus size={15} /> Novo tema
+                </button>
               )}
+
+              {!souAdmin && temasDaPagina.length === 0 && <p className="text-sm text-ink/40">Nenhum conteúdo aqui ainda.</p>}
             </div>
           </div>
         )}
@@ -452,14 +537,38 @@ export default function AcademyPage() {
         />
       )}
 
-      {novoVideoAberto && paginaAtual && (
-        <ModalNovoVideo
+      {novoTemaAberto && paginaAtual && (
+        <ModalNovoTema
           paginaId={paginaAtual.id}
-          ordemInicial={videosDaPagina.length}
-          onClose={() => setNovoVideoAberto(false)}
+          ordemInicial={temasDaPagina.length}
+          onClose={() => setNovoTemaAberto(false)}
+          onCriado={(novo) => {
+            setTemas((atual) => [...atual, novo]);
+            setTemaAbertoId(novo.id);
+            setNovoTemaAberto(false);
+          }}
+        />
+      )}
+
+      {renomeandoTema && (
+        <ModalRenomearTema
+          tema={renomeandoTema}
+          onClose={() => setRenomeandoTema(null)}
+          onSalvo={(titulo) => {
+            setTemas((atual) => atual.map((t) => (t.id === renomeandoTema.id ? { ...t, titulo } : t)));
+            setRenomeandoTema(null);
+          }}
+        />
+      )}
+
+      {novoVideoTemaId && (
+        <ModalNovoVideo
+          temaId={novoVideoTemaId}
+          ordemInicial={videos.filter((v) => v.temaId === novoVideoTemaId).length}
+          onClose={() => setNovoVideoTemaId(null)}
           onCriado={(novo) => {
             setVideos((atual) => [...atual, novo]);
-            setNovoVideoAberto(false);
+            setNovoVideoTemaId(null);
           }}
         />
       )}
@@ -549,11 +658,7 @@ function ModalCategoria({
     setSalvando(true);
     setErro(null);
     const supabase = createClient();
-    const payload = {
-      nome: nome.trim(),
-      emoji,
-      cargos_permitidos: todosVeem ? null : cargosSelecionados,
-    };
+    const payload = { nome: nome.trim(), emoji, cargos_permitidos: todosVeem ? null : cargosSelecionados };
     if (categoria) {
       const { error } = await supabase.from("academy_categorias").update(payload).eq("id", categoria.id);
       setSalvando(false);
@@ -690,7 +795,7 @@ function ModalNovaPagina({
           <input
             value={titulo}
             onChange={(e) => setTitulo(e.target.value)}
-            placeholder="Ex: Quem Somos"
+            placeholder="Ex: Criação de Conteúdo"
             className="input flex-1"
             autoFocus
             onKeyDown={(e) => e.key === "Enter" && salvar()}
@@ -714,13 +819,120 @@ function ModalNovaPagina({
   );
 }
 
-function ModalNovoVideo({
+function ModalNovoTema({
   paginaId,
   ordemInicial,
   onClose,
   onCriado,
 }: {
   paginaId: string;
+  ordemInicial: number;
+  onClose: () => void;
+  onCriado: (t: Tema) => void;
+}) {
+  const [titulo, setTitulo] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function salvar() {
+    if (!titulo.trim()) {
+      setErro("Dê um nome pro tema.");
+      return;
+    }
+    setSalvando(true);
+    setErro(null);
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("academy_temas")
+      .insert({ pagina_id: paginaId, titulo: titulo.trim(), ordem: ordemInicial })
+      .select("id")
+      .single();
+    setSalvando(false);
+    if (error || !data) {
+      setErro(error?.message ?? "Erro ao criar tema.");
+      return;
+    }
+    onCriado({ id: data.id, paginaId, titulo: titulo.trim(), emoji: null, conteudo: "", ordem: ordemInicial });
+  }
+
+  return (
+    <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-ink mb-4">Novo tema</h2>
+        <input
+          value={titulo}
+          onChange={(e) => setTitulo(e.target.value)}
+          placeholder="Ex: Etapa 1 — Briefing"
+          className="input mb-4"
+          autoFocus
+          onKeyDown={(e) => e.key === "Enter" && salvar()}
+        />
+        {erro && <p className="text-sm text-red-600 mb-3">{erro}</p>}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={salvar}
+            disabled={salvando}
+            className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+          >
+            {salvando ? "Criando..." : "Criar tema"}
+          </button>
+          <button onClick={onClose} className="text-sm font-semibold text-ink/60 hover:text-ink">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModalRenomearTema({ tema, onClose, onSalvo }: { tema: Tema; onClose: () => void; onSalvo: (titulo: string) => void }) {
+  const [titulo, setTitulo] = useState(tema.titulo);
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar() {
+    if (!titulo.trim()) return;
+    setSalvando(true);
+    const supabase = createClient();
+    await supabase.from("academy_temas").update({ titulo: titulo.trim() }).eq("id", tema.id);
+    setSalvando(false);
+    onSalvo(titulo.trim());
+  }
+
+  return (
+    <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-ink mb-4">Renomear tema</h2>
+        <input
+          value={titulo}
+          onChange={(e) => setTitulo(e.target.value)}
+          className="input mb-4"
+          autoFocus
+          onKeyDown={(e) => e.key === "Enter" && salvar()}
+        />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={salvar}
+            disabled={salvando}
+            className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+          >
+            {salvando ? "Salvando..." : "Salvar"}
+          </button>
+          <button onClick={onClose} className="text-sm font-semibold text-ink/60 hover:text-ink">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModalNovoVideo({
+  temaId,
+  ordemInicial,
+  onClose,
+  onCriado,
+}: {
+  temaId: string;
   ordemInicial: number;
   onClose: () => void;
   onCriado: (v: VideoItem) => void;
@@ -739,8 +951,8 @@ function ModalNovoVideo({
     setErro(null);
     const supabase = createClient();
     const { data, error } = await supabase
-      .from("academy_paginas_videos")
-      .insert({ pagina_id: paginaId, titulo: titulo.trim() || null, url: url.trim(), ordem: ordemInicial })
+      .from("academy_temas_videos")
+      .insert({ tema_id: temaId, titulo: titulo.trim() || null, url: url.trim(), ordem: ordemInicial })
       .select("id")
       .single();
     setSalvando(false);
@@ -748,7 +960,7 @@ function ModalNovoVideo({
       setErro(error?.message ?? "Erro ao adicionar vídeo.");
       return;
     }
-    onCriado({ id: data.id, paginaId, titulo: titulo.trim() || null, url: url.trim(), ordem: ordemInicial });
+    onCriado({ id: data.id, temaId, titulo: titulo.trim() || null, url: url.trim(), ordem: ordemInicial });
   }
 
   return (
