@@ -466,113 +466,135 @@ export default function PautaPage() {
                   <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={26} />
                   <p className="text-sm font-bold text-ink">{f.nome}</p>
                 </div>
-                {visualizacao === "semana" && (faixasPorPessoa.get(f.id)?.qtdLanes ?? 0) > 0 && (
-                  <div
-                    className="grid grid-cols-7 gap-y-1.5 px-2 pt-2 shrink-0 border-b border-black/5"
-                    style={{ gridTemplateRows: `repeat(${faixasPorPessoa.get(f.id)!.qtdLanes}, minmax(46px, auto))` }}
-                  >
-                    {faixasPorPessoa.get(f.id)!.faixas.map((fx) => {
-                      const respItem = fx.item.responsavelIds
-                        .map((rid) => funcionarios.find((fu) => fu.id === rid))
-                        .filter((fu): fu is Responsavel => !!fu);
-                      return (
-                        <button
-                          key={`${fx.item.tipo}-${fx.item.id}`}
-                          onClick={() => router.push(fx.item.link)}
-                          style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 1 }}
-                          className={`mx-0.5 mb-1.5 rounded-lg px-2 py-1.5 text-left overflow-hidden ${corDoStatus(fx.item.statusCor).cor}`}
-                        >
-                          <p className="text-[11px] font-semibold truncate">
-                            <span className="inline-flex items-center gap-1">
-                              {fx.item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {fx.item.titulo}
-                            </span>
-                          </p>
-                          {(fx.item.temDescricao || fx.item.qtdSubitens > 0 || respItem.length > 0) && (
-                            <div className="flex items-center justify-between mt-1">
-                              <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
-                                {fx.item.temDescricao && <span title="Tem descrição">☰</span>}
-                                {fx.item.qtdSubitens > 0 && <span title="Subitens">🔗 {fx.item.qtdSubitens}</span>}
-                              </span>
-                              <AvatarStack pessoas={respItem} tamanho={16} />
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                <div className={`grid grid-cols-7 divide-x divide-black/5 flex-1 ${funcionariosExibidos.length > 1 ? "" : ""}`}>
-                  {diasAtivos.map((dia) => {
-                    const iso = toISODateLocal(dia);
-                    const itensCelula = (itensPorPessoaEDia.get(`${f.id}|${iso}`) ?? []).filter(
-                      (it) => !(visualizacao === "semana" && idsEmFaixaSemana.has(`${it.tipo}-${it.id}-${f.id}`))
-                    );
-                    const doMesAtivo = visualizacao === "semana" || dia.getMonth() === mes;
-                    return (
-                      <div
-                        key={iso}
-                        className={`p-2 group/cel ${iso === hojeISO ? "bg-mint/20" : !doMesAtivo ? "bg-surface/40" : ""}`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5 px-0.5">
-                          <span
-                            className={`text-[10px] font-bold uppercase tracking-wide ${
-                              iso === hojeISO ? "text-forest" : doMesAtivo ? "text-ink/40" : "text-ink/20"
-                            }`}
+                {(() => {
+                  const info = visualizacao === "semana" ? faixasPorPessoa.get(f.id) : undefined;
+                  const lanes = info?.qtdLanes ?? 0;
+                  const linhasGrid = `auto ${lanes > 0 ? `repeat(${lanes}, auto) ` : ""}minmax(0, 1fr)`;
+                  return (
+                    <div className="grid grid-cols-7 flex-1 min-h-0" style={{ gridTemplateRows: linhasGrid }}>
+                      {diasAtivos.map((dia, i) => {
+                        const iso = toISODateLocal(dia);
+                        const doMesAtivo = visualizacao === "semana" || dia.getMonth() === mes;
+                        const corFundo = iso === hojeISO ? "bg-mint/20" : !doMesAtivo ? "bg-surface/40" : "";
+                        return (
+                          <div
+                            key={`cab-${iso}`}
+                            style={{ gridColumn: i + 1, gridRow: 1 }}
+                            className={`p-2 pb-1.5 group/cel ${corFundo} ${i > 0 ? "border-l border-black/5" : ""}`}
                           >
-                            {visualizacao === "semana" ? `${DIAS_SEMANA[dia.getDay()].slice(0, 3)} ${dia.getDate()}` : dia.getDate()}
-                          </span>
-                          <button
-                            onClick={() => novaTarefaNoDia(iso, f.id)}
-                            className="opacity-0 group-hover/cel:opacity-100 transition-opacity text-ink/30 hover:text-ink text-xs font-bold"
-                          >
-                            +
-                          </button>
-                        </div>
-                        <div className="space-y-1">
-                          {itensCelula.slice(0, visualizacao === "mes" ? 3 : undefined).map((item) => {
-                            const respItem = item.responsavelIds
-                              .map((rid) => funcionarios.find((f) => f.id === rid))
-                              .filter((f): f is Responsavel => !!f);
-                            if (visualizacao === "mes") {
-                              return (
-                                <button
-                                  key={`${item.tipo}-${item.id}`}
-                                  onClick={() => router.push(item.link)}
-                                  className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(item.statusCor).cor}`}
-                                >
-                                  <span className="inline-flex items-center gap-1">{item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {item.titulo}</span>
-                                </button>
-                              );
-                            }
-                            return (
-                              <button
-                                key={`${item.tipo}-${item.id}`}
-                                onClick={() => router.push(item.link)}
-                                className={`w-full text-left rounded-lg px-2 py-1.5 ${corDoStatus(item.statusCor).cor}`}
+                            <div className="flex items-center justify-between px-0.5">
+                              <span
+                                className={`text-[10px] font-bold uppercase tracking-wide ${
+                                  iso === hojeISO ? "text-forest" : doMesAtivo ? "text-ink/40" : "text-ink/20"
+                                }`}
                               >
-                                <p className="text-[11px] font-semibold truncate">
-                                  <span className="inline-flex items-center gap-1">{item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {item.titulo}</span>
-                                </p>
-                                {(item.temDescricao || item.qtdSubitens > 0 || respItem.length > 0) && (
-                                  <div className="flex items-center justify-between mt-1">
-                                    <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
-                                      {item.temDescricao && <span title="Tem descrição">☰</span>}
-                                      {item.qtdSubitens > 0 && <span title="Subitens">🔗 {item.qtdSubitens}</span>}
-                                    </span>
-                                    <AvatarStack pessoas={respItem} tamanho={16} />
-                                  </div>
-                                )}
+                                {visualizacao === "semana" ? `${DIAS_SEMANA[dia.getDay()].slice(0, 3)} ${dia.getDate()}` : dia.getDate()}
+                              </span>
+                              <button
+                                onClick={() => novaTarefaNoDia(iso, f.id)}
+                                className="opacity-0 group-hover/cel:opacity-100 transition-opacity text-ink/30 hover:text-ink text-xs font-bold"
+                              >
+                                +
                               </button>
-                            );
-                          })}
-                          {visualizacao === "mes" && itensCelula.length > 3 && (
-                            <p className="text-[10px] text-ink/40 px-1">+{itensCelula.length - 3} mais</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {lanes > 0 &&
+                        info!.faixas.map((fx) => {
+                          const respItem = fx.item.responsavelIds
+                            .map((rid) => funcionarios.find((fu) => fu.id === rid))
+                            .filter((fu): fu is Responsavel => !!fu);
+                          return (
+                            <button
+                              key={`${fx.item.tipo}-${fx.item.id}`}
+                              onClick={() => router.push(fx.item.link)}
+                              style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 2 }}
+                              className={`mx-2 mb-1.5 rounded-lg px-2 py-1.5 text-left overflow-hidden ${corDoStatus(fx.item.statusCor).cor}`}
+                            >
+                              <p className="text-[11px] font-semibold truncate">
+                                <span className="inline-flex items-center gap-1">
+                                  {fx.item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {fx.item.titulo}
+                                </span>
+                              </p>
+                              {(fx.item.temDescricao || fx.item.qtdSubitens > 0 || respItem.length > 0) && (
+                                <div className="flex items-center justify-between mt-1">
+                                  <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
+                                    {fx.item.temDescricao && <span title="Tem descrição">☰</span>}
+                                    {fx.item.qtdSubitens > 0 && <span title="Subitens">🔗 {fx.item.qtdSubitens}</span>}
+                                  </span>
+                                  <AvatarStack pessoas={respItem} tamanho={16} />
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+
+                      {diasAtivos.map((dia, i) => {
+                        const iso = toISODateLocal(dia);
+                        const itensCelula = (itensPorPessoaEDia.get(`${f.id}|${iso}`) ?? []).filter(
+                          (it) => !(visualizacao === "semana" && idsEmFaixaSemana.has(`${it.tipo}-${it.id}-${f.id}`))
+                        );
+                        const doMesAtivo = visualizacao === "semana" || dia.getMonth() === mes;
+                        const corFundo = iso === hojeISO ? "bg-mint/20" : !doMesAtivo ? "bg-surface/40" : "";
+                        return (
+                          <div
+                            key={`itens-${iso}`}
+                            style={{ gridColumn: i + 1, gridRow: lanes + 2 }}
+                            className={`p-2 pt-0.5 ${corFundo} ${i > 0 ? "border-l border-black/5" : ""}`}
+                          >
+                            <div className="space-y-1">
+                              {itensCelula.slice(0, visualizacao === "mes" ? 3 : undefined).map((item) => {
+                                const respItem = item.responsavelIds
+                                  .map((rid) => funcionarios.find((fu) => fu.id === rid))
+                                  .filter((fu): fu is Responsavel => !!fu);
+                                if (visualizacao === "mes") {
+                                  return (
+                                    <button
+                                      key={`${item.tipo}-${item.id}`}
+                                      onClick={() => router.push(item.link)}
+                                      className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(item.statusCor).cor}`}
+                                    >
+                                      <span className="inline-flex items-center gap-1">
+                                        {item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {item.titulo}
+                                      </span>
+                                    </button>
+                                  );
+                                }
+                                return (
+                                  <button
+                                    key={`${item.tipo}-${item.id}`}
+                                    onClick={() => router.push(item.link)}
+                                    className={`w-full text-left rounded-lg px-2 py-1.5 ${corDoStatus(item.statusCor).cor}`}
+                                  >
+                                    <p className="text-[11px] font-semibold truncate">
+                                      <span className="inline-flex items-center gap-1">
+                                        {item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {item.titulo}
+                                      </span>
+                                    </p>
+                                    {(item.temDescricao || item.qtdSubitens > 0 || respItem.length > 0) && (
+                                      <div className="flex items-center justify-between mt-1">
+                                        <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
+                                          {item.temDescricao && <span title="Tem descrição">☰</span>}
+                                          {item.qtdSubitens > 0 && <span title="Subitens">🔗 {item.qtdSubitens}</span>}
+                                        </span>
+                                        <AvatarStack pessoas={respItem} tamanho={16} />
+                                      </div>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                              {visualizacao === "mes" && itensCelula.length > 3 && (
+                                <p className="text-[10px] text-ink/40 px-1">+{itensCelula.length - 3} mais</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>

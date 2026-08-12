@@ -1346,18 +1346,35 @@ function TarefasSemana({
       )}
 
       <div className="overflow-x-auto">
-        <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${dias.length}, 16rem)` }}>
-          {qtdLanes > 0 && (
-            <div
-              className="col-span-full grid gap-x-3 gap-y-2 mb-1"
-              style={{ gridTemplateColumns: `repeat(${dias.length}, 16rem)`, gridTemplateRows: `repeat(${qtdLanes}, auto)` }}
-            >
-              {faixas.map((fx) => (
+        <div className="rounded-3xl bg-surface border border-black/5 overflow-hidden inline-block min-w-full">
+          <div
+            className="grid"
+            style={{
+              gridTemplateColumns: `repeat(${dias.length}, 16rem)`,
+              gridTemplateRows: `auto ${qtdLanes > 0 ? `repeat(${qtdLanes}, auto) ` : ""}auto`,
+            }}
+          >
+            {dias.map((dia, i) => {
+              const iso = toISODateLocal(dia);
+              return (
+                <div
+                  key={`cab-${iso}`}
+                  style={{ gridColumn: i + 1, gridRow: 1 }}
+                  className={`px-3 pt-3 pb-2 ${iso === hojeISO ? "bg-mint/40" : ""} ${i > 0 ? "border-l border-black/5" : ""}`}
+                >
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink/50">{DIAS_SEMANA[dia.getDay()]}</p>
+                  <p className={`text-lg font-extrabold ${iso === hojeISO ? "text-forest" : "text-ink"}`}>{dia.getDate()}</p>
+                </div>
+              );
+            })}
+
+            {qtdLanes > 0 &&
+              faixas.map((fx) => (
                 <div
                   key={fx.tarefa.id}
                   onClick={() => onAbrirTarefa(fx.tarefa)}
-                  className="cursor-pointer"
-                  style={{ gridColumn: `${fx.colStart + 1} / span ${fx.colSpan}`, gridRow: fx.lane + 1 }}
+                  className="cursor-pointer mx-1.5 mb-2"
+                  style={{ gridColumn: `${fx.colStart + 1} / span ${fx.colSpan}`, gridRow: fx.lane + 2 }}
                 >
                   <TarefaCardConteudo
                     tarefa={fx.tarefa}
@@ -1369,18 +1386,16 @@ function TarefasSemana({
                   />
                 </div>
               ))}
-            </div>
-          )}
-          {dias.map((dia) => {
-            const iso = toISODateLocal(dia);
-            const tarefasDoDia = tarefas.filter((t) => t.prazo === iso && !idsEmFaixa.has(t.id));
-            return (
-              <div key={iso} className={`rounded-3xl p-3 min-h-[50vh] ${iso === hojeISO ? "bg-mint/40" : "bg-surface"}`}>
-                <div className="mb-3 px-1">
-                  <p className="text-xs font-bold uppercase tracking-wide text-ink/50">{DIAS_SEMANA[dia.getDay()]}</p>
-                  <p className={`text-lg font-extrabold ${iso === hojeISO ? "text-forest" : "text-ink"}`}>{dia.getDate()}</p>
-                </div>
-                <div className="space-y-2">
+
+            {dias.map((dia, i) => {
+              const iso = toISODateLocal(dia);
+              const tarefasDoDia = tarefas.filter((t) => t.prazo === iso && !idsEmFaixa.has(t.id));
+              return (
+                <div
+                  key={`itens-${iso}`}
+                  style={{ gridColumn: i + 1, gridRow: qtdLanes + 2 }}
+                  className={`px-3 pb-3 pt-1 min-h-[45vh] space-y-2 ${iso === hojeISO ? "bg-mint/40" : ""} ${i > 0 ? "border-l border-black/5" : ""}`}
+                >
                   {tarefasDoDia.map((t) => (
                     <div key={t.id} onClick={() => onAbrirTarefa(t)} className="cursor-pointer">
                       <TarefaCardConteudo
@@ -1394,9 +1409,9 @@ function TarefasSemana({
                     </div>
                   ))}
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
