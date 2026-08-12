@@ -468,22 +468,37 @@ export default function PautaPage() {
                 </div>
                 {visualizacao === "semana" && (faixasPorPessoa.get(f.id)?.qtdLanes ?? 0) > 0 && (
                   <div
-                    className="grid grid-cols-7 gap-y-1 px-2 pt-2 shrink-0 border-b border-black/5"
-                    style={{ gridTemplateRows: `repeat(${faixasPorPessoa.get(f.id)!.qtdLanes}, minmax(22px, auto))` }}
+                    className="grid grid-cols-7 gap-y-1.5 px-2 pt-2 shrink-0 border-b border-black/5"
+                    style={{ gridTemplateRows: `repeat(${faixasPorPessoa.get(f.id)!.qtdLanes}, minmax(46px, auto))` }}
                   >
-                    {faixasPorPessoa.get(f.id)!.faixas.map((fx) => (
-                      <button
-                        key={`${fx.item.tipo}-${fx.item.id}`}
-                        onClick={() => router.push(fx.item.link)}
-                        style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 1 }}
-                        className={`mx-0.5 mb-1 rounded-lg px-2 py-1 text-left overflow-hidden ${corDoStatus(fx.item.statusCor).cor}`}
-                        title={fx.item.titulo}
-                      >
-                        <span className="text-[11px] font-semibold truncate flex items-center gap-1">
-                          {fx.item.tipo === "tarefa" ? <IconeTarefa tamanho={11} /> : "📅"} {fx.item.titulo}
-                        </span>
-                      </button>
-                    ))}
+                    {faixasPorPessoa.get(f.id)!.faixas.map((fx) => {
+                      const respItem = fx.item.responsavelIds
+                        .map((rid) => funcionarios.find((fu) => fu.id === rid))
+                        .filter((fu): fu is Responsavel => !!fu);
+                      return (
+                        <button
+                          key={`${fx.item.tipo}-${fx.item.id}`}
+                          onClick={() => router.push(fx.item.link)}
+                          style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 1 }}
+                          className={`mx-0.5 mb-1.5 rounded-lg px-2 py-1.5 text-left overflow-hidden ${corDoStatus(fx.item.statusCor).cor}`}
+                        >
+                          <p className="text-[11px] font-semibold truncate">
+                            <span className="inline-flex items-center gap-1">
+                              {fx.item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {fx.item.titulo}
+                            </span>
+                          </p>
+                          {(fx.item.temDescricao || fx.item.qtdSubitens > 0 || respItem.length > 0) && (
+                            <div className="flex items-center justify-between mt-1">
+                              <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
+                                {fx.item.temDescricao && <span title="Tem descrição">☰</span>}
+                                {fx.item.qtdSubitens > 0 && <span title="Subitens">🔗 {fx.item.qtdSubitens}</span>}
+                              </span>
+                              <AvatarStack pessoas={respItem} tamanho={16} />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
                 <div className={`grid grid-cols-7 divide-x divide-black/5 flex-1 ${funcionariosExibidos.length > 1 ? "" : ""}`}>

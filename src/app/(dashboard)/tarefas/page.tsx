@@ -1243,6 +1243,48 @@ function TarefasSemana({
 
   const semPrazo = tarefas.filter((t) => !t.prazo);
   const hojeISO = toISODateLocal(hoje);
+  const diasISO = dias.map((d) => toISODateLocal(d));
+
+  function colunaVisivel(dataISO: string, sentido: "frente" | "tras") {
+    const idx = diasISO.indexOf(dataISO);
+    if (idx !== -1) return idx;
+    if (sentido === "frente") return diasISO.findIndex((d) => d > dataISO);
+    for (let i = diasISO.length - 1; i >= 0; i--) if (diasISO[i] < dataISO) return i;
+    return -1;
+  }
+
+  type Faixa = { tarefa: Tarefa; colStart: number; colSpan: number; lane: number };
+  const idsEmFaixa = new Set<string>();
+  let qtdLanes = 0;
+  const faixas: Faixa[] = (() => {
+    if (diasISO.length === 0) return [];
+    const barras = tarefas
+      .filter((t) => t.data_inicio && t.prazo && t.data_inicio !== t.prazo)
+      .map((t) => {
+        const inicioClip = t.data_inicio! < diasISO[0] ? diasISO[0] : t.data_inicio!;
+        const fimClip = t.prazo! > diasISO[diasISO.length - 1] ? diasISO[diasISO.length - 1] : t.prazo!;
+        const colStart = colunaVisivel(inicioClip, "frente");
+        const colFim = colunaVisivel(fimClip, "tras");
+        return { tarefa: t, colStart, colSpan: colFim - colStart + 1 };
+      })
+      .filter((b) => b.colStart !== -1 && b.colSpan > 0)
+      .sort((a, b) => a.colStart - b.colStart || b.colSpan - a.colSpan);
+
+    const lanes: { fimCol: number }[] = [];
+    const posicionadas = barras.map((b) => {
+      let lane = lanes.findIndex((l) => l.fimCol < b.colStart);
+      if (lane === -1) {
+        lane = lanes.length;
+        lanes.push({ fimCol: b.colStart + b.colSpan - 1 });
+      } else {
+        lanes[lane].fimCol = b.colStart + b.colSpan - 1;
+      }
+      idsEmFaixa.add(b.tarefa.id);
+      return { ...b, lane };
+    });
+    qtdLanes = lanes.length;
+    return posicionadas;
+  })();
 
   return (
     <div>
@@ -1303,33 +1345,59 @@ function TarefasSemana({
         </details>
       )}
 
-      <div className="flex gap-3 min-w-max">
-        {dias.map((dia) => {
-          const iso = toISODateLocal(dia);
-          const tarefasDoDia = tarefas.filter((t) => t.prazo === iso);
-          return (
-            <div key={iso} className={`w-64 shrink-0 rounded-3xl p-3 min-h-[50vh] ${iso === hojeISO ? "bg-mint/40" : "bg-surface"}`}>
-              <div className="mb-3 px-1">
-                <p className="text-xs font-bold uppercase tracking-wide text-ink/50">{DIAS_SEMANA[dia.getDay()]}</p>
-                <p className={`text-lg font-extrabold ${iso === hojeISO ? "text-forest" : "text-ink"}`}>{dia.getDate()}</p>
-              </div>
-              <div className="space-y-2">
-                {tarefasDoDia.map((t) => (
-                  <div key={t.id} onClick={() => onAbrirTarefa(t)} className="cursor-pointer">
-                    <TarefaCardConteudo
-                      tarefa={t}
-                      qtdSubtarefas={contagemSubtarefas[t.id] ?? 0}
-                      qtdComentarios={contagemComentarios[t.id] ?? 0}
-                      responsaveis={acoes.responsaveisPorTarefa[t.id] ?? []}
-                      camposVisiveis={camposVisiveis}
-                      acoes={acoes}
-                    />
-                  </div>
-                ))}
-              </div>
+      <div className="overflow-x-auto">
+        <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${dias.length}, 16rem)` }}>
+          {qtdLanes > 0 && (
+            <div
+              className="col-span-full grid gap-x-3 gap-y-2 mb-1"
+              style={{ gridTemplateColumns: `repeat(${dias.length}, 16rem)`, gridTemplateRows: `repeat(${qtdLanes}, auto)` }}
+            >
+              {faixas.map((fx) => (
+                <div
+                  key={fx.tarefa.id}
+                  onClick={() => onAbrirTarefa(fx.tarefa)}
+                  className="cursor-pointer"
+                  style={{ gridColumn: `${fx.colStart + 1} / span ${fx.colSpan}`, gridRow: fx.lane + 1 }}
+                >
+                  <TarefaCardConteudo
+                    tarefa={fx.tarefa}
+                    qtdSubtarefas={contagemSubtarefas[fx.tarefa.id] ?? 0}
+                    qtdComentarios={contagemComentarios[fx.tarefa.id] ?? 0}
+                    responsaveis={acoes.responsaveisPorTarefa[fx.tarefa.id] ?? []}
+                    camposVisiveis={camposVisiveis}
+                    acoes={acoes}
+                  />
+                </div>
+              ))}
             </div>
-          );
-        })}
+          )}
+          {dias.map((dia) => {
+            const iso = toISODateLocal(dia);
+            const tarefasDoDia = tarefas.filter((t) => t.prazo === iso && !idsEmFaixa.has(t.id));
+            return (
+              <div key={iso} className={`rounded-3xl p-3 min-h-[50vh] ${iso === hojeISO ? "bg-mint/40" : "bg-surface"}`}>
+                <div className="mb-3 px-1">
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink/50">{DIAS_SEMANA[dia.getDay()]}</p>
+                  <p className={`text-lg font-extrabold ${iso === hojeISO ? "text-forest" : "text-ink"}`}>{dia.getDate()}</p>
+                </div>
+                <div className="space-y-2">
+                  {tarefasDoDia.map((t) => (
+                    <div key={t.id} onClick={() => onAbrirTarefa(t)} className="cursor-pointer">
+                      <TarefaCardConteudo
+                        tarefa={t}
+                        qtdSubtarefas={contagemSubtarefas[t.id] ?? 0}
+                        qtdComentarios={contagemComentarios[t.id] ?? 0}
+                        responsaveis={acoes.responsaveisPorTarefa[t.id] ?? []}
+                        camposVisiveis={camposVisiveis}
+                        acoes={acoes}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
