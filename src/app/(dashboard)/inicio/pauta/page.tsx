@@ -91,6 +91,176 @@ function AvatarStack({ pessoas, tamanho = 16 }: { pessoas: Responsavel[]; tamanh
   );
 }
 
+function BlocoSemanaPessoa({
+  dias,
+  pessoaId,
+  visualizacao,
+  mes,
+  hojeISO,
+  calcularFaixas,
+  itensPorPessoaEDia,
+  idsEmFaixa,
+  funcionarios,
+  onAbrirItem,
+  onNovaTarefa,
+}: {
+  dias: Date[];
+  pessoaId: string;
+  visualizacao: "semana" | "mes";
+  mes: number;
+  hojeISO: string;
+  calcularFaixas: (dias: Date[], pessoaId: string) => { faixas: { item: ItemPauta; colStart: number; colSpan: number; lane: number }[]; qtdLanes: number };
+  itensPorPessoaEDia: Map<string, ItemPauta[]>;
+  idsEmFaixa: Set<string>;
+  funcionarios: Responsavel[];
+  onAbrirItem: (link: string) => void;
+  onNovaTarefa: (dataISO: string, pessoaId: string) => void;
+}) {
+  function toISO(d: Date) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  const { faixas, qtdLanes } = calcularFaixas(dias, pessoaId);
+  const linhasGrid = `auto ${qtdLanes > 0 ? `repeat(${qtdLanes}, auto) ` : ""}minmax(0, 1fr)`;
+  const compacto = visualizacao === "mes";
+
+  return (
+    <div className="grid grid-cols-7" style={{ gridTemplateRows: linhasGrid }}>
+      {dias.map((dia, i) => {
+        const iso = toISO(dia);
+        const doMesAtivo = visualizacao === "semana" || dia.getMonth() === mes;
+        const corFundo = iso === hojeISO ? "bg-mint/20" : !doMesAtivo ? "bg-surface/40" : "";
+        return (
+          <div
+            key={`cab-${iso}`}
+            style={{ gridColumn: i + 1, gridRow: 1 }}
+            className={`p-2 pb-1.5 group/cel ${corFundo} ${i > 0 ? "border-l border-black/5" : ""}`}
+          >
+            <div className="flex items-center justify-between px-0.5">
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wide ${
+                  iso === hojeISO ? "text-forest" : doMesAtivo ? "text-ink/40" : "text-ink/20"
+                }`}
+              >
+                {visualizacao === "semana" ? `${DIAS_SEMANA[dia.getDay()].slice(0, 3)} ${dia.getDate()}` : dia.getDate()}
+              </span>
+              <button
+                onClick={() => onNovaTarefa(iso, pessoaId)}
+                className="opacity-0 group-hover/cel:opacity-100 transition-opacity text-ink/30 hover:text-ink text-xs font-bold"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        );
+      })}
+
+      {qtdLanes > 0 &&
+        faixas.map((fx) => {
+          const respItem = fx.item.responsavelIds
+            .map((rid) => funcionarios.find((fu) => fu.id === rid))
+            .filter((fu): fu is Responsavel => !!fu);
+          if (compacto) {
+            return (
+              <button
+                key={`${fx.item.tipo}-${fx.item.id}`}
+                onClick={() => onAbrirItem(fx.item.link)}
+                style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 2 }}
+                className={`mx-0.5 mb-1 rounded-lg px-1.5 py-1 text-left text-[11px] font-medium truncate overflow-hidden ${corDoStatus(fx.item.statusCor).cor}`}
+              >
+                <span className="inline-flex items-center gap-1">
+                  {fx.item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {fx.item.titulo}
+                </span>
+              </button>
+            );
+          }
+          return (
+            <button
+              key={`${fx.item.tipo}-${fx.item.id}`}
+              onClick={() => onAbrirItem(fx.item.link)}
+              style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 2 }}
+              className={`mx-2 mb-1.5 rounded-lg px-2 py-1.5 text-left overflow-hidden ${corDoStatus(fx.item.statusCor).cor}`}
+            >
+              <p className="text-[11px] font-semibold truncate">
+                <span className="inline-flex items-center gap-1">
+                  {fx.item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {fx.item.titulo}
+                </span>
+              </p>
+              {(fx.item.temDescricao || fx.item.qtdSubitens > 0 || respItem.length > 0) && (
+                <div className="flex items-center justify-between mt-1">
+                  <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
+                    {fx.item.temDescricao && <span title="Tem descrição">☰</span>}
+                    {fx.item.qtdSubitens > 0 && <span title="Subitens">🔗 {fx.item.qtdSubitens}</span>}
+                  </span>
+                  <AvatarStack pessoas={respItem} tamanho={16} />
+                </div>
+              )}
+            </button>
+          );
+        })}
+
+      {dias.map((dia, i) => {
+        const iso = toISO(dia);
+        const itensCelula = (itensPorPessoaEDia.get(`${pessoaId}|${iso}`) ?? []).filter(
+          (it) => !idsEmFaixa.has(`${it.tipo}-${it.id}-${pessoaId}`)
+        );
+        const doMesAtivo = visualizacao === "semana" || dia.getMonth() === mes;
+        const corFundo = iso === hojeISO ? "bg-mint/20" : !doMesAtivo ? "bg-surface/40" : "";
+        return (
+          <div
+            key={`itens-${iso}`}
+            style={{ gridColumn: i + 1, gridRow: qtdLanes + 2 }}
+            className={`p-2 pt-0.5 ${corFundo} ${i > 0 ? "border-l border-black/5" : ""}`}
+          >
+            <div className="space-y-1">
+              {itensCelula.slice(0, compacto ? 3 : undefined).map((item) => {
+                const respItem = item.responsavelIds
+                  .map((rid) => funcionarios.find((fu) => fu.id === rid))
+                  .filter((fu): fu is Responsavel => !!fu);
+                if (compacto) {
+                  return (
+                    <button
+                      key={`${item.tipo}-${item.id}`}
+                      onClick={() => onAbrirItem(item.link)}
+                      className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(item.statusCor).cor}`}
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        {item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {item.titulo}
+                      </span>
+                    </button>
+                  );
+                }
+                return (
+                  <button
+                    key={`${item.tipo}-${item.id}`}
+                    onClick={() => onAbrirItem(item.link)}
+                    className={`w-full text-left rounded-lg px-2 py-1.5 ${corDoStatus(item.statusCor).cor}`}
+                  >
+                    <p className="text-[11px] font-semibold truncate">
+                      <span className="inline-flex items-center gap-1">
+                        {item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {item.titulo}
+                      </span>
+                    </p>
+                    {(item.temDescricao || item.qtdSubitens > 0 || respItem.length > 0) && (
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
+                          {item.temDescricao && <span title="Tem descrição">☰</span>}
+                          {item.qtdSubitens > 0 && <span title="Subitens">🔗 {item.qtdSubitens}</span>}
+                        </span>
+                        <AvatarStack pessoas={respItem} tamanho={16} />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+              {compacto && itensCelula.length > 3 && <p className="text-[10px] text-ink/40 px-1">+{itensCelula.length - 3} mais</p>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function PautaPage() {
   const router = useRouter();
   const [modo, setModo] = useState<"minha" | "equipe">("minha");
@@ -288,48 +458,59 @@ export default function PautaPage() {
     }
   }
 
-  // Itens com início E vencimento diferentes viram uma barra esticada pelos dias,
-  // só faz sentido na visão semanal (nas células de mês não cabe isso).
-  const semanaISO = diasSemana.map((d) => toISODateLocal(d));
+  // Itens com início E vencimento diferentes viram uma barra esticada pelos dias —
+  // funciona tanto numa semana isolada quanto em cada semana do mês (o mês é só
+  // várias semanas empilhadas, cada uma calcula as barras dela mesma).
   type Faixa = { item: ItemPauta; colStart: number; colSpan: number; lane: number };
-  const idsEmFaixaSemana = new Set<string>();
-  const faixasPorPessoa = new Map<string, { faixas: Faixa[]; qtdLanes: number }>();
 
-  if (visualizacao === "semana") {
-    const porPessoa = new Map<string, ItemPauta[]>();
-    for (const item of itens) {
-      if (!item.dataInicio || !item.dataFim || item.dataInicio === item.dataFim) continue;
-      const ids = item.responsavelIds.length > 0 ? item.responsavelIds : ["_sem"];
-      for (const respId of ids) {
-        porPessoa.set(respId, [...(porPessoa.get(respId) ?? []), item]);
+  const itensMultiDiaPorPessoa = new Map<string, ItemPauta[]>();
+  for (const item of itens) {
+    if (!item.dataInicio || !item.dataFim || item.dataInicio === item.dataFim) continue;
+    const ids = item.responsavelIds.length > 0 ? item.responsavelIds : ["_sem"];
+    for (const respId of ids) {
+      itensMultiDiaPorPessoa.set(respId, [...(itensMultiDiaPorPessoa.get(respId) ?? []), item]);
+    }
+  }
+
+  const idsEmFaixa = new Set<string>();
+
+  function calcularFaixasSemana(diasDaSemana: Date[], respId: string): { faixas: Faixa[]; qtdLanes: number } {
+    const semanaISO = diasDaSemana.map((d) => toISODateLocal(d));
+    const itensPessoa = itensMultiDiaPorPessoa.get(respId) ?? [];
+    const barras = itensPessoa
+      .filter((item) => item.dataInicio! <= semanaISO[6] && item.dataFim! >= semanaISO[0])
+      .map((item) => {
+        const inicioClip = item.dataInicio! < semanaISO[0] ? semanaISO[0] : item.dataInicio!;
+        const fimClip = item.dataFim! > semanaISO[6] ? semanaISO[6] : item.dataFim!;
+        const colStart = semanaISO.indexOf(inicioClip) + 1;
+        const colFim = semanaISO.indexOf(fimClip) + 1;
+        return { item, colStart, colSpan: colFim - colStart + 1 };
+      })
+      .filter((b) => b.colStart > 0 && b.colSpan > 0)
+      .sort((a, b) => a.colStart - b.colStart || b.colSpan - a.colSpan);
+
+    const lanes: { fimCol: number }[] = [];
+    const faixas: Faixa[] = barras.map((b) => {
+      let lane = lanes.findIndex((l) => l.fimCol < b.colStart);
+      if (lane === -1) {
+        lane = lanes.length;
+        lanes.push({ fimCol: b.colStart + b.colSpan - 1 });
+      } else {
+        lanes[lane].fimCol = b.colStart + b.colSpan - 1;
       }
-    }
-    for (const [respId, itensPessoa] of porPessoa) {
-      const barras = itensPessoa
-        .map((item) => {
-          const inicioClip = item.dataInicio! < semanaISO[0] ? semanaISO[0] : item.dataInicio!;
-          const fimClip = item.dataFim! > semanaISO[6] ? semanaISO[6] : item.dataFim!;
-          const colStart = semanaISO.indexOf(inicioClip) + 1;
-          const colFim = semanaISO.indexOf(fimClip) + 1;
-          return { item, colStart, colSpan: colFim - colStart + 1 };
-        })
-        .filter((b) => b.colStart > 0 && b.colSpan > 0)
-        .sort((a, b) => a.colStart - b.colStart || b.colSpan - a.colSpan);
+      idsEmFaixa.add(`${b.item.tipo}-${b.item.id}-${respId}`);
+      return { ...b, lane };
+    });
+    return { faixas, qtdLanes: lanes.length };
+  }
 
-      const lanes: { fimCol: number }[] = [];
-      const faixas: Faixa[] = barras.map((b) => {
-        let lane = lanes.findIndex((l) => l.fimCol < b.colStart);
-        if (lane === -1) {
-          lane = lanes.length;
-          lanes.push({ fimCol: b.colStart + b.colSpan - 1 });
-        } else {
-          lanes[lane].fimCol = b.colStart + b.colSpan - 1;
-        }
-        idsEmFaixaSemana.add(`${b.item.tipo}-${b.item.id}-${respId}`);
-        return { ...b, lane };
-      });
-      faixasPorPessoa.set(respId, { faixas, qtdLanes: lanes.length });
-    }
+  // Pré-calcula pra marcar quais itens já viram barra (precisa rodar antes da
+  // renderização pra saber o que excluir das células de dia único).
+  const semanasMes: Date[][] = [];
+  for (let i = 0; i < diasMes.length; i += 7) semanasMes.push(diasMes.slice(i, i + 7));
+  const blocosDeSemana = visualizacao === "semana" ? [diasSemana] : semanasMes;
+  for (const respId of itensMultiDiaPorPessoa.keys()) {
+    for (const semana of blocosDeSemana) calcularFaixasSemana(semana, respId);
   }
 
   const funcionariosExibidos = modo === "minha" ? funcionarios.filter((f) => f.id === meuFuncionarioId) : funcionarios;
@@ -466,135 +647,26 @@ export default function PautaPage() {
                   <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={26} />
                   <p className="text-sm font-bold text-ink">{f.nome}</p>
                 </div>
-                {(() => {
-                  const info = visualizacao === "semana" ? faixasPorPessoa.get(f.id) : undefined;
-                  const lanes = info?.qtdLanes ?? 0;
-                  const linhasGrid = `auto ${lanes > 0 ? `repeat(${lanes}, auto) ` : ""}minmax(0, 1fr)`;
-                  return (
-                    <div className="grid grid-cols-7 flex-1 min-h-0" style={{ gridTemplateRows: linhasGrid }}>
-                      {diasAtivos.map((dia, i) => {
-                        const iso = toISODateLocal(dia);
-                        const doMesAtivo = visualizacao === "semana" || dia.getMonth() === mes;
-                        const corFundo = iso === hojeISO ? "bg-mint/20" : !doMesAtivo ? "bg-surface/40" : "";
-                        return (
-                          <div
-                            key={`cab-${iso}`}
-                            style={{ gridColumn: i + 1, gridRow: 1 }}
-                            className={`p-2 pb-1.5 group/cel ${corFundo} ${i > 0 ? "border-l border-black/5" : ""}`}
-                          >
-                            <div className="flex items-center justify-between px-0.5">
-                              <span
-                                className={`text-[10px] font-bold uppercase tracking-wide ${
-                                  iso === hojeISO ? "text-forest" : doMesAtivo ? "text-ink/40" : "text-ink/20"
-                                }`}
-                              >
-                                {visualizacao === "semana" ? `${DIAS_SEMANA[dia.getDay()].slice(0, 3)} ${dia.getDate()}` : dia.getDate()}
-                              </span>
-                              <button
-                                onClick={() => novaTarefaNoDia(iso, f.id)}
-                                className="opacity-0 group-hover/cel:opacity-100 transition-opacity text-ink/30 hover:text-ink text-xs font-bold"
-                              >
-                                +
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      {lanes > 0 &&
-                        info!.faixas.map((fx) => {
-                          const respItem = fx.item.responsavelIds
-                            .map((rid) => funcionarios.find((fu) => fu.id === rid))
-                            .filter((fu): fu is Responsavel => !!fu);
-                          return (
-                            <button
-                              key={`${fx.item.tipo}-${fx.item.id}`}
-                              onClick={() => router.push(fx.item.link)}
-                              style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 2 }}
-                              className={`mx-2 mb-1.5 rounded-lg px-2 py-1.5 text-left overflow-hidden ${corDoStatus(fx.item.statusCor).cor}`}
-                            >
-                              <p className="text-[11px] font-semibold truncate">
-                                <span className="inline-flex items-center gap-1">
-                                  {fx.item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {fx.item.titulo}
-                                </span>
-                              </p>
-                              {(fx.item.temDescricao || fx.item.qtdSubitens > 0 || respItem.length > 0) && (
-                                <div className="flex items-center justify-between mt-1">
-                                  <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
-                                    {fx.item.temDescricao && <span title="Tem descrição">☰</span>}
-                                    {fx.item.qtdSubitens > 0 && <span title="Subitens">🔗 {fx.item.qtdSubitens}</span>}
-                                  </span>
-                                  <AvatarStack pessoas={respItem} tamanho={16} />
-                                </div>
-                              )}
-                            </button>
-                          );
-                        })}
-
-                      {diasAtivos.map((dia, i) => {
-                        const iso = toISODateLocal(dia);
-                        const itensCelula = (itensPorPessoaEDia.get(`${f.id}|${iso}`) ?? []).filter(
-                          (it) => !(visualizacao === "semana" && idsEmFaixaSemana.has(`${it.tipo}-${it.id}-${f.id}`))
-                        );
-                        const doMesAtivo = visualizacao === "semana" || dia.getMonth() === mes;
-                        const corFundo = iso === hojeISO ? "bg-mint/20" : !doMesAtivo ? "bg-surface/40" : "";
-                        return (
-                          <div
-                            key={`itens-${iso}`}
-                            style={{ gridColumn: i + 1, gridRow: lanes + 2 }}
-                            className={`p-2 pt-0.5 ${corFundo} ${i > 0 ? "border-l border-black/5" : ""}`}
-                          >
-                            <div className="space-y-1">
-                              {itensCelula.slice(0, visualizacao === "mes" ? 3 : undefined).map((item) => {
-                                const respItem = item.responsavelIds
-                                  .map((rid) => funcionarios.find((fu) => fu.id === rid))
-                                  .filter((fu): fu is Responsavel => !!fu);
-                                if (visualizacao === "mes") {
-                                  return (
-                                    <button
-                                      key={`${item.tipo}-${item.id}`}
-                                      onClick={() => router.push(item.link)}
-                                      className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(item.statusCor).cor}`}
-                                    >
-                                      <span className="inline-flex items-center gap-1">
-                                        {item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {item.titulo}
-                                      </span>
-                                    </button>
-                                  );
-                                }
-                                return (
-                                  <button
-                                    key={`${item.tipo}-${item.id}`}
-                                    onClick={() => router.push(item.link)}
-                                    className={`w-full text-left rounded-lg px-2 py-1.5 ${corDoStatus(item.statusCor).cor}`}
-                                  >
-                                    <p className="text-[11px] font-semibold truncate">
-                                      <span className="inline-flex items-center gap-1">
-                                        {item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {item.titulo}
-                                      </span>
-                                    </p>
-                                    {(item.temDescricao || item.qtdSubitens > 0 || respItem.length > 0) && (
-                                      <div className="flex items-center justify-between mt-1">
-                                        <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
-                                          {item.temDescricao && <span title="Tem descrição">☰</span>}
-                                          {item.qtdSubitens > 0 && <span title="Subitens">🔗 {item.qtdSubitens}</span>}
-                                        </span>
-                                        <AvatarStack pessoas={respItem} tamanho={16} />
-                                      </div>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                              {visualizacao === "mes" && itensCelula.length > 3 && (
-                                <p className="text-[10px] text-ink/40 px-1">+{itensCelula.length - 3} mais</p>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
+                <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-black/5">
+                  {blocosDeSemana.map((diasDaSemana, idxSemana) => {
+                    return (
+                      <BlocoSemanaPessoa
+                        key={idxSemana}
+                        dias={diasDaSemana}
+                        pessoaId={f.id}
+                        visualizacao={visualizacao}
+                        mes={mes}
+                        hojeISO={hojeISO}
+                        calcularFaixas={calcularFaixasSemana}
+                        itensPorPessoaEDia={itensPorPessoaEDia}
+                        idsEmFaixa={idsEmFaixa}
+                        funcionarios={funcionarios}
+                        onAbrirItem={(link) => router.push(link)}
+                        onNovaTarefa={novaTarefaNoDia}
+                      />
+                    );
+                  })}
+                </div>
               </div>
             ))}
           </div>

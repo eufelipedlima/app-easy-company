@@ -879,76 +879,146 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
           <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
             <div className="grid grid-cols-7 bg-surface text-xs font-semibold text-ink/50 uppercase tracking-wide">
               {DIAS_SEMANA.map((d) => (
-            <div key={d} className="px-3 py-2 text-center">
-              {d}
+                <div key={d} className="px-3 py-2 text-center">
+                  {d}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7">
-          {dias.map((dia) => {
-            const iso = toISODate(dia);
-            const doMes = dia.getMonth() === mes;
-            const postsDoDia = postsPorDia.get(iso) ?? [];
-            return (
-              <div
-                key={iso}
-                className={`min-h-[150px] border-b border-r border-black/5 p-2 ${doMes ? "bg-white" : "bg-surface/40"}`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span
-                    className={`text-xs font-semibold ${
-                      iso === hojeISO
-                        ? "bg-ink text-white rounded-full h-5 w-5 flex items-center justify-center"
-                        : doMes
-                        ? "text-ink/60"
-                        : "text-ink/25"
-                    }`}
+            {(() => {
+              const semanasMes: Date[][] = [];
+              for (let i = 0; i < dias.length; i += 7) semanasMes.push(dias.slice(i, i + 7));
+
+              const postsMultiDia = aplicarFiltros(posts).filter(
+                (p) => p.data_inicio && p.data_publicacao && p.data_inicio !== p.data_publicacao
+              );
+              const idsEmFaixa = new Set<string>();
+
+              function calcularFaixasSemana(diasDaSemana: Date[]) {
+                const semanaISO = diasDaSemana.map((d) => toISODate(d));
+                const barras = postsMultiDia
+                  .filter((p) => p.data_inicio! <= semanaISO[6] && p.data_publicacao >= semanaISO[0])
+                  .map((p) => {
+                    const inicioClip = p.data_inicio! < semanaISO[0] ? semanaISO[0] : p.data_inicio!;
+                    const fimClip = p.data_publicacao > semanaISO[6] ? semanaISO[6] : p.data_publicacao;
+                    const colStart = semanaISO.indexOf(inicioClip) + 1;
+                    const colFim = semanaISO.indexOf(fimClip) + 1;
+                    return { post: p, colStart, colSpan: colFim - colStart + 1 };
+                  })
+                  .filter((b) => b.colStart > 0 && b.colSpan > 0)
+                  .sort((a, b) => a.colStart - b.colStart || b.colSpan - a.colSpan);
+
+                const lanes: { fimCol: number }[] = [];
+                const faixas = barras.map((b) => {
+                  let lane = lanes.findIndex((l) => l.fimCol < b.colStart);
+                  if (lane === -1) {
+                    lane = lanes.length;
+                    lanes.push({ fimCol: b.colStart + b.colSpan - 1 });
+                  } else {
+                    lanes[lane].fimCol = b.colStart + b.colSpan - 1;
+                  }
+                  idsEmFaixa.add(b.post.id);
+                  return { ...b, lane };
+                });
+                return { faixas, qtdLanes: lanes.length };
+              }
+              for (const semana of semanasMes) calcularFaixasSemana(semana);
+
+              function CartaoPost({ p }: { p: Post }) {
+                const mostrarTitulo = camposVisiveis.titulo && p.titulo;
+                const mostrarCliente = camposVisiveis.cliente && !clienteFiltroId;
+                const mostrarFormato = camposVisiveis.formato && p.formato;
+                const respDoPost = responsaveisPorPost[p.id] ?? [];
+                const mostrarResponsavel = camposVisiveis.responsavel && respDoPost.length > 0;
+                return (
+                  <button
+                    onClick={() => router.push(`/conteudo/calendario/post/${p.id}`)}
+                    className={`w-full text-left rounded-lg px-1.5 py-1 leading-tight ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
                   >
-                    {dia.getDate()}
-                  </span>
-                  {doMes && (
-                    <button onClick={() => criarPostRapido(iso)} className="text-ink/20 hover:text-forest text-sm leading-none">
-                      +
-                    </button>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  {postsDoDia.slice(0, 3).map((p) => {
-                    const mostrarTitulo = camposVisiveis.titulo && p.titulo;
-                    const mostrarCliente = camposVisiveis.cliente && !clienteFiltroId;
-                    const mostrarFormato = camposVisiveis.formato && p.formato;
-                    const respDoPost = responsaveisPorPost[p.id] ?? [];
-                    const mostrarResponsavel = camposVisiveis.responsavel && respDoPost.length > 0;
-                    return (
-                      <button
-                        key={p.id}
-                        onClick={() => router.push(`/conteudo/calendario/post/${p.id}`)}
-                        className={`w-full text-left rounded-lg px-1.5 py-1 leading-tight ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
-                      >
-                        {tituloPaiPorPost[p.id] && (
-                          <p className="text-[9px] text-forest font-semibold truncate">↳ {tituloPaiPorPost[p.id]}</p>
-                        )}
-                        <p className="text-[11px] font-semibold truncate">
-                          {mostrarTitulo ? p.titulo : p.hora_publicacao?.slice(0, 5) || "Post"}
-                        </p>
-                        {mostrarCliente && <p className="text-[10px] opacity-70 truncate">{nomeCliente(p)}</p>}
-                        {mostrarFormato && <p className="text-[10px] opacity-70 truncate">{FORMATO_CONFIG[p.formato!]?.label}</p>}
-                        {(p.observacoes_internas || mostrarResponsavel) && (
-                          <div className="flex items-center justify-between mt-0.5">
-                            <span className="text-[10px] opacity-60">{p.observacoes_internas ? "☰" : ""}</span>
-                            {mostrarResponsavel && <AvatarStackPost pessoas={respDoPost} tamanho={14} />}
+                    {tituloPaiPorPost[p.id] && <p className="text-[9px] text-forest font-semibold truncate">↳ {tituloPaiPorPost[p.id]}</p>}
+                    <p className="text-[11px] font-semibold truncate">{mostrarTitulo ? p.titulo : p.hora_publicacao?.slice(0, 5) || "Post"}</p>
+                    {mostrarCliente && <p className="text-[10px] opacity-70 truncate">{nomeCliente(p)}</p>}
+                    {mostrarFormato && <p className="text-[10px] opacity-70 truncate">{FORMATO_CONFIG[p.formato!]?.label}</p>}
+                    {(p.observacoes_internas || mostrarResponsavel) && (
+                      <div className="flex items-center justify-between mt-0.5">
+                        <span className="text-[10px] opacity-60">{p.observacoes_internas ? "☰" : ""}</span>
+                        {mostrarResponsavel && <AvatarStackPost pessoas={respDoPost} tamanho={14} />}
+                      </div>
+                    )}
+                  </button>
+                );
+              }
+
+              return semanasMes.map((diasDaSemana, idxSemana) => {
+                const { faixas, qtdLanes } = calcularFaixasSemana(diasDaSemana);
+                const linhasGrid = `auto ${qtdLanes > 0 ? `repeat(${qtdLanes}, auto) ` : ""}minmax(0, 1fr)`;
+                return (
+                  <div key={idxSemana} className="grid grid-cols-7" style={{ gridTemplateRows: linhasGrid }}>
+                    {diasDaSemana.map((dia, i) => {
+                      const iso = toISODate(dia);
+                      const doMes = dia.getMonth() === mes;
+                      return (
+                        <div
+                          key={`cab-${iso}`}
+                          style={{ gridColumn: i + 1, gridRow: 1 }}
+                          className={`border-r border-black/5 p-2 pb-1 ${doMes ? "bg-white" : "bg-surface/40"}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span
+                              className={`text-xs font-semibold ${
+                                iso === hojeISO
+                                  ? "bg-ink text-white rounded-full h-5 w-5 flex items-center justify-center"
+                                  : doMes
+                                  ? "text-ink/60"
+                                  : "text-ink/25"
+                              }`}
+                            >
+                              {dia.getDate()}
+                            </span>
+                            {doMes && (
+                              <button onClick={() => criarPostRapido(iso)} className="text-ink/20 hover:text-forest text-sm leading-none">
+                                +
+                              </button>
+                            )}
                           </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                  {postsDoDia.length > 3 && <p className="text-[10px] text-ink/40 px-1.5">+{postsDoDia.length - 3} mais</p>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+                        </div>
+                      );
+                    })}
+
+                    {qtdLanes > 0 &&
+                      faixas.map((fx) => (
+                        <div
+                          key={fx.post.id}
+                          style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 2 }}
+                          className="mx-1 mb-1"
+                        >
+                          <CartaoPost p={fx.post} />
+                        </div>
+                      ))}
+
+                    {diasDaSemana.map((dia, i) => {
+                      const iso = toISODate(dia);
+                      const doMes = dia.getMonth() === mes;
+                      const postsDoDia = (postsPorDia.get(iso) ?? []).filter((p) => !idsEmFaixa.has(p.id));
+                      return (
+                        <div
+                          key={`itens-${iso}`}
+                          style={{ gridColumn: i + 1, gridRow: qtdLanes + 2 }}
+                          className={`min-h-[130px] border-b border-r border-black/5 p-2 pt-0.5 ${doMes ? "bg-white" : "bg-surface/40"}`}
+                        >
+                          <div className="space-y-1">
+                            {postsDoDia.slice(0, 3).map((p) => (
+                              <CartaoPost key={p.id} p={p} />
+                            ))}
+                            {postsDoDia.length > 3 && <p className="text-[10px] text-ink/40 px-1.5">+{postsDoDia.length - 3} mais</p>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              });
+            })()}
+          </div>
 
       <div className="flex flex-wrap items-center gap-4 mt-4">
         {statusList.map((s) => (

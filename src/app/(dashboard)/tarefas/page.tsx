@@ -1457,6 +1457,43 @@ function TarefasMes({
     tarefasPorDia.get(t.prazo)!.push(t);
   }
 
+  const tarefasMultiDia = tarefas.filter((t) => t.data_inicio && t.prazo && t.data_inicio !== t.prazo);
+  const idsEmFaixa = new Set<string>();
+
+  function calcularFaixasSemana(diasDaSemana: Date[]) {
+    const semanaISO = diasDaSemana.map((d) => toISODateLocal(d));
+    const barras = tarefasMultiDia
+      .filter((t) => t.data_inicio! <= semanaISO[6] && t.prazo! >= semanaISO[0])
+      .map((t) => {
+        const inicioClip = t.data_inicio! < semanaISO[0] ? semanaISO[0] : t.data_inicio!;
+        const fimClip = t.prazo! > semanaISO[6] ? semanaISO[6] : t.prazo!;
+        const colStart = semanaISO.indexOf(inicioClip) + 1;
+        const colFim = semanaISO.indexOf(fimClip) + 1;
+        return { tarefa: t, colStart, colSpan: colFim - colStart + 1 };
+      })
+      .filter((b) => b.colStart > 0 && b.colSpan > 0)
+      .sort((a, b) => a.colStart - b.colStart || b.colSpan - a.colSpan);
+
+    const lanes: { fimCol: number }[] = [];
+    const faixas = barras.map((b) => {
+      let lane = lanes.findIndex((l) => l.fimCol < b.colStart);
+      if (lane === -1) {
+        lane = lanes.length;
+        lanes.push({ fimCol: b.colStart + b.colSpan - 1 });
+      } else {
+        lanes[lane].fimCol = b.colStart + b.colSpan - 1;
+      }
+      idsEmFaixa.add(b.tarefa.id);
+      return { ...b, lane };
+    });
+    return { faixas, qtdLanes: lanes.length };
+  }
+
+  const semanasMes: Date[][] = [];
+  for (let i = 0; i < dias.length; i += 7) semanasMes.push(dias.slice(i, i + 7));
+  // roda uma vez pra marcar idsEmFaixa antes de desenhar as células de dia único
+  for (const semana of semanasMes) calcularFaixasSemana(semana);
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-4">
@@ -1502,37 +1539,79 @@ function TarefasMes({
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7">
-          {dias.map((dia) => {
-            const iso = toISODateLocal(dia);
-            const doMes = dia.getMonth() === mes;
-            const tarefasDoDia = tarefasPorDia.get(iso) ?? [];
-            return (
-              <div
-                key={iso}
-                className={`min-h-[110px] border-b border-r border-black/5 p-2 ${doMes ? "bg-white" : "bg-surface/40"} ${
-                  iso === hojeISO ? "bg-mint/30" : ""
-                }`}
-              >
-                <p className={`text-xs font-semibold mb-1 ${doMes ? "text-ink/60" : "text-ink/30"} ${iso === hojeISO ? "text-forest" : ""}`}>
-                  {dia.getDate()}
-                </p>
-                <div className="space-y-1">
-                  {tarefasDoDia.slice(0, 3).map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => onAbrirTarefa(t)}
-                      className="w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate bg-surface hover:bg-surface/70"
-                    >
-                      {t.eh_projeto ? <IconeProjeto tamanho={11} className="inline-block align-[-1px]" /> : <IconeTarefa tamanho={11} className="inline-block align-[-1px]" />} {t.titulo}
-                    </button>
-                  ))}
-                  {tarefasDoDia.length > 3 && <p className="text-[10px] text-ink/40 px-1.5">+{tarefasDoDia.length - 3} mais</p>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {semanasMes.map((diasDaSemana, idxSemana) => {
+          const { faixas, qtdLanes } = calcularFaixasSemana(diasDaSemana);
+          const linhasGrid = `auto ${qtdLanes > 0 ? `repeat(${qtdLanes}, auto) ` : ""}minmax(0, 1fr)`;
+          return (
+            <div key={idxSemana} className="grid grid-cols-7" style={{ gridTemplateRows: linhasGrid }}>
+              {diasDaSemana.map((dia, i) => {
+                const iso = toISODateLocal(dia);
+                const doMes = dia.getMonth() === mes;
+                return (
+                  <div
+                    key={`cab-${iso}`}
+                    style={{ gridColumn: i + 1, gridRow: 1 }}
+                    className={`border-r border-black/5 p-2 pb-1 ${doMes ? "bg-white" : "bg-surface/40"} ${iso === hojeISO ? "bg-mint/30" : ""}`}
+                  >
+                    <p className={`text-xs font-semibold ${doMes ? "text-ink/60" : "text-ink/30"} ${iso === hojeISO ? "text-forest" : ""}`}>
+                      {dia.getDate()}
+                    </p>
+                  </div>
+                );
+              })}
+
+              {qtdLanes > 0 &&
+                faixas.map((fx) => (
+                  <button
+                    key={fx.tarefa.id}
+                    onClick={() => onAbrirTarefa(fx.tarefa)}
+                    style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 2 }}
+                    className="mx-1 mb-1 rounded-lg px-1.5 py-1 text-left text-[11px] font-medium truncate bg-surface hover:bg-surface/70"
+                  >
+                    {fx.tarefa.eh_projeto ? (
+                      <IconeProjeto tamanho={11} className="inline-block align-[-1px]" />
+                    ) : (
+                      <IconeTarefa tamanho={11} className="inline-block align-[-1px]" />
+                    )}{" "}
+                    {fx.tarefa.titulo}
+                  </button>
+                ))}
+
+              {diasDaSemana.map((dia, i) => {
+                const iso = toISODateLocal(dia);
+                const doMes = dia.getMonth() === mes;
+                const tarefasDoDia = (tarefasPorDia.get(iso) ?? []).filter((t) => !idsEmFaixa.has(t.id));
+                return (
+                  <div
+                    key={`itens-${iso}`}
+                    style={{ gridColumn: i + 1, gridRow: qtdLanes + 2 }}
+                    className={`min-h-[90px] border-b border-r border-black/5 p-2 pt-0.5 ${doMes ? "bg-white" : "bg-surface/40"} ${
+                      iso === hojeISO ? "bg-mint/30" : ""
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      {tarefasDoDia.slice(0, 3).map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => onAbrirTarefa(t)}
+                          className="w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate bg-surface hover:bg-surface/70"
+                        >
+                          {t.eh_projeto ? (
+                            <IconeProjeto tamanho={11} className="inline-block align-[-1px]" />
+                          ) : (
+                            <IconeTarefa tamanho={11} className="inline-block align-[-1px]" />
+                          )}{" "}
+                          {t.titulo}
+                        </button>
+                      ))}
+                      {tarefasDoDia.length > 3 && <p className="text-[10px] text-ink/40 px-1.5">+{tarefasDoDia.length - 3} mais</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
