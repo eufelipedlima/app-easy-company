@@ -305,12 +305,19 @@ function AdicionarClienteModal({
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      await supabase.from("chat_canais").insert({
-        tipo: "cliente",
-        nome: nomeCliente,
-        cliente_id: clienteId,
-        criado_por: user?.id ?? null,
-      });
+      const { data: novoCanal } = await supabase
+        .from("chat_canais")
+        .insert({
+          tipo: "cliente",
+          nome: nomeCliente,
+          cliente_id: clienteId,
+          criado_por: user?.id ?? null,
+        })
+        .select("id")
+        .single();
+      if (novoCanal && user?.id) {
+        await supabase.from("chat_participantes").insert({ canal_id: novoCanal.id, auth_user_id: user.id });
+      }
     }
 
     setSalvando(false);

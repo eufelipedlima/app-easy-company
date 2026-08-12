@@ -166,14 +166,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: participacoes } = await supabase
-        .from("chat_participantes")
-        .select("canal_id, chat_canais ( tipo )")
-        .eq("auth_user_id", user.id);
-      const tipoPorCanal = new Map<string, string>();
-      for (const p of (participacoes ?? []) as unknown as { canal_id: string; chat_canais: { tipo: string } | null }[]) {
-        if (p.chat_canais?.tipo) tipoPorCanal.set(p.canal_id, p.chat_canais.tipo);
-      }
+      const { data: funcionarioData } = await supabase
+        .from("funcionarios")
+        .select("papeis ( pessoas ( nome, apelido ) )")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+      const meuNome =
+        (funcionarioData as unknown as { papeis: { pessoas: { nome: string; apelido: string | null } | null } | null } | null)?.papeis
+          ?.pessoas?.apelido ||
+        (funcionarioData as unknown as { papeis: { pessoas: { nome: string; apelido: string | null } | null } | null } | null)?.papeis
+          ?.pessoas?.nome ||
+        null;
+      const regexMeMencionou = meuNome ? new RegExp(`@${meuNome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`) : null;
 
       canalNotificacoes = supabase
         .channel("som-notificacoes")
@@ -186,10 +190,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       canalMensagens = supabase
         .channel("som-mensagens")
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_mensagens" }, (payload) => {
-          const nova = payload.new as { autor_id: string; canal_id: string };
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_mensagens" }, async (payload) => {
+          const nova = payload.new as { autor_id: string; canal_id: string; texto: string | null };
           if (nova.autor_id === user.id) return;
-          const tipo = tipoPorCanal.get(nova.canal_id);
+
+          // Se a mensagem me menciona, o som de "caixa de entrada" já toca via notificação (mencao_chat) — não duplica
+          if (regexMeMencionou && nova.texto && regexMeMencionou.test(nova.texto)) return;
+
+          // Confere na hora se eu participo desse canal (evita cache furado se fui adicionado durante a sessão)
+          const supabaseConsulta = createClient();
+          const { data: minhaParticipacao } = await supabaseConsulta
+            .from("chat_participantes")
+            .select("chat_canais ( tipo )")
+            .eq("auth_user_id", user.id)
+            .eq("canal_id", nova.canal_id)
+            .maybeSingle();
+          const tipo = (minhaParticipacao as unknown as { chat_canais: { tipo: string } | null } | null)?.chat_canais?.tipo;
           if (!tipo) return;
           if (tipo === "dm") tocarSomMensagemPrivada();
           else tocarSomMensagemGrupo();
