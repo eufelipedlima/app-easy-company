@@ -74,6 +74,7 @@ interface CamposVisiveis {
 }
 
 const CAMPOS_VISIVEIS_PADRAO: CamposVisiveis = { titulo: true, cliente: true, formato: true, responsavel: true };
+const ALTURA_COLAPSADA_LEGENDA_MODAL = 90;
 
 function carregarCamposVisiveis(): CamposVisiveis {
   if (typeof window === "undefined") return CAMPOS_VISIVEIS_PADRAO;
@@ -1307,6 +1308,8 @@ function PostModal({
   const [dataPublicacao, setDataPublicacao] = useState(post?.data_publicacao ?? dataInicial ?? "");
   const [horaPublicacao, setHoraPublicacao] = useState(post?.hora_publicacao?.slice(0, 5) ?? "");
   const [legenda, setLegenda] = useState(post?.legenda ?? "");
+  const [legendaRecolhida, setLegendaRecolhida] = useState(true);
+  const [legendaTransborda, setLegendaTransborda] = useState(false);
   const [objetivo, setObjetivo] = useState<string>(post?.objetivo ?? "");
   const [formato, setFormato] = useState<string>(post?.formato ?? "");
   const [linkVideo, setLinkVideo] = useState<string>(post?.link_video ?? "");
@@ -1324,6 +1327,14 @@ function PostModal({
     if (!statusId && statusList[0]) setStatusId(statusList[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusList]);
+
+  useEffect(() => {
+    const el = legendaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+    setLegendaTransborda(el.scrollHeight > ALTURA_COLAPSADA_LEGENDA_MODAL + 20);
+  }, [legenda]);
 
   useEffect(() => {
     async function carregarClientes() {
@@ -1620,9 +1631,19 @@ function PostModal({
               ref={legendaRef}
               value={legenda}
               onChange={(e) => setLegenda(e.target.value)}
-              className="input"
-              rows={4}
+              className="input resize-none overflow-hidden"
+              rows={1}
+              style={legendaRecolhida && legendaTransborda ? { maxHeight: ALTURA_COLAPSADA_LEGENDA_MODAL, overflow: "hidden" } : undefined}
             />
+            {legendaTransborda && (
+              <button
+                type="button"
+                onClick={() => setLegendaRecolhida((v) => !v)}
+                className="mt-1 text-xs font-semibold text-ink/50 hover:text-ink"
+              >
+                {legendaRecolhida ? "▼ Expandir" : "▲ Recolher"}
+              </button>
+            )}
           </div>
 
           <div>
