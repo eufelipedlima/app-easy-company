@@ -20,6 +20,9 @@ import {
   CheckCircle2,
   Circle,
   PlayCircle,
+  Clock,
+  FileText,
+  BarChart3,
 } from "lucide-react";
 
 interface Cargo {
@@ -40,6 +43,9 @@ interface Tema {
   emoji: string | null;
   conteudo: string | null;
   ordem: number;
+  descricao: string | null;
+  duracaoMin: number | null;
+  dificuldade: "iniciante" | "intermediario" | "avancado" | null;
 }
 interface Pagina {
   id: string;
@@ -134,6 +140,7 @@ export default function AcademyPage() {
   const [editandoTituloPagina, setEditandoTituloPagina] = useState(false);
   const [novoTemaAberto, setNovoTemaAberto] = useState(false);
   const [renomeandoTema, setRenomeandoTema] = useState<Tema | null>(null);
+  const [editandoMetaTema, setEditandoMetaTema] = useState<Tema | null>(null);
   const [novoVideoTemaId, setNovoVideoTemaId] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
@@ -188,7 +195,7 @@ export default function AcademyPage() {
     if (listaPaginas.length > 0) {
       const { data: temasData } = await supabase
         .from("academy_temas")
-        .select("id, pagina_id, titulo, emoji, conteudo, ordem")
+        .select("id, pagina_id, titulo, emoji, conteudo, ordem, descricao, duracao_min, dificuldade")
         .in(
           "pagina_id",
           listaPaginas.map((p) => p.id)
@@ -201,6 +208,9 @@ export default function AcademyPage() {
         emoji: t.emoji,
         conteudo: t.conteudo,
         ordem: t.ordem,
+        descricao: t.descricao,
+        duracaoMin: t.duracao_min,
+        dificuldade: t.dificuldade,
       }));
       setTemas(listaTemas);
 
@@ -334,6 +344,10 @@ export default function AcademyPage() {
 
   function voltarPraHome() {
     setPaginaAtivaId(null);
+    setTemaAtivoId(null);
+  }
+
+  function voltarParaTreinamento() {
     setTemaAtivoId(null);
   }
 
@@ -581,7 +595,7 @@ export default function AcademyPage() {
         <div className="flex-1 min-w-0 flex overflow-hidden">
           <div className="flex-1 min-w-0 overflow-y-auto scrollbar-fina-clara bg-surface/20">
             <div className="border-b border-black/5 bg-white">
-              <div className="px-10 py-4 max-w-5xl mx-auto flex items-center justify-between gap-4 flex-wrap">
+              <div className="px-10 py-3 max-w-5xl mx-auto">
                 <p className="text-xs font-semibold text-ink/40">
                   <span className="hover:text-ink/70 cursor-default">Academy</span>
                   {categoriaAtual && (
@@ -593,7 +607,9 @@ export default function AcademyPage() {
                   {paginaAtual && (
                     <>
                       <span className="mx-1.5 text-ink/20">/</span>
-                      <span className="text-forest font-bold">{paginaAtual.titulo}</span>
+                      <button onClick={voltarParaTreinamento} className="text-forest font-bold hover:underline">
+                        {paginaAtual.titulo}
+                      </button>
                     </>
                   )}
                   {temaAtivo && (
@@ -605,12 +621,6 @@ export default function AcademyPage() {
                     </>
                   )}
                 </p>
-                <button
-                  onClick={voltarPraHome}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors shrink-0"
-                >
-                  <ArrowLeft size={14} /> Voltar pro Academy
-                </button>
               </div>
             </div>
 
@@ -651,6 +661,12 @@ export default function AcademyPage() {
             ) : !temaAtivo ? (
               <div className="px-10 py-8 max-w-5xl mx-auto">
                 <div className="max-w-3xl">
+                  <button
+                    onClick={voltarPraHome}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors mb-6"
+                  >
+                    <ArrowLeft size={14} /> Voltar pro Academy
+                  </button>
                   <div className="flex items-center gap-3 mb-2">
                     <span className="text-4xl shrink-0">{paginaAtual.emoji || "📄"}</span>
                     <h1 className="text-3xl sm:text-4xl font-extrabold text-ink">{paginaAtual.titulo}</h1>
@@ -735,16 +751,22 @@ export default function AcademyPage() {
             ) : (
               <div className="px-10 py-8 max-w-5xl mx-auto">
                 <div className="max-w-3xl">
-                  <div className="flex items-center justify-between gap-3 mb-5">
+                  <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
                     <button
-                      onClick={() => alternarConcluido(temaAtivo.id)}
-                      className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-extrabold shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
-                        progresso.has(temaAtivo.id) ? "bg-forest text-mint" : "bg-mint text-forest"
-                      }`}
+                      onClick={voltarParaTreinamento}
+                      className="inline-flex items-center gap-1.5 rounded-full border-2 border-black/10 text-ink/60 px-4 py-2 text-sm font-bold hover:border-black/20 hover:text-ink transition-colors"
                     >
-                      <CheckCircle2 size={17} /> {progresso.has(temaAtivo.id) ? "Aula concluída" : "Marcar como concluída"}
+                      <ArrowLeft size={14} /> Voltar para o treinamento
                     </button>
                     <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => alternarConcluido(temaAtivo.id)}
+                        className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-extrabold shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                          progresso.has(temaAtivo.id) ? "bg-forest text-mint" : "bg-mint text-forest"
+                        }`}
+                      >
+                        <CheckCircle2 size={17} /> {progresso.has(temaAtivo.id) ? "Aula concluída" : "Marcar como concluída"}
+                      </button>
                       <button
                         onClick={() => indiceTemaAtivo > 0 && abrirTema(paginaAtual.id, temasDaPagina[indiceTemaAtivo - 1].id)}
                         disabled={indiceTemaAtivo <= 0}
@@ -769,10 +791,36 @@ export default function AcademyPage() {
                       AULA {indiceTemaAtivo + 1} DE {temasDaPagina.length}
                     </span>
                   </div>
-                  <h1 className="text-3xl sm:text-4xl font-extrabold text-ink mb-6">{temaAtivo.titulo}</h1>
+                  <h1 className="text-3xl sm:text-4xl font-extrabold text-ink mb-3">{temaAtivo.titulo}</h1>
+                  {temaAtivo.descricao && <p className="text-ink/55 mb-5 leading-relaxed">{temaAtivo.descricao}</p>}
+
+                  <div className="flex flex-wrap items-center gap-2.5 mb-2">
+                    {temaAtivo.duracaoMin && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-xs font-semibold text-ink/60">
+                        <Clock size={13} /> {temaAtivo.duracaoMin} min
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-xs font-semibold text-ink/60">
+                      <FileText size={13} /> {videosDoTemaAtivo.length > 0 ? "Vídeo + Texto" : "Só texto"}
+                    </span>
+                    {temaAtivo.dificuldade && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-xs font-semibold text-ink/60">
+                        <BarChart3 size={13} />{" "}
+                        {temaAtivo.dificuldade === "iniciante" ? "Iniciante" : temaAtivo.dificuldade === "avancado" ? "Avançado" : "Intermediário"}
+                      </span>
+                    )}
+                    {souAdmin && (
+                      <button
+                        onClick={() => setEditandoMetaTema(temaAtivo)}
+                        className="inline-flex items-center gap-1 rounded-full border border-dashed border-black/15 px-3 py-1.5 text-xs font-semibold text-ink/40 hover:text-forest hover:border-forest/30 transition-colors"
+                      >
+                        <Pencil size={11} /> Editar detalhes
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <hr className="max-w-3xl border-t-2 border-black/5 mb-8" />
+                <hr className="max-w-3xl border-t-2 border-black/5 my-8" />
 
                 <div className="max-w-3xl">
                   {videosDoTemaAtivo.length > 0 && (
@@ -974,6 +1022,17 @@ export default function AcademyPage() {
           onSalvo={(titulo) => {
             setTemas((atual) => atual.map((t) => (t.id === renomeandoTema.id ? { ...t, titulo } : t)));
             setRenomeandoTema(null);
+          }}
+        />
+      )}
+
+      {editandoMetaTema && (
+        <ModalMetaTema
+          tema={editandoMetaTema}
+          onClose={() => setEditandoMetaTema(null)}
+          onSalvo={(dados) => {
+            setTemas((atual) => atual.map((t) => (t.id === editandoMetaTema.id ? { ...t, ...dados } : t)));
+            setEditandoMetaTema(null);
           }}
         />
       )}
@@ -1274,7 +1333,17 @@ function ModalNovoTema({
       setErro(error?.message ?? "Erro ao criar tema.");
       return;
     }
-    onCriado({ id: data.id, paginaId, titulo: titulo.trim(), emoji: null, conteudo: "", ordem: ordemInicial });
+    onCriado({
+      id: data.id,
+      paginaId,
+      titulo: titulo.trim(),
+      emoji: null,
+      conteudo: "",
+      ordem: ordemInicial,
+      descricao: null,
+      duracaoMin: null,
+      dificuldade: null,
+    });
   }
 
   return (
@@ -1331,6 +1400,96 @@ function ModalRenomearTema({ tema, onClose, onSalvo }: { tema: Tema; onClose: ()
           autoFocus
           onKeyDown={(e) => e.key === "Enter" && salvar()}
         />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={salvar}
+            disabled={salvando}
+            className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+          >
+            {salvando ? "Salvando..." : "Salvar"}
+          </button>
+          <button onClick={onClose} className="text-sm font-semibold text-ink/60 hover:text-ink">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModalMetaTema({
+  tema,
+  onClose,
+  onSalvo,
+}: {
+  tema: Tema;
+  onClose: () => void;
+  onSalvo: (dados: { descricao: string | null; duracaoMin: number | null; dificuldade: Tema["dificuldade"] }) => void;
+}) {
+  const [descricao, setDescricao] = useState(tema.descricao ?? "");
+  const [duracaoMin, setDuracaoMin] = useState(tema.duracaoMin != null ? String(tema.duracaoMin) : "");
+  const [dificuldade, setDificuldade] = useState<Tema["dificuldade"]>(tema.dificuldade);
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar() {
+    setSalvando(true);
+    const supabase = createClient();
+    const dados = {
+      descricao: descricao.trim() || null,
+      duracaoMin: duracaoMin.trim() ? parseInt(duracaoMin, 10) : null,
+      dificuldade,
+    };
+    await supabase
+      .from("academy_temas")
+      .update({ descricao: dados.descricao, duracao_min: dados.duracaoMin, dificuldade: dados.dificuldade })
+      .eq("id", tema.id);
+    setSalvando(false);
+    onSalvo(dados);
+  }
+
+  return (
+    <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-ink mb-4">Detalhes da aula</h2>
+
+        <label className="block mb-4">
+          <span className="block text-sm font-medium text-ink/70 mb-1">Descrição curta (aparece embaixo do título)</span>
+          <textarea
+            value={descricao}
+            onChange={(e) => setDescricao(e.target.value)}
+            placeholder="Ex: Aprenda a criar roteiros estratégicos que prendem a atenção..."
+            className="input min-h-20"
+            autoFocus
+          />
+        </label>
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <label className="block">
+            <span className="block text-sm font-medium text-ink/70 mb-1">Duração (min)</span>
+            <input
+              type="number"
+              min={0}
+              value={duracaoMin}
+              onChange={(e) => setDuracaoMin(e.target.value)}
+              placeholder="Ex: 12"
+              className="input"
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium text-ink/70 mb-1">Dificuldade</span>
+            <select
+              value={dificuldade ?? ""}
+              onChange={(e) => setDificuldade((e.target.value || null) as Tema["dificuldade"])}
+              className="input"
+            >
+              <option value="">Sem definir</option>
+              <option value="iniciante">Iniciante</option>
+              <option value="intermediario">Intermediário</option>
+              <option value="avancado">Avançado</option>
+            </select>
+          </label>
+        </div>
+
         <div className="flex items-center gap-3">
           <button
             onClick={salvar}
