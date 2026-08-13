@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { ConteudoFormatado } from "@/components/conteudo-formatado";
+import { comLinks } from "@/lib/linkify";
 import {
   GraduationCap,
   Search,
@@ -23,6 +24,13 @@ import {
   Clock,
   FileText,
   BarChart3,
+  BookOpen,
+  FolderOpen,
+  PenLine,
+  MessageCircle,
+  Download,
+  Upload,
+  Send,
 } from "lucide-react";
 
 interface Cargo {
@@ -62,6 +70,27 @@ interface Categoria {
   emoji: string | null;
   ordem: number;
   cargosPermitidos: string[] | null;
+}
+interface Material {
+  id: string;
+  temaId: string;
+  nome: string;
+  arquivoPath: string;
+  arquivoTipo: string | null;
+  arquivoTamanho: number | null;
+  ordem: number;
+}
+interface Duvida {
+  id: string;
+  temaId: string;
+  autorId: string;
+  texto: string;
+  createdAt: string;
+}
+interface Colega {
+  authUserId: string;
+  nome: string;
+  fotoUrl: string | null;
 }
 
 function embedDeVideo(url: string): string | null {
@@ -115,6 +144,7 @@ function AvatarMini({ nome, fotoUrl, tamanho = 30 }: { nome: string; fotoUrl?: s
 export default function AcademyPage() {
   const [souAdmin, setSouAdmin] = useState(false);
   const [meuFuncionarioId, setMeuFuncionarioId] = useState<string | null>(null);
+  const [meuAuthUserId, setMeuAuthUserId] = useState<string | null>(null);
   const [meuCargoId, setMeuCargoId] = useState<string | null>(null);
   const [meuCargoNome, setMeuCargoNome] = useState<string | null>(null);
   const [meuNome, setMeuNome] = useState("Você");
@@ -141,6 +171,13 @@ export default function AcademyPage() {
   const [novoTemaAberto, setNovoTemaAberto] = useState(false);
   const [renomeandoTema, setRenomeandoTema] = useState<Tema | null>(null);
   const [editandoMetaTema, setEditandoMetaTema] = useState<Tema | null>(null);
+  const [abaAtiva, setAbaAtiva] = useState<"conteudo" | "materiais" | "notas" | "duvidas">("conteudo");
+  const [colegas, setColegas] = useState<Colega[]>([]);
+  const [materiaisTema, setMateriaisTema] = useState<Material[]>([]);
+  const [notaPessoal, setNotaPessoal] = useState("");
+  const [duvidas, setDuvidas] = useState<Duvida[]>([]);
+  const [novaDuvida, setNovaDuvida] = useState("");
+  const [enviandoMaterial, setEnviandoMaterial] = useState(false);
   const [novoVideoTemaId, setNovoVideoTemaId] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
@@ -150,6 +187,7 @@ export default function AcademyPage() {
     } = await supabase.auth.getUser();
 
     if (user) {
+      setMeuAuthUserId(user.id);
       const { data: funcionarioData } = await supabase
         .from("funcionarios")
         .select("id, cargo_id, cargos ( nome ), perfis_acesso ( nome ), papeis ( pessoas ( nome, apelido, foto_url ) )")
@@ -170,6 +208,15 @@ export default function AcademyPage() {
         setMeuNome(info.papeis?.pessoas?.apelido || info.papeis?.pessoas?.nome || "Você");
         setMeuFotoUrl(info.papeis?.pessoas?.foto_url ?? null);
       }
+
+      const { data: colegasData } = await supabase.from("funcionarios").select("auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )");
+      setColegas(
+        ((colegasData ?? []) as unknown as { auth_user_id: string; papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null }[]).map((c) => ({
+          authUserId: c.auth_user_id,
+          nome: c.papeis?.pessoas?.apelido || c.papeis?.pessoas?.nome || "Colega",
+          fotoUrl: c.papeis?.pessoas?.foto_url ?? null,
+        }))
+      );
     }
 
     const [{ data: cargosData }, { data: categoriasData }, { data: paginasData }] = await Promise.all([
@@ -325,14 +372,49 @@ export default function AcademyPage() {
     });
   }
 
-  function abrirTema(paginaId: string, temaId: string) {
+  async function abrirTema(paginaId: string, temaId: string) {
     setPaginaAtivaId(paginaId);
     setTemaAtivoId(temaId);
     setTemaEditandoConteudo(false);
     setEditandoTituloPagina(false);
     setEditandoDescricao(false);
+    setAbaAtiva("conteudo");
     localStorage.setItem(CHAVE_ULTIMO, JSON.stringify({ paginaId, temaId }));
     setUltimoAcesso({ paginaId, temaId });
+
+    const supabase = createClient();
+    const [{ data: materiaisData }, { data: duvidasData }] = await Promise.all([
+      supabase
+        .from("academy_temas_materiais")
+        .select("id, tema_id, nome, arquivo_path, arquivo_tipo, arquivo_tamanho, ordem")
+        .eq("tema_id", temaId)
+        .order("ordem"),
+      supabase.from("academy_temas_duvidas").select("id, tema_id, autor_id, texto, created_at").eq("tema_id", temaId).order("created_at"),
+    ]);
+    setMateriaisTema(
+      (materiaisData ?? []).map((m) => ({
+        id: m.id,
+        temaId: m.tema_id,
+        nome: m.nome,
+        arquivoPath: m.arquivo_path,
+        arquivoTipo: m.arquivo_tipo,
+        arquivoTamanho: m.arquivo_tamanho,
+        ordem: m.ordem,
+      }))
+    );
+    setDuvidas((duvidasData ?? []).map((d) => ({ id: d.id, temaId: d.tema_id, autorId: d.autor_id, texto: d.texto, createdAt: d.created_at })));
+
+    if (meuFuncionarioId) {
+      const { data: notaData } = await supabase
+        .from("academy_temas_notas")
+        .select("texto")
+        .eq("tema_id", temaId)
+        .eq("funcionario_id", meuFuncionarioId)
+        .maybeSingle();
+      setNotaPessoal(notaData?.texto ?? "");
+    } else {
+      setNotaPessoal("");
+    }
   }
 
   function selecionarPagina(id: string) {
@@ -402,6 +484,75 @@ export default function AcademyPage() {
     setTemas((atual) => atual.map((t) => (t.id === temaId ? { ...t, conteudo: html } : t)));
     const supabase = createClient();
     await supabase.from("academy_temas").update({ conteudo: html }).eq("id", temaId);
+  }
+
+  function urlMaterial(arquivoPath: string) {
+    const supabase = createClient();
+    return supabase.storage.from("academy-materiais").getPublicUrl(arquivoPath).data.publicUrl;
+  }
+
+  async function enviarMaterial(arquivo: File) {
+    if (!temaAtivoId) return;
+    setEnviandoMaterial(true);
+    const supabase = createClient();
+    const caminho = `${temaAtivoId}/${Date.now()}-${arquivo.name}`;
+    const { error: erroUpload } = await supabase.storage.from("academy-materiais").upload(caminho, arquivo);
+    if (erroUpload) {
+      setEnviandoMaterial(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from("academy_temas_materiais")
+      .insert({
+        tema_id: temaAtivoId,
+        nome: arquivo.name,
+        arquivo_path: caminho,
+        arquivo_tipo: arquivo.type || null,
+        arquivo_tamanho: arquivo.size,
+        ordem: materiaisTema.length,
+      })
+      .select("id")
+      .single();
+    setEnviandoMaterial(false);
+    if (error || !data) return;
+    setMateriaisTema((atual) => [
+      ...atual,
+      { id: data.id, temaId: temaAtivoId, nome: arquivo.name, arquivoPath: caminho, arquivoTipo: arquivo.type || null, arquivoTamanho: arquivo.size, ordem: atual.length },
+    ]);
+  }
+
+  async function removerMaterial(id: string, arquivoPath: string) {
+    const supabase = createClient();
+    await supabase.storage.from("academy-materiais").remove([arquivoPath]);
+    await supabase.from("academy_temas_materiais").delete().eq("id", id);
+    setMateriaisTema((atual) => atual.filter((m) => m.id !== id));
+  }
+
+  async function salvarNota() {
+    if (!temaAtivoId || !meuFuncionarioId) return;
+    const supabase = createClient();
+    await supabase
+      .from("academy_temas_notas")
+      .upsert({ tema_id: temaAtivoId, funcionario_id: meuFuncionarioId, texto: notaPessoal }, { onConflict: "tema_id,funcionario_id" });
+  }
+
+  async function enviarDuvida() {
+    if (!temaAtivoId || !novaDuvida.trim() || !meuAuthUserId) return;
+    const supabase = createClient();
+    const texto = novaDuvida.trim();
+    const { data, error } = await supabase
+      .from("academy_temas_duvidas")
+      .insert({ tema_id: temaAtivoId, autor_id: meuAuthUserId, texto })
+      .select("id, created_at")
+      .single();
+    if (error || !data) return;
+    setDuvidas((atual) => [...atual, { id: data.id, temaId: temaAtivoId, autorId: meuAuthUserId, texto, createdAt: data.created_at }]);
+    setNovaDuvida("");
+  }
+
+  function formatarDataHora(iso: string) {
+    const d = new Date(iso);
+    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " às " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   }
 
   const paginaDoUltimo = ultimoAcesso ? paginas.find((p) => p.id === ultimoAcesso.paginaId) : null;
@@ -877,7 +1028,13 @@ export default function AcademyPage() {
                       >
                         <Plus size={12} /> Adicionar vídeo
                       </button>
-                      <button onClick={() => setTemaEditandoConteudo((v) => !v)} className="text-xs font-semibold text-ink/50 hover:text-ink">
+                      <button
+                        onClick={() => {
+                          setAbaAtiva("conteudo");
+                          setTemaEditandoConteudo((v) => !v);
+                        }}
+                        className="text-xs font-semibold text-ink/50 hover:text-ink"
+                      >
                         {temaEditandoConteudo ? "Ver como ficou" : "Editar texto"}
                       </button>
                       <button onClick={() => setEditandoTituloPagina(true)} className="text-xs font-semibold text-ink/50 hover:text-ink">
@@ -895,17 +1052,153 @@ export default function AcademyPage() {
                     </div>
                   )}
 
-                  {souAdmin && temaEditandoConteudo ? (
-                    <RichTextEditor
-                      valorHtml={temaAtivo.conteudo ?? ""}
-                      onChange={(html) => setTemas((atual) => atual.map((t) => (t.id === temaAtivo.id ? { ...t, conteudo: html } : t)))}
-                      onSalvar={() => salvarConteudoTema(temaAtivo.id, temaAtivo.conteudo ?? "")}
-                      semCaixa
-                      placeholder="Escreva o conteúdo desse tema..."
-                    />
-                  ) : (
+                  <div className="flex items-center gap-6 border-b border-black/5 mb-6 overflow-x-auto">
+                    {(
+                      [
+                        { id: "conteudo", label: "Conteúdo", icone: <BookOpen size={15} /> },
+                        { id: "materiais", label: "Materiais", icone: <FolderOpen size={15} /> },
+                        { id: "notas", label: "Notas", icone: <PenLine size={15} /> },
+                        { id: "duvidas", label: "Dúvidas", icone: <MessageCircle size={15} />, badge: duvidas.length },
+                      ] as const
+                    ).map((aba) => (
+                      <button
+                        key={aba.id}
+                        onClick={() => setAbaAtiva(aba.id)}
+                        className={`flex items-center gap-1.5 pb-3 text-sm font-bold border-b-2 -mb-px shrink-0 transition-colors ${
+                          abaAtiva === aba.id ? "border-forest text-forest" : "border-transparent text-ink/40 hover:text-ink/70"
+                        }`}
+                      >
+                        {aba.icone} {aba.label}
+                        {"badge" in aba && aba.badge > 0 && (
+                          <span className="h-4 min-w-4 px-1 rounded-full bg-forest text-white text-[10px] font-bold flex items-center justify-center">
+                            {aba.badge}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {abaAtiva === "conteudo" &&
+                    (souAdmin && temaEditandoConteudo ? (
+                      <RichTextEditor
+                        valorHtml={temaAtivo.conteudo ?? ""}
+                        onChange={(html) => setTemas((atual) => atual.map((t) => (t.id === temaAtivo.id ? { ...t, conteudo: html } : t)))}
+                        onSalvar={() => salvarConteudoTema(temaAtivo.id, temaAtivo.conteudo ?? "")}
+                        semCaixa
+                        placeholder="Escreva o conteúdo desse tema..."
+                      />
+                    ) : (
+                      <div className="rounded-2xl bg-white border border-black/5 p-6">
+                        <ConteudoFormatado html={temaAtivo.conteudo || "<p class='text-ink/35'>Sem texto por aqui ainda.</p>"} />
+                      </div>
+                    ))}
+
+                  {abaAtiva === "materiais" && (
                     <div className="rounded-2xl bg-white border border-black/5 p-6">
-                      <ConteudoFormatado html={temaAtivo.conteudo || "<p class='text-ink/35'>Sem texto por aqui ainda.</p>"} />
+                      {souAdmin && (
+                        <label className="inline-flex items-center gap-2 rounded-full bg-forest text-white px-4 py-2 text-sm font-semibold cursor-pointer hover:brightness-110 transition-all mb-4">
+                          <Upload size={14} /> {enviandoMaterial ? "Enviando..." : "Enviar material"}
+                          <input
+                            type="file"
+                            className="hidden"
+                            disabled={enviandoMaterial}
+                            onChange={(e) => {
+                              const arquivo = e.target.files?.[0];
+                              e.target.value = "";
+                              if (arquivo) enviarMaterial(arquivo);
+                            }}
+                          />
+                        </label>
+                      )}
+                      {materiaisTema.length === 0 ? (
+                        <p className="text-sm text-ink/40">Nenhum material nessa aula ainda.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {materiaisTema.map((m) => (
+                            <div key={m.id} className="flex items-center gap-3 rounded-xl border border-black/5 px-4 py-3">
+                              <FileText size={18} className="text-forest shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-ink truncate">{m.nome}</p>
+                                {m.arquivoTamanho != null && <p className="text-xs text-ink/40">{Math.round(m.arquivoTamanho / 1024)} KB</p>}
+                              </div>
+                              <a
+                                href={urlMaterial(m.arquivoPath)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Baixar"
+                                className="text-ink/40 hover:text-forest shrink-0"
+                              >
+                                <Download size={16} />
+                              </a>
+                              {souAdmin && (
+                                <button
+                                  onClick={() => removerMaterial(m.id, m.arquivoPath)}
+                                  title="Remover"
+                                  className="text-ink/30 hover:text-red-600 shrink-0"
+                                >
+                                  <X size={14} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {abaAtiva === "notas" && (
+                    <div className="rounded-2xl bg-white border border-black/5 p-6">
+                      <p className="text-xs text-ink/40 mb-3">Essas anotações são só suas — ninguém mais vê.</p>
+                      <textarea
+                        value={notaPessoal}
+                        onChange={(e) => setNotaPessoal(e.target.value)}
+                        onBlur={salvarNota}
+                        placeholder="Escreva suas anotações pessoais sobre essa aula..."
+                        className="input min-h-40"
+                      />
+                    </div>
+                  )}
+
+                  {abaAtiva === "duvidas" && (
+                    <div className="rounded-2xl bg-white border border-black/5 p-6">
+                      <div className="flex items-start gap-3 mb-6">
+                        <textarea
+                          value={novaDuvida}
+                          onChange={(e) => setNovaDuvida(e.target.value)}
+                          placeholder="Escreva sua dúvida pro time responder..."
+                          className="input flex-1 min-h-[4.5rem]"
+                        />
+                        <button
+                          onClick={enviarDuvida}
+                          disabled={!novaDuvida.trim()}
+                          title="Enviar"
+                          className="rounded-full bg-forest text-white h-10 w-10 flex items-center justify-center shrink-0 hover:brightness-110 disabled:opacity-30 transition-all"
+                        >
+                          <Send size={15} />
+                        </button>
+                      </div>
+                      {duvidas.length === 0 ? (
+                        <p className="text-sm text-ink/40">Nenhuma dúvida por aqui ainda — seja o primeiro a perguntar.</p>
+                      ) : (
+                        <div className="space-y-4">
+                          {duvidas.map((d) => {
+                            const autor = colegas.find((c) => c.authUserId === d.autorId);
+                            const souEu = d.autorId === meuAuthUserId;
+                            return (
+                              <div key={d.id} className="flex items-start gap-3">
+                                <AvatarMini nome={souEu ? meuNome : autor?.nome ?? "Colega"} fotoUrl={souEu ? meuFotoUrl : autor?.fotoUrl} tamanho={32} />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm">
+                                    <span className="font-bold text-ink">{souEu ? "Você" : autor?.nome ?? "Colega"}</span>{" "}
+                                    <span className="text-ink/30 text-xs">{formatarDataHora(d.createdAt)}</span>
+                                  </p>
+                                  <p className="text-sm text-ink/70 whitespace-pre-wrap">{comLinks(d.texto, d.id)}</p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
