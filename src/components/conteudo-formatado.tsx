@@ -28,6 +28,13 @@ export function ConteudoFormatado({ html, className = "" }: { html: string; clas
           border-top: 1px solid rgba(2, 23, 11, 0.1);
           margin: 1.2em 0;
         }
+        .conteudo-formatado .mencao {
+          color: var(--ec-forest, #143421);
+          background: var(--ec-mint, #e4ffef);
+          font-weight: 600;
+          border-radius: 0.25rem;
+          padding: 0.05rem 0.3rem;
+        }
         .conteudo-formatado a {
           color: #2563eb;
           font-weight: 500;

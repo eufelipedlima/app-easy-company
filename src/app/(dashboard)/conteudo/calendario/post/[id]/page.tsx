@@ -42,6 +42,14 @@ interface HistoricoItem {
   descricao: string;
   created_at: string;
 }
+function extrairMencoes(html: string): Set<string> {
+  const ids = new Set<string>();
+  const regex = /data-mencao-id="([^"]+)"/g;
+  let m;
+  while ((m = regex.exec(html))) ids.add(m[1]);
+  return ids;
+}
+
 interface Post {
   id: string;
   titulo: string | null;
@@ -274,6 +282,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       setTitulo(p.titulo ?? "");
       setLegenda(p.legenda ?? "");
       setObservacoes(p.observacoes_internas ?? "");
+      mencoesObservacoesRef.current = extrairMencoes(p.observacoes_internas ?? "");
       setClienteSelecionado(listaClientes.find((c) => c.id === p.cliente_id) ?? null);
       setObjetivo(p.objetivo ?? "");
       setFormato(p.formato ?? "");
@@ -469,6 +478,30 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     const supabase = createClient();
     await supabase.from("posts_conteudo").update(campo).eq("id", id);
     if (eventoHistorico) registrarHistorico(eventoHistorico);
+  }
+
+  const mencoesObservacoesRef = useRef<Set<string>>(new Set());
+
+  async function notificarNovasMencoesObservacoes() {
+    const atuais = extrairMencoes(observacoes);
+    const novos = [...atuais].filter((authUserId) => !mencoesObservacoesRef.current.has(authUserId));
+    mencoesObservacoesRef.current = atuais;
+    if (novos.length === 0 || !meuId) return;
+    const supabase = createClient();
+    const destinatarios = novos.filter((authUserId) => authUserId !== meuId);
+    if (destinatarios.length === 0) return;
+    await supabase.from("notificacoes").insert(
+      destinatarios.map((authUserId) => ({
+        destinatario_id: authUserId,
+        tipo: "mencao_conteudo",
+        titulo: `${meuNome} te mencionou num conteúdo`,
+        descricao: post?.titulo ?? "",
+        link: `/conteudo/calendario/post/${id}`,
+        autor_id: meuId,
+        autor_nome: meuNome,
+        autor_foto_url: meuFotoUrl,
+      }))
+    );
   }
 
   async function adicionarMidias(arquivos: FileList | null) {
@@ -1148,8 +1181,12 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
             <RichTextEditor
               valorHtml={observacoes}
               onChange={setObservacoes}
-              onSalvar={() => salvarCampo({ observacoes_internas: observacoes || null }, "atualizou as observações internas")}
+              onSalvar={() => {
+                salvarCampo({ observacoes_internas: observacoes || null }, "atualizou as observações internas");
+                notificarNovasMencoesObservacoes();
+              }}
               placeholder="Anotações da equipe sobre esse conteúdo..."
+              mencionaveis={funcionariosComAcesso.filter((f) => f.authUserId).map((f) => ({ id: f.authUserId!, nome: f.nome }))}
             />
           </div>
 

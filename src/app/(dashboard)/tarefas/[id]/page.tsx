@@ -14,6 +14,14 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
+function extrairMencoes(html: string): Set<string> {
+  const ids = new Set<string>();
+  const regex = /data-mencao-id="([^"]+)"/g;
+  let m;
+  while ((m = regex.exec(html))) ids.add(m[1]);
+  return ids;
+}
+
 interface StatusItem {
   id: string;
   nome: string;
@@ -288,6 +296,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       setTarefa(t);
       setTitulo(t.titulo);
       setDescricao(t.descricao ?? "");
+      mencoesDescricaoRef.current = extrairMencoes(t.descricao ?? "");
       setClienteSelecionado(t.cliente_id ? listaClientes.find((c) => c.id === t.cliente_id) ?? null : null);
       setPrioridade(t.prioridade ?? "");
       setDataInicio(t.data_inicio ?? "");
@@ -509,6 +518,30 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
   async function salvarCampoDireto(nomeCampo: string, valor: string | null, eventoHistorico?: string) {
     await salvarCampo({ [nomeCampo]: valor }, eventoHistorico);
+  }
+
+  const mencoesDescricaoRef = useRef<Set<string>>(new Set());
+
+  async function notificarNovasMencoesDescricao() {
+    const atuais = extrairMencoes(descricao);
+    const novos = [...atuais].filter((authUserId) => !mencoesDescricaoRef.current.has(authUserId));
+    mencoesDescricaoRef.current = atuais;
+    if (novos.length === 0 || !meuId) return;
+    const supabase = createClient();
+    const destinatarios = novos.filter((authUserId) => authUserId !== meuId);
+    if (destinatarios.length === 0) return;
+    await supabase.from("notificacoes").insert(
+      destinatarios.map((authUserId) => ({
+        destinatario_id: authUserId,
+        tipo: "mencao_tarefa",
+        titulo: `${meuNome} te mencionou numa tarefa`,
+        descricao: tarefa?.titulo ?? "",
+        link: `/tarefas/${id}`,
+        autor_id: meuId,
+        autor_nome: meuNome,
+        autor_foto_url: meuFotoUrl,
+      }))
+    );
   }
 
   async function iniciarCronometro() {
@@ -1002,8 +1035,12 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             <RichTextEditor
               valorHtml={descricao}
               onChange={setDescricao}
-              onSalvar={() => salvarCampoDireto("descricao", descricao || null, "atualizou a descrição")}
+              onSalvar={() => {
+                salvarCampoDireto("descricao", descricao || null, "atualizou a descrição");
+                notificarNovasMencoesDescricao();
+              }}
               placeholder="Detalhes da tarefa..."
+              mencionaveis={funcionariosComAcesso.filter((f) => f.authUserId).map((f) => ({ id: f.authUserId!, nome: f.nome }))}
             />
           </div>
 

@@ -26,6 +26,89 @@ function textoParaHtmlComLinks(texto: string) {
   return html;
 }
 
+// Ao colar de outro app (ClickUp, Notion, Google Docs, Word...), preserva a
+// formatação básica que o nosso editor já entende — título, negrito, listas,
+// citação, cor — e descarta o resto (fontes estranhas, classes, ids, script).
+const TAGS_PERMITIDAS = new Set([
+  "P", "BR", "H1", "H2", "H3", "H4", "H5", "H6", "B", "STRONG", "I", "EM", "U", "S", "STRIKE",
+  "UL", "OL", "LI", "BLOCKQUOTE", "PRE", "CODE", "A", "SPAN", "DIV", "HR",
+]);
+
+function mapearTag(tag: string) {
+  if (tag === "H1") return "H2";
+  if (tag === "H4" || tag === "H5" || tag === "H6") return "H3";
+  if (tag === "DIV") return "P";
+  if (tag === "STRIKE") return "S";
+  return tag;
+}
+
+function estiloPermitido(el: HTMLElement) {
+  const partes: string[] = [];
+  if (el.style.color) partes.push(`color:${el.style.color}`);
+  if (el.style.backgroundColor) partes.push(`background-color:${el.style.backgroundColor}`);
+  return partes.join(";");
+}
+
+function limparNoColado(no: ChildNode): Node | null {
+  if (no.nodeType === Node.TEXT_NODE) return no.cloneNode();
+  if (no.nodeType !== Node.ELEMENT_NODE) return null;
+  const el = no as HTMLElement;
+  const tagOriginal = el.tagName;
+
+  if (tagOriginal === "SCRIPT" || tagOriginal === "STYLE" || tagOriginal === "META" || tagOriginal === "LINK") return null;
+
+  if (!TAGS_PERMITIDAS.has(tagOriginal)) {
+    // tag que não reconhecemos (ex: <font>, spans de exportação do Word) — mantém só o conteúdo de dentro
+    const frag = document.createDocumentFragment();
+    el.childNodes.forEach((filho) => {
+      const limpo = limparNoColado(filho);
+      if (limpo) frag.appendChild(limpo);
+    });
+    return frag;
+  }
+
+  const tagFinal = mapearTag(tagOriginal);
+  const novoEl = document.createElement(tagFinal);
+
+  if (tagFinal === "A") {
+    const href = el.getAttribute("href");
+    if (href) {
+      novoEl.setAttribute("href", href);
+      novoEl.setAttribute("target", "_blank");
+      novoEl.setAttribute("rel", "noopener noreferrer");
+    }
+  }
+  if (tagFinal === "SPAN") {
+    const estilo = estiloPermitido(el);
+    if (estilo) novoEl.setAttribute("style", estilo);
+  }
+  if (tagFinal === "UL" && /checklist|checkbox|todo/i.test(el.className || "")) {
+    novoEl.classList.add("checklist");
+  }
+  if (tagFinal === "LI") {
+    const feito = el.getAttribute("data-checked") ?? el.getAttribute("data-done");
+    if (feito === "true") novoEl.setAttribute("data-done", "true");
+  }
+
+  el.childNodes.forEach((filho) => {
+    const limpo = limparNoColado(filho);
+    if (limpo) novoEl.appendChild(limpo);
+  });
+
+  if (tagFinal === "SPAN" && !novoEl.getAttribute("style") && novoEl.textContent === "") return null;
+  return novoEl;
+}
+
+function sanearHtmlColado(html: string) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const container = document.createElement("div");
+  doc.body.childNodes.forEach((no) => {
+    const limpo = limparNoColado(no);
+    if (limpo) container.appendChild(limpo);
+  });
+  return container.innerHTML;
+}
+
 const CORES_TEXTO = [
   { nome: "Padrão", valor: "" },
   { nome: "Vermelho", valor: "#e03131" },
@@ -70,12 +153,14 @@ export function RichTextEditor({
   onSalvar,
   placeholder,
   semCaixa,
+  mencionaveis,
 }: {
   valorHtml: string;
   onChange: (html: string) => void;
   onSalvar?: () => void;
   placeholder?: string;
   semCaixa?: boolean;
+  mencionaveis?: { id: string; nome: string }[];
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -87,6 +172,8 @@ export function RichTextEditor({
   const [toolbarAberta, setToolbarAberta] = useState(false);
   const [menu, setMenu] = useState<EstadoMenu | null>(null);
   const [indiceSelecionado, setIndiceSelecionado] = useState(0);
+  const [menuMencao, setMenuMencao] = useState<EstadoMenu | null>(null);
+  const [indiceMencaoSelecionada, setIndiceMencaoSelecionada] = useState(0);
   const montadoRef = useRef(false);
   const selecaoSalvaRef = useRef<Range | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -143,6 +230,76 @@ export function RichTextEditor({
     setIndiceSelecionado(0);
   }
 
+  function fecharMenuMencao() {
+    setMenuMencao(null);
+    setIndiceMencaoSelecionada(0);
+  }
+
+  function verificarMencao() {
+    if (!mencionaveis || mencionaveis.length === 0) {
+      fecharMenuMencao();
+      return;
+    }
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) {
+      fecharMenuMencao();
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const node = range.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE || !editorRef.current?.contains(node)) {
+      fecharMenuMencao();
+      return;
+    }
+    const texto = node.textContent || "";
+    const offset = range.startOffset;
+    const antes = texto.slice(0, offset);
+    const match = antes.match(/(?:^|\s)@(\w{0,24})$/);
+    if (!match) {
+      fecharMenuMencao();
+      return;
+    }
+    const query = match[1];
+    const inicioArroba = offset - query.length - 1;
+
+    const rangePos = document.createRange();
+    rangePos.setStart(node, inicioArroba);
+    rangePos.setEnd(node, offset);
+    const rect = rangePos.getBoundingClientRect();
+    const wrapperRect = wrapperRef.current?.getBoundingClientRect();
+    if (!wrapperRect) return;
+
+    setMenuMencao({
+      textNode: node as Text,
+      inicio: inicioArroba,
+      fim: offset,
+      query,
+      top: rect.bottom - wrapperRect.top + 6,
+      left: Math.min(rect.left - wrapperRect.left, wrapperRect.width - 232),
+    });
+    setIndiceMencaoSelecionada(0);
+  }
+
+  function selecionarMencao(pessoa: { id: string; nome: string }) {
+    if (!menuMencao) return;
+    const range = document.createRange();
+    range.setStart(menuMencao.textNode, menuMencao.inicio);
+    range.setEnd(menuMencao.textNode, menuMencao.fim);
+    range.deleteContents();
+    range.collapse(true);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    fecharMenuMencao();
+    editorRef.current?.focus();
+    document.execCommand(
+      "insertHTML",
+      false,
+      `<span class="mencao" data-mencao-id="${pessoa.id}">@${escaparHtml(pessoa.nome)}</span>&nbsp;`
+    );
+    handleInput();
+  }
+
   function verificarComandoBarra() {
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) {
@@ -189,14 +346,17 @@ export function RichTextEditor({
     onChange(editorRef.current.innerHTML);
     setTransborda(editorRef.current.scrollHeight > ALTURA_COLAPSADA + 20);
     verificarComandoBarra();
+    verificarMencao();
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    const html = e.clipboardData.getData("text/html");
     const texto = e.clipboardData.getData("text/plain");
-    if (!texto) return; // deixa o comportamento padrão (ex.: colar imagem)
+    if (!html && !texto) return; // deixa o comportamento padrão (ex.: colar imagem)
     e.preventDefault();
     editorRef.current?.focus();
-    document.execCommand("insertHTML", false, textoParaHtmlComLinks(texto));
+    const htmlFinal = html.trim() ? sanearHtmlColado(html) : textoParaHtmlComLinks(texto);
+    document.execCommand("insertHTML", false, htmlFinal);
     handleInput();
   }
 
@@ -315,6 +475,13 @@ export function RichTextEditor({
     return itensComando.filter((i) => i.label.toLowerCase().includes(q) || i.palavras.some((p) => p.startsWith(q)));
   }, [menu, itensComando]);
 
+  const pessoasFiltradas = useMemo(() => {
+    if (!menuMencao || !mencionaveis) return [];
+    const q = menuMencao.query.toLowerCase();
+    if (!q) return mencionaveis;
+    return mencionaveis.filter((p) => p.nome.toLowerCase().includes(q));
+  }, [menuMencao, mencionaveis]);
+
   function executarComando(item: ComandoItem) {
     if (!menu) return;
     const range = document.createRange();
@@ -332,6 +499,24 @@ export function RichTextEditor({
   }
 
   function handleKeyDownEditor(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (menuMencao) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setIndiceMencaoSelecionada((i) => Math.min(i + 1, Math.max(pessoasFiltradas.length - 1, 0)));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setIndiceMencaoSelecionada((i) => Math.max(i - 1, 0));
+      } else if (e.key === "Enter") {
+        if (pessoasFiltradas[indiceMencaoSelecionada]) {
+          e.preventDefault();
+          selecionarMencao(pessoasFiltradas[indiceMencaoSelecionada]);
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        fecharMenuMencao();
+      }
+      return;
+    }
     if (!menu) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -550,6 +735,32 @@ export function RichTextEditor({
         </div>
       )}
 
+      {menuMencao && (
+        <div
+          style={{ top: menuMencao.top, left: Math.max(menuMencao.left, 0) }}
+          className="absolute z-30 w-56 bg-white rounded-xl shadow-lg border border-black/10 py-1.5 max-h-72 overflow-y-auto"
+        >
+          {pessoasFiltradas.length === 0 && <div className="px-3 py-2 text-xs text-ink/40">Ninguém encontrado</div>}
+          {pessoasFiltradas.map((pessoa, i) => (
+            <button
+              key={pessoa.id}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setIndiceMencaoSelecionada(i)}
+              onClick={() => selecionarMencao(pessoa)}
+              className={`w-full text-left px-2.5 py-1.5 flex items-center gap-2.5 transition-colors ${
+                i === indiceMencaoSelecionada ? "bg-surface" : "hover:bg-surface/60"
+              }`}
+            >
+              <span className="w-7 h-7 shrink-0 rounded-full bg-mint text-forest flex items-center justify-center text-[11px] font-bold">
+                {pessoa.nome.slice(0, 2).toUpperCase()}
+              </span>
+              <span className="text-sm font-semibold text-ink truncate">{pessoa.nome}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <style jsx global>{`
         .rich-text-editor {
           min-height: 60px;
@@ -575,6 +786,13 @@ export function RichTextEditor({
         }
         .rich-text-editor p {
           margin: 0.2em 0;
+        }
+        .rich-text-editor .mencao {
+          color: var(--ec-forest, #143421);
+          background: var(--ec-mint, #e4ffef);
+          font-weight: 600;
+          border-radius: 0.25rem;
+          padding: 0.05rem 0.3rem;
         }
         .rich-text-editor a {
           color: #2563eb;
