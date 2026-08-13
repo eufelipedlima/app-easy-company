@@ -578,17 +578,42 @@ export default function AcademyPage() {
       ) : (
         <div className="flex-1 min-w-0 flex overflow-hidden">
           <div className="flex-1 min-w-0 overflow-y-auto scrollbar-fina-clara bg-surface/20">
-            <div className="px-10 pt-6">
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/35 mb-3">
-                Academy {categoriaAtual && `/ ${categoriaAtual.nome}`} {paginaAtual && `/ ${paginaAtual.titulo}`}
-              </p>
-              <button onClick={voltarPraHome} className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink/50 hover:text-ink mb-5">
-                <ArrowLeft size={14} /> Voltar pro Academy
-              </button>
+            <div className="border-b border-black/5 bg-white">
+              <div className="px-10 py-4 max-w-5xl mx-auto flex items-center justify-between gap-4 flex-wrap">
+                <p className="text-xs font-semibold text-ink/40">
+                  <span className="hover:text-ink/70 cursor-default">Academy</span>
+                  {categoriaAtual && (
+                    <>
+                      <span className="mx-1.5 text-ink/20">/</span>
+                      <span className="hover:text-ink/70 cursor-default">{categoriaAtual.nome}</span>
+                    </>
+                  )}
+                  {paginaAtual && (
+                    <>
+                      <span className="mx-1.5 text-ink/20">/</span>
+                      <span className="text-forest font-bold">{paginaAtual.titulo}</span>
+                    </>
+                  )}
+                  {temaAtivo && (
+                    <>
+                      <span className="mx-1.5 text-ink/20">/</span>
+                      <span className="text-ink/60">
+                        Aula {indiceTemaAtivo + 1} de {temasDaPagina.length}
+                      </span>
+                    </>
+                  )}
+                </p>
+                <button
+                  onClick={voltarPraHome}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors shrink-0"
+                >
+                  <ArrowLeft size={14} /> Voltar pro Academy
+                </button>
+              </div>
             </div>
 
             {editandoTituloPagina && (
-              <div className="px-10">
+              <div className="px-10 pt-6 max-w-5xl mx-auto">
                 <FormTituloPagina
                   pagina={paginaAtual}
                   onCancelar={() => setEditandoTituloPagina(false)}
@@ -601,7 +626,7 @@ export default function AcademyPage() {
             )}
 
             {temasDaPagina.length === 0 ? (
-              <div className="px-10 pb-10">
+              <div className="px-10 py-10 max-w-5xl mx-auto">
                 <h1 className="text-2xl font-extrabold text-ink mb-2 flex items-center gap-2">
                   <span>{paginaAtual.emoji || "📄"}</span> {paginaAtual.titulo}
                 </h1>
@@ -621,125 +646,130 @@ export default function AcademyPage() {
                 )}
               </div>
             ) : temaAtivo ? (
-              <div className="px-10 pb-16 max-w-3xl">
-                <div className="flex items-center justify-between gap-3 mb-4">
-                  <button
-                    onClick={() => alternarConcluido(temaAtivo.id)}
-                    className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition-colors ${
-                      progresso.has(temaAtivo.id) ? "bg-mint text-forest" : "bg-surface text-ink/60 hover:bg-ink/5"
-                    }`}
-                  >
-                    <CheckCircle2 size={16} /> {progresso.has(temaAtivo.id) ? "Concluída" : "Marcar como concluída"}
-                  </button>
-                  <div className="flex items-center gap-1 shrink-0">
+              <div className="px-10 py-8 max-w-5xl mx-auto">
+                <div className="max-w-3xl">
+                  <div className="flex items-center justify-between gap-3 mb-5">
                     <button
-                      onClick={() => indiceTemaAtivo > 0 && abrirTema(paginaAtual.id, temasDaPagina[indiceTemaAtivo - 1].id)}
-                      disabled={indiceTemaAtivo <= 0}
-                      className="h-8 w-8 rounded-full border border-black/10 flex items-center justify-center text-ink/50 hover:bg-surface disabled:opacity-30 disabled:hover:bg-transparent"
+                      onClick={() => alternarConcluido(temaAtivo.id)}
+                      className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-extrabold shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                        progresso.has(temaAtivo.id) ? "bg-forest text-mint" : "bg-mint text-forest"
+                      }`}
                     >
-                      <ChevronLeft size={15} />
+                      <CheckCircle2 size={17} /> {progresso.has(temaAtivo.id) ? "Aula concluída" : "Marcar como concluída"}
                     </button>
-                    <button
-                      onClick={() => indiceTemaAtivo < temasDaPagina.length - 1 && abrirTema(paginaAtual.id, temasDaPagina[indiceTemaAtivo + 1].id)}
-                      disabled={indiceTemaAtivo >= temasDaPagina.length - 1}
-                      className="h-8 w-8 rounded-full border border-black/10 flex items-center justify-center text-ink/50 hover:bg-surface disabled:opacity-30 disabled:hover:bg-transparent"
-                    >
-                      <ChevronRight size={15} />
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => indiceTemaAtivo > 0 && abrirTema(paginaAtual.id, temasDaPagina[indiceTemaAtivo - 1].id)}
+                        disabled={indiceTemaAtivo <= 0}
+                        title="Aula anterior"
+                        className="h-10 w-10 rounded-full bg-ink text-white flex items-center justify-center hover:bg-forest transition-colors disabled:opacity-20 disabled:hover:bg-ink"
+                      >
+                        <ChevronLeft size={17} />
+                      </button>
+                      <button
+                        onClick={() => indiceTemaAtivo < temasDaPagina.length - 1 && abrirTema(paginaAtual.id, temasDaPagina[indiceTemaAtivo + 1].id)}
+                        disabled={indiceTemaAtivo >= temasDaPagina.length - 1}
+                        title="Próxima aula"
+                        className="h-10 w-10 rounded-full bg-ink text-white flex items-center justify-center hover:bg-forest transition-colors disabled:opacity-20 disabled:hover:bg-ink"
+                      >
+                        <ChevronRight size={17} />
+                      </button>
+                    </div>
                   </div>
+
+                  <span className="inline-block rounded-full bg-mint text-forest px-3 py-1 text-[11px] font-extrabold tracking-wide mb-3">
+                    AULA {indiceTemaAtivo + 1} DE {temasDaPagina.length}
+                  </span>
+                  <h1 className="text-3xl sm:text-4xl font-extrabold text-ink mb-6 pb-5 border-b-4 border-mint inline-block">{temaAtivo.titulo}</h1>
                 </div>
 
-                <span className="inline-block rounded-full bg-mint text-forest px-2.5 py-1 text-[11px] font-bold mb-3">
-                  AULA {indiceTemaAtivo + 1} DE {temasDaPagina.length}
-                </span>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-ink mb-4">{temaAtivo.titulo}</h1>
+                <div className="max-w-3xl">
+                  {videosDoTemaAtivo.length > 0 && (
+                    <div className={`grid gap-4 mb-6 ${videosDoTemaAtivo.length > 1 ? "sm:grid-cols-2" : "grid-cols-1"}`}>
+                      {videosDoTemaAtivo.map((v) => {
+                        const embed = embedDeVideo(v.url);
+                        return (
+                          <div key={v.id} className="group/vid relative rounded-2xl overflow-hidden bg-ink shadow-lg">
+                            {embed ? (
+                              <div className="aspect-video">
+                                <iframe
+                                  src={embed}
+                                  className="w-full h-full"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  allowFullScreen
+                                />
+                              </div>
+                            ) : (
+                              <a
+                                href={v.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 p-4 text-sm text-mint hover:underline break-all"
+                              >
+                                <LinkIcon size={14} className="shrink-0" /> {v.url}
+                              </a>
+                            )}
+                            {v.titulo && <p className="px-3 py-2 text-sm font-semibold text-white/90 truncate bg-ink">{v.titulo}</p>}
+                            {souAdmin && (
+                              <button
+                                onClick={() => removerVideo(v.id)}
+                                className="absolute top-2 right-2 h-6 w-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover/vid:opacity-100 transition-opacity"
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
-                {videosDoTemaAtivo.length > 0 && (
-                  <div className={`grid gap-4 mb-6 ${videosDoTemaAtivo.length > 1 ? "sm:grid-cols-2" : "grid-cols-1"}`}>
-                    {videosDoTemaAtivo.map((v) => {
-                      const embed = embedDeVideo(v.url);
-                      return (
-                        <div key={v.id} className="group/vid relative rounded-2xl overflow-hidden bg-ink">
-                          {embed ? (
-                            <div className="aspect-video">
-                              <iframe
-                                src={embed}
-                                className="w-full h-full"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                allowFullScreen
-                              />
-                            </div>
-                          ) : (
-                            <a
-                              href={v.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-2 p-4 text-sm text-mint hover:underline break-all"
-                            >
-                              <LinkIcon size={14} className="shrink-0" /> {v.url}
-                            </a>
-                          )}
-                          {v.titulo && <p className="px-3 py-2 text-sm font-semibold text-white/90 truncate bg-ink">{v.titulo}</p>}
-                          {souAdmin && (
-                            <button
-                              onClick={() => removerVideo(v.id)}
-                              className="absolute top-2 right-2 h-6 w-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover/vid:opacity-100 transition-opacity"
-                            >
-                              <X size={12} />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                  {souAdmin && (
+                    <div className="flex flex-wrap items-center gap-4 mb-5 pb-4 border-b border-black/5">
+                      <button
+                        onClick={() => setRenomeandoTema(temaAtivo)}
+                        className="text-xs font-semibold text-ink/50 hover:text-ink flex items-center gap-1"
+                      >
+                        <Pencil size={12} /> Renomear
+                      </button>
+                      <button
+                        onClick={() => setNovoVideoTemaId(temaAtivo.id)}
+                        className="text-xs font-semibold text-forest hover:underline flex items-center gap-1"
+                      >
+                        <Plus size={12} /> Adicionar vídeo
+                      </button>
+                      <button onClick={() => setTemaEditandoConteudo((v) => !v)} className="text-xs font-semibold text-ink/50 hover:text-ink">
+                        {temaEditandoConteudo ? "Ver como ficou" : "Editar texto"}
+                      </button>
+                      <button onClick={() => setEditandoTituloPagina(true)} className="text-xs font-semibold text-ink/50 hover:text-ink">
+                        Renomear treinamento
+                      </button>
+                      <button onClick={() => excluirPagina(paginaAtual.id)} className="text-xs font-semibold text-ink/50 hover:text-red-600">
+                        Excluir treinamento
+                      </button>
+                      <button
+                        onClick={() => excluirTema(temaAtivo.id)}
+                        className="text-xs font-semibold text-red-500 hover:underline flex items-center gap-1 ml-auto"
+                      >
+                        <Trash2 size={12} /> Excluir tema
+                      </button>
+                    </div>
+                  )}
 
-                {souAdmin && (
-                  <div className="flex items-center gap-4 mb-4 pb-4 border-b border-black/5">
-                    <button
-                      onClick={() => setRenomeandoTema(temaAtivo)}
-                      className="text-xs font-semibold text-ink/50 hover:text-ink flex items-center gap-1"
-                    >
-                      <Pencil size={12} /> Renomear
-                    </button>
-                    <button
-                      onClick={() => setNovoVideoTemaId(temaAtivo.id)}
-                      className="text-xs font-semibold text-forest hover:underline flex items-center gap-1"
-                    >
-                      <Plus size={12} /> Adicionar vídeo
-                    </button>
-                    <button onClick={() => setTemaEditandoConteudo((v) => !v)} className="text-xs font-semibold text-ink/50 hover:text-ink">
-                      {temaEditandoConteudo ? "Ver como ficou" : "Editar texto"}
-                    </button>
-                    <button
-                      onClick={() => setEditandoTituloPagina(true)}
-                      className="text-xs font-semibold text-ink/50 hover:text-ink"
-                    >
-                      Renomear treinamento
-                    </button>
-                    <button
-                      onClick={() => excluirPagina(paginaAtual.id)}
-                      className="text-xs font-semibold text-ink/50 hover:text-red-600"
-                    >
-                      Excluir treinamento
-                    </button>
-                    <button onClick={() => excluirTema(temaAtivo.id)} className="text-xs font-semibold text-red-500 hover:underline flex items-center gap-1 ml-auto">
-                      <Trash2 size={12} /> Excluir tema
-                    </button>
-                  </div>
-                )}
-
-                {souAdmin && temaEditandoConteudo ? (
-                  <RichTextEditor
-                    valorHtml={temaAtivo.conteudo ?? ""}
-                    onChange={(html) => setTemas((atual) => atual.map((t) => (t.id === temaAtivo.id ? { ...t, conteudo: html } : t)))}
-                    onSalvar={() => salvarConteudoTema(temaAtivo.id, temaAtivo.conteudo ?? "")}
-                    semCaixa
-                    placeholder="Escreva o conteúdo desse tema..."
-                  />
-                ) : (
-                  <ConteudoFormatado html={temaAtivo.conteudo || "<p class='text-ink/35'>Sem texto por aqui ainda.</p>"} />
-                )}
+                  {souAdmin && temaEditandoConteudo ? (
+                    <RichTextEditor
+                      valorHtml={temaAtivo.conteudo ?? ""}
+                      onChange={(html) => setTemas((atual) => atual.map((t) => (t.id === temaAtivo.id ? { ...t, conteudo: html } : t)))}
+                      onSalvar={() => salvarConteudoTema(temaAtivo.id, temaAtivo.conteudo ?? "")}
+                      semCaixa
+                      placeholder="Escreva o conteúdo desse tema..."
+                    />
+                  ) : (
+                    <div className="rounded-2xl bg-white border border-black/5 p-6">
+                      <ConteudoFormatado html={temaAtivo.conteudo || "<p class='text-ink/35'>Sem texto por aqui ainda.</p>"} />
+                    </div>
+                  )}
+                </div>
               </div>
             ) : null}
           </div>
@@ -747,12 +777,12 @@ export default function AcademyPage() {
           {temasDaPagina.length > 0 && (
             <aside className="w-80 shrink-0 border-l border-black/5 bg-white overflow-y-auto scrollbar-fina-clara p-5">
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Seu progresso nesse treinamento</p>
-              <p className="text-xl font-extrabold text-ink mb-1.5">{progressoDaPagina(paginaAtual.id).pct}% concluído</p>
-              <div className="h-1.5 rounded-full bg-surface overflow-hidden mb-6">
+              <p className="text-xl font-extrabold text-forest mb-1.5">{progressoDaPagina(paginaAtual.id).pct}% concluído</p>
+              <div className="h-2 rounded-full bg-surface overflow-hidden mb-6">
                 <div className="h-full bg-forest rounded-full transition-all duration-500" style={{ width: `${progressoDaPagina(paginaAtual.id).pct}%` }} />
               </div>
 
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 {temasDaPagina.map((t, i) => {
                   const feito = progresso.has(t.id);
                   const ativo = t.id === temaAtivoId;
@@ -760,12 +790,24 @@ export default function AcademyPage() {
                     <button
                       key={t.id}
                       onClick={() => abrirTema(paginaAtual.id, t.id)}
-                      className={`w-full text-left rounded-xl px-3 py-2.5 flex items-center gap-2.5 transition-colors ${
-                        ativo ? "bg-mint" : "hover:bg-surface"
+                      className={`w-full text-left rounded-xl px-3 py-2.5 flex items-center gap-2.5 transition-all border ${
+                        ativo
+                          ? "bg-mint border-forest/20 shadow-sm"
+                          : feito
+                          ? "bg-mint/25 border-transparent hover:bg-mint/40"
+                          : "bg-white border-black/5 hover:border-black/10 hover:bg-surface"
                       }`}
                     >
-                      {feito ? <CheckCircle2 size={17} className="text-forest shrink-0" /> : <Circle size={17} className="text-ink/20 shrink-0" />}
-                      <span className={`text-sm truncate ${ativo ? "font-bold text-forest" : "text-ink/70"}`}>
+                      {feito ? (
+                        <CheckCircle2 size={19} className="text-forest shrink-0" />
+                      ) : ativo ? (
+                        <span className="h-[19px] w-[19px] rounded-full bg-forest shrink-0 flex items-center justify-center">
+                          <span className="h-1.5 w-1.5 rounded-full bg-mint" />
+                        </span>
+                      ) : (
+                        <Circle size={19} className="text-ink/20 shrink-0" />
+                      )}
+                      <span className={`text-sm truncate ${ativo ? "font-extrabold text-forest" : feito ? "font-semibold text-forest/80" : "text-ink/70"}`}>
                         {String(i + 1).padStart(2, "0")}. {t.titulo}
                       </span>
                     </button>
