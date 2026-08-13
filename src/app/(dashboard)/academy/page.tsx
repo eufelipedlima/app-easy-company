@@ -48,6 +48,7 @@ interface Pagina {
   emoji: string | null;
   conteudo: string | null;
   ordem: number;
+  cargosPermitidos: string[] | null;
 }
 interface Categoria {
   id: string;
@@ -124,6 +125,7 @@ export default function AcademyPage() {
   const [paginaAtivaId, setPaginaAtivaId] = useState<string | null>(null);
   const [temaAtivoId, setTemaAtivoId] = useState<string | null>(null);
   const [temaEditandoConteudo, setTemaEditandoConteudo] = useState(false);
+  const [editandoDescricao, setEditandoDescricao] = useState(false);
   const [ultimoAcesso, setUltimoAcesso] = useState<{ paginaId: string; temaId: string } | null>(null);
 
   const [novaCategoriaAberta, setNovaCategoriaAberta] = useState(false);
@@ -166,7 +168,7 @@ export default function AcademyPage() {
     const [{ data: cargosData }, { data: categoriasData }, { data: paginasData }] = await Promise.all([
       supabase.from("cargos").select("id, nome").order("nome"),
       supabase.from("academy_categorias").select("id, nome, emoji, ordem, cargos_permitidos").order("ordem"),
-      supabase.from("academy_paginas").select("id, categoria_id, titulo, emoji, conteudo, ordem").order("ordem"),
+      supabase.from("academy_paginas").select("id, categoria_id, titulo, emoji, conteudo, ordem, cargos_permitidos").order("ordem"),
     ]);
     setCargos(cargosData ?? []);
     setCategorias(
@@ -179,6 +181,7 @@ export default function AcademyPage() {
       emoji: p.emoji,
       conteudo: p.conteudo,
       ordem: p.ordem,
+      cargosPermitidos: p.cargos_permitidos,
     }));
     setPaginas(listaPaginas);
 
@@ -240,19 +243,22 @@ export default function AcademyPage() {
     }
   }, []);
 
-  const categoriasVisiveis = useMemo(
-    () =>
-      categorias.filter(
-        (c) => souAdmin || !c.cargosPermitidos || c.cargosPermitidos.length === 0 || (meuCargoId && c.cargosPermitidos.includes(meuCargoId))
-      ),
-    [categorias, souAdmin, meuCargoId]
+  const paginaVisivelPraMim = useCallback(
+    (p: Pagina) => souAdmin || !p.cargosPermitidos || p.cargosPermitidos.length === 0 || (meuCargoId != null && p.cargosPermitidos.includes(meuCargoId)),
+    [souAdmin, meuCargoId]
   );
+
+  const categoriasVisiveis = useMemo(() => {
+    if (souAdmin) return categorias;
+    return categorias.filter((c) => paginas.some((p) => p.categoriaId === c.id && paginaVisivelPraMim(p)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categorias, souAdmin, paginas]);
 
   const paginasPorCategoria = useMemo(() => {
     const mapa = new Map<string, Pagina[]>();
-    for (const p of paginas) mapa.set(p.categoriaId, [...(mapa.get(p.categoriaId) ?? []), p]);
+    for (const p of paginas.filter(paginaVisivelPraMim)) mapa.set(p.categoriaId, [...(mapa.get(p.categoriaId) ?? []), p]);
     return mapa;
-  }, [paginas]);
+  }, [paginas, paginaVisivelPraMim]);
 
   const temasPorPagina = useMemo(() => {
     const mapa = new Map<string, Tema[]>();
@@ -314,20 +320,16 @@ export default function AcademyPage() {
     setTemaAtivoId(temaId);
     setTemaEditandoConteudo(false);
     setEditandoTituloPagina(false);
+    setEditandoDescricao(false);
     localStorage.setItem(CHAVE_ULTIMO, JSON.stringify({ paginaId, temaId }));
     setUltimoAcesso({ paginaId, temaId });
   }
 
   function selecionarPagina(id: string) {
-    const lista = temasPorPagina.get(id) ?? [];
-    const primeiroNaoFeito = lista.find((t) => !progresso.has(t.id));
-    const alvo = primeiroNaoFeito ?? lista[0];
-    if (alvo) abrirTema(id, alvo.id);
-    else {
-      setPaginaAtivaId(id);
-      setTemaAtivoId(null);
-    }
+    setPaginaAtivaId(id);
+    setTemaAtivoId(null);
     setEditandoTituloPagina(false);
+    setEditandoDescricao(false);
   }
 
   function voltarPraHome() {
@@ -616,9 +618,10 @@ export default function AcademyPage() {
               <div className="px-10 pt-6 max-w-5xl mx-auto">
                 <FormTituloPagina
                   pagina={paginaAtual}
+                  cargos={cargos}
                   onCancelar={() => setEditandoTituloPagina(false)}
-                  onSalvo={(titulo, emoji) => {
-                    setPaginas((atual) => atual.map((p) => (p.id === paginaAtual.id ? { ...p, titulo, emoji } : p)));
+                  onSalvo={(titulo, emoji, cargosPermitidos) => {
+                    setPaginas((atual) => atual.map((p) => (p.id === paginaAtual.id ? { ...p, titulo, emoji, cargosPermitidos } : p)));
                     setEditandoTituloPagina(false);
                   }}
                 />
@@ -645,7 +648,91 @@ export default function AcademyPage() {
                   </div>
                 )}
               </div>
-            ) : temaAtivo ? (
+            ) : !temaAtivo ? (
+              <div className="px-10 py-8 max-w-5xl mx-auto">
+                <div className="max-w-3xl">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-4xl shrink-0">{paginaAtual.emoji || "📄"}</span>
+                    <h1 className="text-3xl sm:text-4xl font-extrabold text-ink">{paginaAtual.titulo}</h1>
+                  </div>
+                  <p className="text-sm text-ink/50 mb-5">
+                    {temasDaPagina.length} {temasDaPagina.length === 1 ? "aula" : "aulas"} · {progressoDaPagina(paginaAtual.id).pct}% concluído
+                  </p>
+
+                  {souAdmin && (
+                    <div className="flex flex-wrap items-center gap-4 mb-5">
+                      <button
+                        onClick={() => setEditandoTituloPagina(true)}
+                        className="text-xs font-semibold text-ink/50 hover:text-ink flex items-center gap-1"
+                      >
+                        <Pencil size={12} /> Editar treinamento
+                      </button>
+                      <button onClick={() => setEditandoDescricao((v) => !v)} className="text-xs font-semibold text-forest hover:underline">
+                        {editandoDescricao ? "Ver como ficou" : "Editar descrição"}
+                      </button>
+                      <button onClick={() => excluirPagina(paginaAtual.id)} className="text-xs font-semibold text-ink/50 hover:text-red-600 ml-auto">
+                        Excluir treinamento
+                      </button>
+                    </div>
+                  )}
+
+                  {(paginaAtual.conteudo || souAdmin) && (
+                    <div className="rounded-2xl bg-white border border-black/5 p-6 mb-8">
+                      {souAdmin && editandoDescricao ? (
+                        <RichTextEditor
+                          valorHtml={paginaAtual.conteudo ?? ""}
+                          onChange={(html) => setPaginas((atual) => atual.map((p) => (p.id === paginaAtual.id ? { ...p, conteudo: html } : p)))}
+                          onSalvar={async () => {
+                            const supabase = createClient();
+                            await supabase.from("academy_paginas").update({ conteudo: paginaAtual.conteudo ?? "" }).eq("id", paginaAtual.id);
+                          }}
+                          semCaixa
+                          placeholder="Escreva uma breve descrição: o que a pessoa vai aprender nesse treinamento..."
+                        />
+                      ) : (
+                        <ConteudoFormatado html={paginaAtual.conteudo || "<p class='text-ink/35'>Sem descrição ainda.</p>"} />
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-extrabold text-ink/50 uppercase tracking-wide">Conteúdo do treinamento</p>
+                    {souAdmin && (
+                      <button
+                        onClick={() => setNovoTemaAberto(true)}
+                        className="text-xs font-semibold text-forest hover:underline flex items-center gap-1"
+                      >
+                        <Plus size={12} /> Novo tema
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    {temasDaPagina.map((t, i) => {
+                      const feito = progresso.has(t.id);
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => abrirTema(paginaAtual.id, t.id)}
+                          className={`w-full text-left rounded-2xl border px-5 py-4 flex items-center gap-4 transition-all hover:shadow-sm hover:-translate-y-0.5 ${
+                            feito ? "bg-mint/20 border-mint" : "bg-white border-black/5 hover:border-black/10"
+                          }`}
+                        >
+                          {feito ? (
+                            <CheckCircle2 size={22} className="text-forest shrink-0" />
+                          ) : (
+                            <Circle size={22} className="text-ink/20 shrink-0" />
+                          )}
+                          <span className={`font-bold flex-1 ${feito ? "text-forest" : "text-ink"}`}>
+                            {String(i + 1).padStart(2, "0")}. {t.titulo}
+                          </span>
+                          <ChevronRight size={16} className="text-ink/30 shrink-0" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : (
               <div className="px-10 py-8 max-w-5xl mx-auto">
                 <div className="max-w-3xl">
                   <div className="flex items-center justify-between gap-3 mb-5">
@@ -677,11 +764,15 @@ export default function AcademyPage() {
                     </div>
                   </div>
 
-                  <span className="inline-block rounded-full bg-mint text-forest px-3 py-1 text-[11px] font-extrabold tracking-wide mb-3">
-                    AULA {indiceTemaAtivo + 1} DE {temasDaPagina.length}
-                  </span>
-                  <h1 className="text-3xl sm:text-4xl font-extrabold text-ink mb-6 pb-5 border-b-4 border-mint inline-block">{temaAtivo.titulo}</h1>
+                  <div className="inline-flex items-center gap-2 rounded-xl bg-mint px-4 py-2 mb-4">
+                    <span className="text-forest font-extrabold text-sm tracking-wide">
+                      AULA {indiceTemaAtivo + 1} DE {temasDaPagina.length}
+                    </span>
+                  </div>
+                  <h1 className="text-3xl sm:text-4xl font-extrabold text-ink mb-6">{temaAtivo.titulo}</h1>
                 </div>
+
+                <hr className="max-w-3xl border-t-2 border-black/5 mb-8" />
 
                 <div className="max-w-3xl">
                   {videosDoTemaAtivo.length > 0 && (
@@ -771,10 +862,10 @@ export default function AcademyPage() {
                   )}
                 </div>
               </div>
-            ) : null}
+            )}
           </div>
 
-          {temasDaPagina.length > 0 && (
+          {temaAtivo && temasDaPagina.length > 0 && (
             <aside className="w-80 shrink-0 border-l border-black/5 bg-white overflow-y-auto scrollbar-fina-clara p-5">
               <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Seu progresso nesse treinamento</p>
               <p className="text-xl font-extrabold text-forest mb-1.5">{progressoDaPagina(paginaAtual.id).pct}% concluído</p>
@@ -830,7 +921,6 @@ export default function AcademyPage() {
 
       {novaCategoriaAberta && (
         <ModalCategoria
-          cargos={cargos}
           onClose={() => setNovaCategoriaAberta(false)}
           onSalvo={(nova) => {
             setCategorias((atual) => [...atual, nova]);
@@ -842,7 +932,6 @@ export default function AcademyPage() {
       {editandoCategoria && (
         <ModalCategoria
           categoria={editandoCategoria}
-          cargos={cargos}
           onClose={() => setEditandoCategoria(null)}
           onSalvo={(atualizada) => {
             setCategorias((atual) => atual.map((c) => (c.id === atualizada.id ? atualizada : c)));
@@ -906,29 +995,38 @@ export default function AcademyPage() {
 
 function FormTituloPagina({
   pagina,
+  cargos,
   onCancelar,
   onSalvo,
 }: {
   pagina: Pagina;
+  cargos: Cargo[];
   onCancelar: () => void;
-  onSalvo: (titulo: string, emoji: string | null) => void;
+  onSalvo: (titulo: string, emoji: string | null, cargosPermitidos: string[] | null) => void;
 }) {
   const [titulo, setTitulo] = useState(pagina.titulo);
   const [emoji, setEmoji] = useState(pagina.emoji ?? "📄");
+  const [todosVeem, setTodosVeem] = useState(!pagina.cargosPermitidos || pagina.cargosPermitidos.length === 0);
+  const [cargosSelecionados, setCargosSelecionados] = useState<string[]>(pagina.cargosPermitidos ?? []);
   const [salvando, setSalvando] = useState(false);
+
+  function alternarCargo(id: string) {
+    setCargosSelecionados((atual) => (atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]));
+  }
 
   async function salvar() {
     if (!titulo.trim()) return;
     setSalvando(true);
     const supabase = createClient();
-    await supabase.from("academy_paginas").update({ titulo: titulo.trim(), emoji }).eq("id", pagina.id);
+    const cargosFinal = todosVeem ? null : cargosSelecionados;
+    await supabase.from("academy_paginas").update({ titulo: titulo.trim(), emoji, cargos_permitidos: cargosFinal }).eq("id", pagina.id);
     setSalvando(false);
-    onSalvo(titulo.trim(), emoji);
+    onSalvo(titulo.trim(), emoji, cargosFinal);
   }
 
   return (
     <div className="mb-6 rounded-2xl border border-black/10 p-4 bg-surface/30">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-4">
         <select value={emoji} onChange={(e) => setEmoji(e.target.value)} className="input !w-20 text-lg text-center">
           {EMOJIS_SUGERIDOS.map((e) => (
             <option key={e} value={e}>
@@ -938,6 +1036,26 @@ function FormTituloPagina({
         </select>
         <input value={titulo} onChange={(e) => setTitulo(e.target.value)} className="input flex-1 text-lg font-bold" autoFocus />
       </div>
+
+      <div className="mb-4">
+        <p className="text-sm font-semibold text-ink/70 mb-2">Quem tem acesso a esse treinamento?</p>
+        <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
+          <input type="checkbox" checked={todosVeem} onChange={(e) => setTodosVeem(e.target.checked)} />
+          Todo mundo
+        </label>
+        {!todosVeem && (
+          <div className="rounded-xl border border-black/10 p-2 max-h-40 overflow-y-auto space-y-1 bg-white">
+            {cargos.length === 0 && <p className="text-xs text-ink/40 px-2 py-1">Nenhum cargo cadastrado ainda.</p>}
+            {cargos.map((c) => (
+              <label key={c.id} className="flex items-center gap-2 text-sm px-2 py-1 rounded-lg hover:bg-surface cursor-pointer">
+                <input type="checkbox" checked={cargosSelecionados.includes(c.id)} onChange={() => alternarCargo(c.id)} />
+                {c.nome}
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center gap-3">
         <button
           onClick={salvar}
@@ -956,27 +1074,19 @@ function FormTituloPagina({
 
 function ModalCategoria({
   categoria,
-  cargos,
   onClose,
   onSalvo,
   onExcluir,
 }: {
   categoria?: Categoria;
-  cargos: Cargo[];
   onClose: () => void;
   onSalvo: (c: Categoria) => void;
   onExcluir?: () => void;
 }) {
   const [nome, setNome] = useState(categoria?.nome ?? "");
   const [emoji, setEmoji] = useState(categoria?.emoji ?? "📁");
-  const [todosVeem, setTodosVeem] = useState(!categoria || !categoria.cargosPermitidos || categoria.cargosPermitidos.length === 0);
-  const [cargosSelecionados, setCargosSelecionados] = useState<string[]>(categoria?.cargosPermitidos ?? []);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-
-  function alternarCargo(id: string) {
-    setCargosSelecionados((atual) => (atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]));
-  }
 
   async function salvar() {
     if (!nome.trim()) {
@@ -986,7 +1096,7 @@ function ModalCategoria({
     setSalvando(true);
     setErro(null);
     const supabase = createClient();
-    const payload = { nome: nome.trim(), emoji, cargos_permitidos: todosVeem ? null : cargosSelecionados };
+    const payload = { nome: nome.trim(), emoji };
     if (categoria) {
       const { error } = await supabase.from("academy_categorias").update(payload).eq("id", categoria.id);
       setSalvando(false);
@@ -994,7 +1104,7 @@ function ModalCategoria({
         setErro(error.message);
         return;
       }
-      onSalvo({ id: categoria.id, ordem: categoria.ordem, ...payload, cargosPermitidos: payload.cargos_permitidos });
+      onSalvo({ id: categoria.id, ordem: categoria.ordem, cargosPermitidos: categoria.cargosPermitidos, ...payload });
     } else {
       const { data, error } = await supabase
         .from("academy_categorias")
@@ -1006,7 +1116,7 @@ function ModalCategoria({
         setErro(error?.message ?? "Erro ao criar categoria.");
         return;
       }
-      onSalvo({ id: data.id, ordem: data.ordem, ...payload, cargosPermitidos: payload.cargos_permitidos });
+      onSalvo({ id: data.id, ordem: data.ordem, cargosPermitidos: null, ...payload });
     }
   }
 
@@ -1025,25 +1135,9 @@ function ModalCategoria({
           </select>
           <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Treinamentos" className="input flex-1" autoFocus />
         </div>
-
-        <div className="mb-4">
-          <p className="text-sm font-semibold text-ink/70 mb-2">Quem pode ver essa categoria?</p>
-          <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
-            <input type="checkbox" checked={todosVeem} onChange={(e) => setTodosVeem(e.target.checked)} />
-            Todo mundo
-          </label>
-          {!todosVeem && (
-            <div className="rounded-xl border border-black/10 p-2 max-h-40 overflow-y-auto space-y-1">
-              {cargos.length === 0 && <p className="text-xs text-ink/40 px-2 py-1">Nenhum cargo cadastrado ainda.</p>}
-              {cargos.map((c) => (
-                <label key={c.id} className="flex items-center gap-2 text-sm px-2 py-1 rounded-lg hover:bg-surface cursor-pointer">
-                  <input type="checkbox" checked={cargosSelecionados.includes(c.id)} onChange={() => alternarCargo(c.id)} />
-                  {c.nome}
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
+        <p className="text-xs text-ink/40 mb-4">
+          A categoria é só uma pasta pra organizar — quem pode ver cada treinamento você define ao editar a própria página.
+        </p>
 
         {erro && <p className="text-sm text-red-600 mb-3">{erro}</p>}
 
@@ -1105,7 +1199,7 @@ function ModalNovaPagina({
       setErro(error?.message ?? "Erro ao criar página.");
       return;
     }
-    onCriada({ id: data.id, categoriaId, titulo: titulo.trim(), emoji, conteudo: "", ordem: ordemInicial });
+    onCriada({ id: data.id, categoriaId, titulo: titulo.trim(), emoji, conteudo: "", ordem: ordemInicial, cargosPermitidos: null });
   }
 
   return (
