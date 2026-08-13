@@ -456,6 +456,10 @@ export default function PautaPage() {
       const chave = `${respId}|${item.dataExibicao}`;
       itensPorPessoaEDia.set(chave, [...(itensPorPessoaEDia.get(chave) ?? []), item]);
     }
+    // versão mesclada de "toda a equipe" — o item aparece uma vez só no dia,
+    // mesmo que tenha vários responsáveis (o avatar de cada um já aparece no card)
+    const chaveTodos = `_todos|${item.dataExibicao}`;
+    itensPorPessoaEDia.set(chaveTodos, [...(itensPorPessoaEDia.get(chaveTodos) ?? []), item]);
   }
 
   // Itens com início E vencimento diferentes viram uma barra esticada pelos dias —
@@ -470,6 +474,7 @@ export default function PautaPage() {
     for (const respId of ids) {
       itensMultiDiaPorPessoa.set(respId, [...(itensMultiDiaPorPessoa.get(respId) ?? []), item]);
     }
+    itensMultiDiaPorPessoa.set("_todos", [...(itensMultiDiaPorPessoa.get("_todos") ?? []), item]);
   }
 
   const idsEmFaixa = new Set<string>();
@@ -513,7 +518,10 @@ export default function PautaPage() {
     for (const semana of blocosDeSemana) calcularFaixasSemana(semana, respId);
   }
 
-  const funcionariosExibidos = modo === "minha" ? funcionarios.filter((f) => f.id === meuFuncionarioId) : funcionarios;
+  const funcionariosExibidos: Responsavel[] =
+    modo === "minha"
+      ? funcionarios.filter((f) => f.id === meuFuncionarioId)
+      : [{ id: "_todos", nome: "Toda a equipe", fotoUrl: null, authUserId: null }];
   const hojeISO = toISODateLocal(hoje);
 
   return (
@@ -644,7 +652,11 @@ export default function PautaPage() {
                 }`}
               >
                 <div className="flex items-center gap-2.5 px-5 py-3 border-b border-black/5 bg-surface/50 shrink-0">
-                  <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={26} />
+                  {f.id === "_todos" ? (
+                    <span className="h-[26px] w-[26px] rounded-full bg-forest text-white flex items-center justify-center shrink-0 text-xs">👥</span>
+                  ) : (
+                    <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={26} />
+                  )}
                   <p className="text-sm font-bold text-ink">{f.nome}</p>
                 </div>
                 <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-black/5">
@@ -662,7 +674,7 @@ export default function PautaPage() {
                         idsEmFaixa={idsEmFaixa}
                         funcionarios={funcionarios}
                         onAbrirItem={(link) => router.push(link)}
-                        onNovaTarefa={novaTarefaNoDia}
+                        onNovaTarefa={(dataISO, pessoaId) => novaTarefaNoDia(dataISO, pessoaId === "_todos" ? null : pessoaId)}
                       />
                     );
                   })}
