@@ -42,6 +42,8 @@ interface HistoricoItem {
   descricao: string;
   created_at: string;
 }
+const ALTURA_COLAPSADA_LEGENDA = 90;
+
 function extrairMencoes(html: string): Set<string> {
   const ids = new Set<string>();
   const regex = /data-mencao-id="([^"]+)"/g;
@@ -197,6 +199,9 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
 
   const [titulo, setTitulo] = useState("");
   const [legenda, setLegenda] = useState("");
+  const legendaRef = useRef<HTMLTextAreaElement>(null);
+  const [legendaRecolhida, setLegendaRecolhida] = useState(true);
+  const [legendaTransborda, setLegendaTransborda] = useState(false);
   const [observacoes, setObservacoes] = useState("");
   const [clienteSelecionado, setClienteSelecionado] = useState<Opcao | null>(null);
   const [objetivo, setObjetivo] = useState("");
@@ -219,6 +224,15 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       setRailColapsado(localStorage.getItem("conteudo-rail-colapsado") === "true");
     }
   }, []);
+
+  useEffect(() => {
+    const el = legendaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+    setLegendaTransborda(el.scrollHeight > ALTURA_COLAPSADA_LEGENDA + 20);
+  }, [legenda]);
+
   function alternarRail() {
     setRailColapsado((v) => {
       const novo = !v;
@@ -1069,14 +1083,16 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
           </div>
 
           <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
-            <span className="block text-sm font-bold text-ink mb-2">Legenda</span>
-            <textarea
-              value={legenda}
-              onChange={(e) => setLegenda(e.target.value)}
-              onBlur={() => salvarCampo({ legenda: legenda || null }, "atualizou a legenda")}
-              className="input resize-none"
-              rows={3}
-              placeholder="Texto que vai junto com o post — é isso que o cliente vê na aprovação..."
+            <span className="block text-sm font-bold text-ink mb-2">Descrição</span>
+            <RichTextEditor
+              valorHtml={observacoes}
+              onChange={setObservacoes}
+              onSalvar={() => {
+                salvarCampo({ observacoes_internas: observacoes || null }, "atualizou as observações internas");
+                notificarNovasMencoesObservacoes();
+              }}
+              placeholder="Anotações da equipe sobre esse conteúdo..."
+              mencionaveis={funcionariosComAcesso.filter((f) => f.authUserId).map((f) => ({ id: f.authUserId!, nome: f.nome }))}
             />
           </div>
 
@@ -1177,17 +1193,26 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
           </div>
 
           <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
-            <span className="block text-sm font-bold text-ink mb-2">Observações internas</span>
-            <RichTextEditor
-              valorHtml={observacoes}
-              onChange={setObservacoes}
-              onSalvar={() => {
-                salvarCampo({ observacoes_internas: observacoes || null }, "atualizou as observações internas");
-                notificarNovasMencoesObservacoes();
-              }}
-              placeholder="Anotações da equipe sobre esse conteúdo..."
-              mencionaveis={funcionariosComAcesso.filter((f) => f.authUserId).map((f) => ({ id: f.authUserId!, nome: f.nome }))}
+            <span className="block text-sm font-bold text-ink mb-2">Legenda</span>
+            <textarea
+              ref={legendaRef}
+              value={legenda}
+              onChange={(e) => setLegenda(e.target.value)}
+              onBlur={() => salvarCampo({ legenda: legenda || null }, "atualizou a legenda")}
+              className="input resize-none overflow-hidden"
+              rows={1}
+              style={legendaRecolhida && legendaTransborda ? { maxHeight: ALTURA_COLAPSADA_LEGENDA, overflow: "hidden" } : undefined}
+              placeholder="Texto que vai junto com o post — é isso que o cliente vê na aprovação..."
             />
+            {legendaTransborda && (
+              <button
+                type="button"
+                onClick={() => setLegendaRecolhida((v) => !v)}
+                className="mt-1 text-xs font-semibold text-ink/50 hover:text-ink"
+              >
+                {legendaRecolhida ? "▼ Expandir" : "▲ Recolher"}
+              </button>
+            )}
           </div>
 
           <div className="rounded-2xl bg-white p-4 shadow-sm">
