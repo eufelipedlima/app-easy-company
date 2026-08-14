@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useLayoutEffect, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -1342,13 +1342,13 @@ function PostModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusList]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = legendaRef.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
     setLegendaTransborda(el.scrollHeight > ALTURA_COLAPSADA_LEGENDA_MODAL + 20);
-  }, [legenda]);
+  });
 
   useEffect(() => {
     async function carregarClientes() {

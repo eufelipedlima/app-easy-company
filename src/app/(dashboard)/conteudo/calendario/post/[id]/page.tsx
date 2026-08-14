@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, use } from "react";
+import { useEffect, useLayoutEffect, useState, useCallback, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { comLinks } from "@/lib/linkify";
@@ -226,13 +226,13 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = legendaRef.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
     setLegendaTransborda(el.scrollHeight > ALTURA_COLAPSADA_LEGENDA + 20);
-  }, [legenda]);
+  });
 
   function alternarRail() {
     setRailColapsado((v) => {
