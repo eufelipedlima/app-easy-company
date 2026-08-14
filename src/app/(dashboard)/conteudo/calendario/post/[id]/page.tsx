@@ -201,7 +201,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   const [titulo, setTitulo] = useState("");
   const [legenda, setLegenda] = useState("");
   const legendaRef = useRef<HTMLTextAreaElement>(null);
-  const [legendaRecolhida, setLegendaRecolhida] = useState(true);
+  const [legendaRecolhida, setLegendaRecolhida] = useState(false);
   const [legendaTransborda, setLegendaTransborda] = useState(false);
   const [observacoes, setObservacoes] = useState("");
   const [clienteSelecionado, setClienteSelecionado] = useState<Opcao | null>(null);

@@ -1322,7 +1322,7 @@ function PostModal({
   const [dataPublicacao, setDataPublicacao] = useState(post?.data_publicacao ?? dataInicial ?? "");
   const [horaPublicacao, setHoraPublicacao] = useState(post?.hora_publicacao?.slice(0, 5) ?? "");
   const [legenda, setLegenda] = useState(post?.legenda ?? "");
-  const [legendaRecolhida, setLegendaRecolhida] = useState(true);
+  const [legendaRecolhida, setLegendaRecolhida] = useState(false);
   const [legendaTransborda, setLegendaTransborda] = useState(false);
   const [objetivo, setObjetivo] = useState<string>(post?.objetivo ?? "");
   const [formato, setFormato] = useState<string>(post?.formato ?? "");
