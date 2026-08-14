@@ -7,6 +7,16 @@ import { RichTextEditor } from "@/components/rich-text-editor";
 import { ConteudoFormatado } from "@/components/conteudo-formatado";
 import { comLinks } from "@/lib/linkify";
 import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   GraduationCap,
   Search,
   Plus,
@@ -14,8 +24,9 @@ import {
   Trash2,
   ChevronRight,
   ChevronLeft,
-  ChevronUp,
-  ChevronDown,
+  GripVertical,
+  MoreVertical,
+  Move,
   Link as LinkIcon,
   X,
   Lock,
@@ -143,6 +154,46 @@ function AvatarMini({ nome, fotoUrl, tamanho = 30 }: { nome: string; fotoUrl?: s
   );
 }
 
+function CategoriaArrastavel({ id, arrastavel, children }: { id: string; arrastavel: boolean; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: !arrastavel });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+  return (
+    <div ref={setNodeRef} style={style} className="relative group/drag">
+      {arrastavel && (
+        <button
+          {...attributes}
+          {...listeners}
+          title="Arrastar pra reordenar"
+          className="absolute left-0 top-1.5 h-7 w-4 flex items-center justify-center text-white/0 group-hover/drag:text-white/30 hover:!text-white/70 cursor-grab active:cursor-grabbing touch-none"
+        >
+          <GripVertical size={13} />
+        </button>
+      )}
+      <div className={arrastavel ? "pl-4" : ""}>{children}</div>
+    </div>
+  );
+}
+
+function PaginaArrastavel({ id, arrastavel, children }: { id: string; arrastavel: boolean; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: !arrastavel });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+  return (
+    <div ref={setNodeRef} style={style} className="relative group/drag flex items-center">
+      {arrastavel && (
+        <button
+          {...attributes}
+          {...listeners}
+          title="Arrastar pra reordenar"
+          className="h-7 w-4 shrink-0 flex items-center justify-center text-white/0 group-hover/drag:text-white/30 hover:!text-white/70 cursor-grab active:cursor-grabbing touch-none"
+        >
+          <GripVertical size={12} />
+        </button>
+      )}
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+}
+
 export default function AcademyPage() {
   const [souAdmin, setSouAdmin] = useState(false);
   const [meuFuncionarioId, setMeuFuncionarioId] = useState<string | null>(null);
@@ -173,6 +224,7 @@ export default function AcademyPage() {
   const [novoTemaAberto, setNovoTemaAberto] = useState(false);
   const [renomeandoTema, setRenomeandoTema] = useState<Tema | null>(null);
   const [editandoMetaTema, setEditandoMetaTema] = useState<Tema | null>(null);
+  const [menuAcoesAberto, setMenuAcoesAberto] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState<"conteudo" | "materiais" | "notas" | "duvidas">("conteudo");
   const [colegas, setColegas] = useState<Colega[]>([]);
   const [materiaisTema, setMateriaisTema] = useState<Material[]>([]);
@@ -390,6 +442,7 @@ export default function AcademyPage() {
     setTemaEditandoConteudo(false);
     setEditandoTituloPagina(false);
     setEditandoDescricao(false);
+    setMenuAcoesAberto(false);
     setAbaAtiva("conteudo");
     localStorage.setItem(CHAVE_ULTIMO, JSON.stringify({ paginaId, temaId }));
     setUltimoAcesso({ paginaId, temaId });
@@ -469,30 +522,40 @@ export default function AcademyPage() {
     voltarPraHome();
   }
 
-  async function moverCategoria(id: string, direcao: "cima" | "baixo") {
-    const lista = [...categorias].sort((a, b) => a.ordem - b.ordem);
-    const indice = lista.findIndex((c) => c.id === id);
-    const alvo = direcao === "cima" ? indice - 1 : indice + 1;
-    if (indice === -1 || alvo < 0 || alvo >= lista.length) return;
-    [lista[indice], lista[alvo]] = [lista[alvo], lista[indice]];
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  async function persistirOrdemCategorias(lista: Categoria[]) {
     const comNovaOrdem = lista.map((c, i) => ({ ...c, ordem: i }));
     setCategorias(comNovaOrdem);
     const supabase = createClient();
     await Promise.all(comNovaOrdem.map((c) => supabase.from("academy_categorias").update({ ordem: c.ordem }).eq("id", c.id)));
   }
 
-  async function moverPagina(id: string, direcao: "cima" | "baixo") {
-    const p = paginas.find((x) => x.id === id);
-    if (!p) return;
-    const doGrupo = paginas.filter((x) => x.categoriaId === p.categoriaId).sort((a, b) => a.ordem - b.ordem);
-    const indice = doGrupo.findIndex((x) => x.id === id);
-    const alvo = direcao === "cima" ? indice - 1 : indice + 1;
-    if (alvo < 0 || alvo >= doGrupo.length) return;
-    [doGrupo[indice], doGrupo[alvo]] = [doGrupo[alvo], doGrupo[indice]];
-    const comNovaOrdem = doGrupo.map((x, i) => ({ ...x, ordem: i }));
-    setPaginas((atual) => atual.map((x) => comNovaOrdem.find((y) => y.id === x.id) ?? x));
+  function handleArrastarCategoria(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const lista = [...categorias].sort((a, b) => a.ordem - b.ordem);
+    const de = lista.findIndex((c) => c.id === active.id);
+    const para = lista.findIndex((c) => c.id === over.id);
+    if (de === -1 || para === -1) return;
+    persistirOrdemCategorias(arrayMove(lista, de, para));
+  }
+
+  async function persistirOrdemPaginas(lista: Pagina[]) {
+    const comNovaOrdem = lista.map((p, i) => ({ ...p, ordem: i }));
+    setPaginas((atual) => atual.map((p) => comNovaOrdem.find((n) => n.id === p.id) ?? p));
     const supabase = createClient();
-    await Promise.all(comNovaOrdem.map((x) => supabase.from("academy_paginas").update({ ordem: x.ordem }).eq("id", x.id)));
+    await Promise.all(comNovaOrdem.map((p) => supabase.from("academy_paginas").update({ ordem: p.ordem }).eq("id", p.id)));
+  }
+
+  function handleArrastarPagina(categoriaId: string, e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const doGrupo = paginas.filter((p) => p.categoriaId === categoriaId).sort((a, b) => a.ordem - b.ordem);
+    const de = doGrupo.findIndex((p) => p.id === active.id);
+    const para = doGrupo.findIndex((p) => p.id === over.id);
+    if (de === -1 || para === -1) return;
+    persistirOrdemPaginas(arrayMove(doGrupo, de, para));
   }
 
   async function excluirCategoria(id: string) {
@@ -634,105 +697,91 @@ export default function AcademyPage() {
           ) : categoriasVisiveis.length === 0 ? (
             <p className="px-4 text-xs text-white/30">{souAdmin ? "Crie a primeira categoria pra começar." : "Nada disponível pro seu cargo ainda."}</p>
           ) : (
-            categoriasVisiveis.map((cat, indiceCat) => {
-              const paginasCat = (paginasPorCategoria.get(cat.id) ?? []).filter((p) => !busca || normalizar(p.titulo).includes(normalizar(busca)));
-              if (busca && paginasCat.length === 0) return null;
-              const colapsada = categoriasColapsadas.has(cat.id);
-              return (
-                <div key={cat.id} className="mb-1 px-3">
-                  <div className="group/cat flex items-center justify-between px-1 mb-1 rounded-lg hover:bg-white/5">
-                    <button
-                      onClick={() => alternarColapso(cat.id)}
-                      className="flex items-center gap-1.5 py-2 text-[11px] font-bold uppercase tracking-wide text-white/45 hover:text-white/80 transition-colors min-w-0 flex-1"
-                    >
-                      <ChevronRight size={11} className={`shrink-0 transition-transform ${colapsada ? "" : "rotate-90"}`} />
-                      {cat.emoji && <span className="text-sm">{cat.emoji}</span>}
-                      <span className="truncate">{cat.nome}</span>
-                      {cat.cargosPermitidos && cat.cargosPermitidos.length > 0 && <Lock size={10} className="text-white/25 shrink-0" />}
-                    </button>
-                    {souAdmin && (
-                      <div className="opacity-0 group-hover/cat:opacity-100 transition-opacity flex items-center gap-1 shrink-0 pr-1">
-                        <button
-                          onClick={() => moverCategoria(cat.id, "cima")}
-                          disabled={indiceCat === 0}
-                          title="Mover pra cima"
-                          className="text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40"
-                        >
-                          <ChevronUp size={12} />
-                        </button>
-                        <button
-                          onClick={() => moverCategoria(cat.id, "baixo")}
-                          disabled={indiceCat === categoriasVisiveis.length - 1}
-                          title="Mover pra baixo"
-                          className="text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40"
-                        >
-                          <ChevronDown size={12} />
-                        </button>
-                        <button onClick={() => setNovaPaginaCategoriaId(cat.id)} title="Nova página" className="text-white/40 hover:text-mint">
-                          <Plus size={13} />
-                        </button>
-                        <button onClick={() => setEditandoCategoria(cat)} title="Editar categoria" className="text-white/40 hover:text-white">
-                          <Pencil size={12} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  {!colapsada && (
-                    <div className="space-y-0.5 pb-2">
-                      {paginasCat.map((p, indicePag) => {
-                        const prog = progressoDaPagina(p.id);
-                        return (
-                          <div key={p.id} className="group/pag flex items-center gap-0.5">
-                            <button
-                              onClick={() => selecionarPagina(p.id)}
-                              className={`flex-1 min-w-0 text-left rounded-lg pl-6 pr-2.5 py-1.5 text-sm flex items-center gap-2 transition-colors ${
-                                paginaAtivaId === p.id ? "bg-forest text-white font-semibold" : "text-white/60 hover:bg-white/5 hover:text-white/90"
-                              }`}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={souAdmin ? handleArrastarCategoria : undefined}>
+              <SortableContext items={categoriasVisiveis.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+                {categoriasVisiveis.map((cat) => {
+                  const paginasCat = (paginasPorCategoria.get(cat.id) ?? []).filter(
+                    (p) => !busca || normalizar(p.titulo).includes(normalizar(busca))
+                  );
+                  if (busca && paginasCat.length === 0) return null;
+                  const colapsada = categoriasColapsadas.has(cat.id);
+                  return (
+                    <CategoriaArrastavel key={cat.id} id={cat.id} arrastavel={souAdmin}>
+                      <div className="mb-1 px-3">
+                        <div className="group/cat flex items-center justify-between px-1 mb-1 rounded-lg hover:bg-white/5">
+                          <button
+                            onClick={() => alternarColapso(cat.id)}
+                            className="flex items-center gap-1.5 py-2 text-[11px] font-bold uppercase tracking-wide text-white/45 hover:text-white/80 transition-colors min-w-0 flex-1"
+                          >
+                            <ChevronRight size={11} className={`shrink-0 transition-transform ${colapsada ? "" : "rotate-90"}`} />
+                            {cat.emoji && <span className="text-sm">{cat.emoji}</span>}
+                            <span className="truncate">{cat.nome}</span>
+                            {cat.cargosPermitidos && cat.cargosPermitidos.length > 0 && <Lock size={10} className="text-white/25 shrink-0" />}
+                          </button>
+                          {souAdmin && (
+                            <div className="opacity-0 group-hover/cat:opacity-100 transition-opacity flex items-center gap-1.5 shrink-0 pr-1">
+                              <button onClick={() => setNovaPaginaCategoriaId(cat.id)} title="Nova página" className="text-white/40 hover:text-mint">
+                                <Plus size={13} />
+                              </button>
+                              <button onClick={() => setEditandoCategoria(cat)} title="Editar categoria" className="text-white/40 hover:text-white">
+                                <Pencil size={12} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {!colapsada && (
+                          <div className="space-y-0.5 pb-2">
+                            <DndContext
+                              sensors={sensors}
+                              collisionDetection={closestCenter}
+                              onDragEnd={souAdmin ? (e) => handleArrastarPagina(cat.id, e) : undefined}
                             >
-                              <span className="shrink-0">{p.emoji || "📄"}</span>
-                              <span className="truncate flex-1">{p.titulo}</span>
-                              {p.cargosPermitidos && p.cargosPermitidos.length > 0 && <Lock size={10} className="text-white/25 shrink-0" />}
-                              {prog.total > 0 && prog.pct === 100 && <CheckCircle2 size={13} className="text-mint shrink-0" />}
-                            </button>
-                            {souAdmin && (
-                              <div className="opacity-0 group-hover/pag:opacity-100 transition-opacity flex items-center gap-0.5 shrink-0 pr-1">
-                                <button
-                                  onClick={() => moverPagina(p.id, "cima")}
-                                  disabled={indicePag === 0}
-                                  title="Mover pra cima"
-                                  className="text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40"
-                                >
-                                  <ChevronUp size={11} />
-                                </button>
-                                <button
-                                  onClick={() => moverPagina(p.id, "baixo")}
-                                  disabled={indicePag === paginasCat.length - 1}
-                                  title="Mover pra baixo"
-                                  className="text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40"
-                                >
-                                  <ChevronDown size={11} />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    selecionarPagina(p.id);
-                                    setEditandoTituloPagina(true);
-                                  }}
-                                  title="Editar treinamento"
-                                  className="text-white/40 hover:text-white"
-                                >
-                                  <Pencil size={11} />
-                                </button>
-                              </div>
-                            )}
+                              <SortableContext items={paginasCat.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                                {paginasCat.map((p) => {
+                                  const prog = progressoDaPagina(p.id);
+                                  return (
+                                    <PaginaArrastavel key={p.id} id={p.id} arrastavel={souAdmin}>
+                                      <div className="group/pag flex items-center gap-0.5">
+                                        <button
+                                          onClick={() => selecionarPagina(p.id)}
+                                          className={`flex-1 min-w-0 text-left rounded-lg pl-1 pr-2.5 py-1.5 text-sm flex items-center gap-1.5 transition-colors ${
+                                            paginaAtivaId === p.id
+                                              ? "bg-forest text-white font-semibold"
+                                              : "text-white/60 hover:bg-white/5 hover:text-white/90"
+                                          }`}
+                                        >
+                                          <span className="shrink-0">{p.emoji || "📄"}</span>
+                                          <span className="truncate flex-1">{p.titulo}</span>
+                                          {p.cargosPermitidos && p.cargosPermitidos.length > 0 && <Lock size={10} className="text-white/25 shrink-0" />}
+                                          {prog.total > 0 && prog.pct === 100 && <CheckCircle2 size={13} className="text-mint shrink-0" />}
+                                        </button>
+                                        {souAdmin && (
+                                          <button
+                                            onClick={() => {
+                                              selecionarPagina(p.id);
+                                              setEditandoTituloPagina(true);
+                                            }}
+                                            title="Editar treinamento"
+                                            className="opacity-0 group-hover/pag:opacity-100 transition-opacity text-white/40 hover:text-white shrink-0 pr-1"
+                                          >
+                                            <Pencil size={11} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </PaginaArrastavel>
+                                  );
+                                })}
+                              </SortableContext>
+                            </DndContext>
+                            {paginasCat.length === 0 && <p className="pl-6 text-xs text-white/25 italic">Sem páginas ainda</p>}
                           </div>
-                        );
-                      })}
-                      {paginasCat.length === 0 && <p className="pl-6 text-xs text-white/25 italic">Sem páginas ainda</p>}
-                    </div>
-                  )}
-                </div>
-              );
-            })
+                        )}
+                      </div>
+                    </CategoriaArrastavel>
+                  );
+                })}
+              </SortableContext>
+            </DndContext>
           )}
         </nav>
 
@@ -910,7 +959,7 @@ export default function AcademyPage() {
                       <button
                         onClick={() => excluirPagina(paginaAtual.id)}
                         title="Excluir treinamento"
-                        className="absolute top-5 right-5 text-ink/20 hover:text-red-600 transition-colors"
+                        className="absolute top-5 right-5 text-red-400 hover:text-red-600 transition-colors"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -1032,6 +1081,82 @@ export default function AcademyPage() {
                       >
                         <ChevronRight size={17} />
                       </button>
+                      {souAdmin && (
+                        <div className="relative">
+                          <button
+                            onClick={() => setMenuAcoesAberto((v) => !v)}
+                            title="Ações da aula"
+                            className="h-10 w-10 rounded-full border-2 border-black/10 text-ink/50 flex items-center justify-center hover:border-black/20 hover:text-ink transition-colors"
+                          >
+                            <MoreVertical size={17} />
+                          </button>
+                          {menuAcoesAberto && (
+                            <>
+                              <div className="fixed inset-0 z-10" onClick={() => setMenuAcoesAberto(false)} />
+                              <div className="absolute right-0 top-12 z-20 w-56 rounded-2xl bg-white border border-black/10 shadow-xl py-2">
+                                <p className="px-4 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-ink/35">Ações da aula</p>
+                                <button
+                                  onClick={() => {
+                                    setRenomeandoTema(temaAtivo);
+                                    setMenuAcoesAberto(false);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-ink/80 hover:bg-surface transition-colors"
+                                >
+                                  <Pencil size={14} /> Renomear aula
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setEditandoMetaTema(temaAtivo);
+                                    setMenuAcoesAberto(false);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-ink/80 hover:bg-surface transition-colors"
+                                >
+                                  <FileText size={14} /> Editar detalhes
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setNovoVideoTemaId(temaAtivo.id);
+                                    setMenuAcoesAberto(false);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-ink/80 hover:bg-surface transition-colors"
+                                >
+                                  <PlayCircle size={14} /> Adicionar vídeo
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setAbaAtiva("conteudo");
+                                    setTemaEditandoConteudo(true);
+                                    setMenuAcoesAberto(false);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-ink/80 hover:bg-surface transition-colors"
+                                >
+                                  <MoreVertical size={14} className="rotate-90" /> Editar texto
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setEditandoTituloPagina(true);
+                                    setMenuAcoesAberto(false);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-ink/80 hover:bg-surface transition-colors"
+                                >
+                                  <Move size={14} /> Editar treinamento
+                                </button>
+                                <div className="my-1.5 border-t border-black/5" />
+                                <p className="px-4 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-red-400">Zona de perigo</p>
+                                <button
+                                  onClick={() => {
+                                    setMenuAcoesAberto(false);
+                                    excluirTema(temaAtivo.id);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                >
+                                  <Trash2 size={14} /> Excluir aula
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1113,39 +1238,27 @@ export default function AcademyPage() {
                   )}
 
                   {souAdmin && (
-                    <div className="flex flex-wrap items-center gap-4 mb-5 pb-4 border-b border-black/5">
+                    <div className="flex items-center gap-2 mb-5 pb-4 border-b border-black/5">
                       <button
-                        onClick={() => setRenomeandoTema(temaAtivo)}
-                        className="text-xs font-semibold text-ink/50 hover:text-ink flex items-center gap-1"
+                        onClick={() => setEditandoMetaTema(temaAtivo)}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3.5 py-1.5 text-xs font-bold text-ink/70 hover:bg-mint hover:text-forest transition-colors"
                       >
-                        <Pencil size={12} /> Renomear
+                        <Pencil size={12} /> Editar detalhes
                       </button>
                       <button
                         onClick={() => setNovoVideoTemaId(temaAtivo.id)}
-                        className="text-xs font-semibold text-forest hover:underline flex items-center gap-1"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3.5 py-1.5 text-xs font-bold text-ink/70 hover:bg-mint hover:text-forest transition-colors"
                       >
-                        <Plus size={12} /> Adicionar vídeo
+                        <PlayCircle size={12} /> Adicionar vídeo
                       </button>
                       <button
                         onClick={() => {
                           setAbaAtiva("conteudo");
                           setTemaEditandoConteudo((v) => !v);
                         }}
-                        className="text-xs font-semibold text-ink/50 hover:text-ink"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3.5 py-1.5 text-xs font-bold text-ink/70 hover:bg-mint hover:text-forest transition-colors"
                       >
-                        {temaEditandoConteudo ? "Ver como ficou" : "Editar texto"}
-                      </button>
-                      <button onClick={() => setEditandoTituloPagina(true)} className="text-xs font-semibold text-ink/50 hover:text-ink">
-                        Renomear treinamento
-                      </button>
-                      <button onClick={() => excluirPagina(paginaAtual.id)} className="text-xs font-semibold text-ink/50 hover:text-red-600">
-                        Excluir treinamento
-                      </button>
-                      <button
-                        onClick={() => excluirTema(temaAtivo.id)}
-                        className="text-xs font-semibold text-red-500 hover:underline flex items-center gap-1 ml-auto"
-                      >
-                        <Trash2 size={12} /> Excluir tema
+                        <FileText size={12} /> {temaEditandoConteudo ? "Ver como ficou" : "Adicionar/editar texto"}
                       </button>
                     </div>
                   )}
@@ -1154,8 +1267,8 @@ export default function AcademyPage() {
                     {(
                       [
                         { id: "conteudo", label: "Conteúdo", icone: <BookOpen size={15} /> },
-                        { id: "materiais", label: "Materiais", icone: <FolderOpen size={15} /> },
-                        { id: "notas", label: "Notas", icone: <PenLine size={15} /> },
+                        { id: "materiais", label: "Materiais", icone: <FolderOpen size={15} />, badge: materiaisTema.length },
+                        { id: "notas", label: "Notas", icone: <PenLine size={15} />, badge: notaPessoal.trim() ? 1 : 0 },
                         { id: "duvidas", label: "Dúvidas", icone: <MessageCircle size={15} />, badge: duvidas.length },
                       ] as const
                     ).map((aba) => (
@@ -1185,6 +1298,44 @@ export default function AcademyPage() {
                         semCaixa
                         placeholder="Escreva o conteúdo desse tema..."
                       />
+                    ) : !temaAtivo.conteudo && videosDoTemaAtivo.length === 0 ? (
+                      <div className="rounded-2xl bg-white border border-black/5 p-10 text-center">
+                        <div className="h-14 w-14 rounded-2xl bg-surface flex items-center justify-center mx-auto mb-4">
+                          <FileText size={24} className="text-ink/30" />
+                        </div>
+                        <p className="font-bold text-ink mb-1">Esta aula ainda não possui conteúdo.</p>
+                        <p className="text-sm text-ink/45 mb-6">Adicione textos, vídeos ou outros materiais pra começar.</p>
+                        {souAdmin && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto text-left">
+                            <div className="rounded-2xl border border-black/5 p-4">
+                              <div className="h-9 w-9 rounded-xl bg-mint text-forest flex items-center justify-center mb-3">
+                                <FileText size={16} />
+                              </div>
+                              <p className="font-bold text-sm text-ink mb-1">Adicionar texto</p>
+                              <p className="text-xs text-ink/45 mb-3">Escreva explicações e conteúdo pra essa aula.</p>
+                              <button
+                                onClick={() => setTemaEditandoConteudo(true)}
+                                className="text-xs font-bold text-forest hover:underline"
+                              >
+                                + Adicionar texto
+                              </button>
+                            </div>
+                            <div className="rounded-2xl border border-black/5 p-4">
+                              <div className="h-9 w-9 rounded-xl bg-mint text-forest flex items-center justify-center mb-3">
+                                <PlayCircle size={16} />
+                              </div>
+                              <p className="font-bold text-sm text-ink mb-1">Adicionar vídeo</p>
+                              <p className="text-xs text-ink/45 mb-3">Cole um link do YouTube, Vimeo ou outras plataformas.</p>
+                              <button
+                                onClick={() => setNovoVideoTemaId(temaAtivo.id)}
+                                className="text-xs font-bold text-forest hover:underline"
+                              >
+                                + Adicionar vídeo
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <div className="rounded-2xl bg-white border border-black/5 p-6">
                         <ConteudoFormatado html={temaAtivo.conteudo || "<p class='text-ink/35'>Sem texto por aqui ainda.</p>"} />
@@ -1353,6 +1504,34 @@ export default function AcademyPage() {
                   <Plus size={13} /> Novo tema
                 </button>
               )}
+
+              {(() => {
+                const concluidos = temasDaPagina.filter((t) => progresso.has(t.id)).length;
+                const emAndamento = temaAtivo && !progresso.has(temaAtivo.id) ? 1 : 0;
+                const restantes = temasDaPagina.length - concluidos - emAndamento;
+                return (
+                  <div className="mt-6 pt-5 border-t border-black/5 space-y-2.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-2 text-ink/60">
+                        <span className="h-2 w-2 rounded-full bg-forest shrink-0" /> Aulas concluídas
+                      </span>
+                      <span className="font-bold text-ink">{concluidos}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-2 text-ink/60">
+                        <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" /> Em andamento
+                      </span>
+                      <span className="font-bold text-ink">{emAndamento}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-2 text-ink/60">
+                        <span className="h-2 w-2 rounded-full bg-ink/20 shrink-0" /> Restantes
+                      </span>
+                      <span className="font-bold text-ink">{restantes}</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </aside>
           )}
         </div>
