@@ -161,7 +161,7 @@ export function RichTextEditor({
   onSalvar?: () => void;
   placeholder?: string;
   semCaixa?: boolean;
-  mencionaveis?: { id: string; nome: string }[];
+  mencionaveis?: { id: string; nome: string; fotoUrl?: string | null }[];
   referenciaveis?: { id: string; titulo: string; tipo: "tarefa" | "conteudo" }[];
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -854,8 +854,13 @@ export function RichTextEditor({
                 i === indiceMencaoSelecionada ? "bg-surface" : "hover:bg-surface/60"
               }`}
             >
-              <span className="w-7 h-7 shrink-0 rounded-full bg-mint text-forest flex items-center justify-center text-[11px] font-bold">
-                {pessoa.nome.slice(0, 2).toUpperCase()}
+              <span className="w-7 h-7 shrink-0 rounded-full bg-mint text-forest flex items-center justify-center text-[11px] font-bold overflow-hidden">
+                {pessoa.fotoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={pessoa.fotoUrl} alt={pessoa.nome} className="w-full h-full object-cover" />
+                ) : (
+                  pessoa.nome.slice(0, 2).toUpperCase()
+                )}
               </span>
               <span className="text-sm font-semibold text-ink truncate">{pessoa.nome}</span>
             </button>

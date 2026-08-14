@@ -249,6 +249,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
 
   const [novoComentario, setNovoComentario] = useState("");
   const [mencaoBusca, setMencaoBusca] = useState<string | null>(null);
+  const [indiceMencaoComentario, setIndiceMencaoComentario] = useState(0);
   const [enviandoComentario, setEnviandoComentario] = useState(false);
   const comentarioRef = useRef<HTMLTextAreaElement>(null);
 
@@ -775,7 +776,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     });
   }
 
-  const colegasParaMencao = colegas.filter((c) => mencaoBusca !== null && normalizar(c.nome).includes(normalizar(mencaoBusca)));
+  const colegasParaMencao = funcionariosComAcesso.filter((f) => mencaoBusca !== null && normalizar(f.nome).includes(normalizar(mencaoBusca)));
   const todosOsNomes = [meuNome, ...colegas.map((c) => c.nome)];
   const statusAtual = statusList.find((s) => s.id === post?.status_id);
 
@@ -1106,7 +1107,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                 notificarNovasMencoesObservacoes();
               }}
               placeholder="Anotações da equipe sobre esse conteúdo..."
-              mencionaveis={funcionariosComAcesso.filter((f) => f.authUserId).map((f) => ({ id: f.authUserId!, nome: f.nome }))}
+              mencionaveis={funcionariosComAcesso.filter((f) => f.authUserId).map((f) => ({ id: f.authUserId!, nome: f.nome, fotoUrl: f.fotoUrl }))}
               referenciaveis={referenciaveis}
             />
           </div>
@@ -1370,8 +1371,31 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                       const antes = valor.slice(0, pos);
                       const match = antes.match(/@([a-zA-ZÀ-ÿ]*)$/);
                       setMencaoBusca(match ? match[1] : null);
+                      setIndiceMencaoComentario(0);
                     }}
                     onKeyDown={(e) => {
+                      if (mencaoBusca !== null && colegasParaMencao.length > 0) {
+                        if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          setIndiceMencaoComentario((i) => Math.min(i + 1, colegasParaMencao.length - 1));
+                          return;
+                        }
+                        if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          setIndiceMencaoComentario((i) => Math.max(i - 1, 0));
+                          return;
+                        }
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          selecionarMencao(colegasParaMencao[indiceMencaoComentario].nome);
+                          return;
+                        }
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          setMencaoBusca(null);
+                          return;
+                        }
+                      }
                       if (e.key === "Enter" && !e.shiftKey && mencaoBusca === null) {
                         e.preventDefault();
                         enviarComentario();
@@ -1382,10 +1406,19 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                     className="input resize-none w-full text-sm"
                   />
                   {mencaoBusca !== null && colegasParaMencao.length > 0 && (
-                    <div className="absolute z-20 bottom-20 left-4 right-4 rounded-2xl bg-white border border-black/10 shadow-lg py-1 max-h-40 overflow-y-auto">
-                      {colegasParaMencao.map((c) => (
-                        <button key={c.id} onClick={() => selecionarMencao(c.nome)} className="w-full text-left px-4 py-2 text-sm hover:bg-surface">
-                          {c.nome}
+                    <div className="absolute z-20 bottom-20 left-4 right-4 rounded-2xl bg-white border border-black/10 shadow-lg py-1 max-h-48 overflow-y-auto">
+                      {colegasParaMencao.map((c, i) => (
+                        <button
+                          key={c.id}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onMouseEnter={() => setIndiceMencaoComentario(i)}
+                          onClick={() => selecionarMencao(c.nome)}
+                          className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2.5 transition-colors ${
+                            i === indiceMencaoComentario ? "bg-surface" : "hover:bg-surface/60"
+                          }`}
+                        >
+                          <Avatar nome={c.nome} fotoUrl={c.fotoUrl} tamanho={26} />
+                          <span className="font-semibold text-ink">{c.nome}</span>
                         </button>
                       ))}
                     </div>
