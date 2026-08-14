@@ -10,6 +10,7 @@ import { corDoStatus } from "@/lib/status-conteudo";
 import { BuscaCliente } from "@/components/busca-cliente";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { Cronometro } from "@/components/cronometro";
+import { Eye, Download, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -225,6 +226,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
   const [subtarefas, setSubtarefas] = useState<Subtarefa[]>([]);
   const [anexos, setAnexos] = useState<Anexo[]>([]);
+  const [indiceImagemAberta, setIndiceImagemAberta] = useState<number | null>(null);
   const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   const [pastasAbertas, setPastasAbertas] = useState<Set<string>>(new Set());
   const [secaoSubtarefasAberta, setSecaoSubtarefasAberta] = useState(true);
@@ -530,6 +532,24 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
+  async function baixarArquivo(url: string, nomeArquivo: string) {
+    try {
+      const resposta = await fetch(url);
+      const blob = await resposta.blob();
+      const urlBlob = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = urlBlob;
+      link.download = nomeArquivo;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(urlBlob);
+    } catch {
+      // se der algum problema (ex.: CORS bloqueado no bucket), cai pra abrir em nova aba
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  }
+
   async function salvarCampoDireto(nomeCampo: string, valor: string | null, eventoHistorico?: string) {
     await salvarCampo({ [nomeCampo]: valor }, eventoHistorico);
   }
@@ -759,6 +779,8 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       </main>
     );
   }
+
+  const anexosImagem = anexos.filter((a) => a.arquivo_tipo?.startsWith("image/"));
 
   return (
     <main className="h-screen flex flex-col bg-surface/30">
@@ -1094,23 +1116,32 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        <a
-                          href={a.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Visualizar"
-                          className="h-7 w-7 rounded-full flex items-center justify-center text-ink/50 hover:text-ink hover:bg-white transition-colors"
-                        >
-                          👁️
-                        </a>
-                        <a
-                          href={a.url}
-                          download={a.arquivo_nome ?? undefined}
+                        {ehImagem ? (
+                          <button
+                            onClick={() => setIndiceImagemAberta(anexosImagem.findIndex((x) => x.id === a.id))}
+                            title="Visualizar"
+                            className="h-7 w-7 rounded-full flex items-center justify-center text-ink/50 hover:text-ink hover:bg-white transition-colors"
+                          >
+                            <Eye size={15} />
+                          </button>
+                        ) : (
+                          <a
+                            href={a.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Visualizar"
+                            className="h-7 w-7 rounded-full flex items-center justify-center text-ink/50 hover:text-ink hover:bg-white transition-colors"
+                          >
+                            <Eye size={15} />
+                          </a>
+                        )}
+                        <button
+                          onClick={() => baixarArquivo(a.url, a.arquivo_nome ?? "arquivo")}
                           title="Baixar"
                           className="h-7 w-7 rounded-full flex items-center justify-center text-ink/50 hover:text-ink hover:bg-white transition-colors"
                         >
-                          ⬇
-                        </a>
+                          <Download size={15} />
+                        </button>
                         <button
                           onClick={() => removerAnexo(a)}
                           title="Remover"
@@ -1335,6 +1366,71 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
           </div>
         )}
       </div>
+
+      {indiceImagemAberta !== null && anexosImagem[indiceImagemAberta] && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-6"
+          onClick={() => setIndiceImagemAberta(null)}
+        >
+          <button
+            onClick={() => setIndiceImagemAberta(null)}
+            title="Fechar"
+            className="absolute top-5 right-5 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+          >
+            <X size={18} />
+          </button>
+
+          {anexosImagem.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIndiceImagemAberta((i) => (i! > 0 ? i! - 1 : anexosImagem.length - 1));
+              }}
+              title="Anterior"
+              className="absolute left-4 sm:left-8 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors shrink-0"
+            >
+              <ChevronLeft size={20} />
+            </button>
+          )}
+
+          <div className="max-w-4xl max-h-[85vh] flex flex-col items-center gap-3" onClick={(e) => e.stopPropagation()}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={anexosImagem[indiceImagemAberta].url}
+              alt={anexosImagem[indiceImagemAberta].arquivo_nome ?? "anexo"}
+              className="max-w-full max-h-[75vh] rounded-xl object-contain shadow-2xl"
+            />
+            <div className="flex items-center gap-4 text-white/70 text-sm">
+              <span>{anexosImagem[indiceImagemAberta].arquivo_nome}</span>
+              <span className="text-white/30">
+                {indiceImagemAberta + 1} / {anexosImagem.length}
+              </span>
+              <button
+                onClick={() =>
+                  baixarArquivo(anexosImagem[indiceImagemAberta].url, anexosImagem[indiceImagemAberta].arquivo_nome ?? "arquivo")
+                }
+                title="Baixar"
+                className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 hover:bg-white/20 transition-colors"
+              >
+                <Download size={14} /> Baixar
+              </button>
+            </div>
+          </div>
+
+          {anexosImagem.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIndiceImagemAberta((i) => (i! < anexosImagem.length - 1 ? i! + 1 : 0));
+              }}
+              title="Próxima"
+              className="absolute right-4 sm:right-8 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors shrink-0"
+            >
+              <ChevronRight size={20} />
+            </button>
+          )}
+        </div>
+      )}
     </main>
   );
 }
