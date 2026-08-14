@@ -14,6 +14,8 @@ import {
   Trash2,
   ChevronRight,
   ChevronLeft,
+  ChevronUp,
+  ChevronDown,
   Link as LinkIcon,
   X,
   Lock,
@@ -300,16 +302,26 @@ export default function AcademyPage() {
     }
   }, []);
 
-  const paginaVisivelPraMim = useCallback(
-    (p: Pagina) => souAdmin || !p.cargosPermitidos || p.cargosPermitidos.length === 0 || (meuCargoId != null && p.cargosPermitidos.includes(meuCargoId)),
+  const categoriaVisivelPraMim = useCallback(
+    (c: Categoria) =>
+      souAdmin || !c.cargosPermitidos || c.cargosPermitidos.length === 0 || (meuCargoId != null && c.cargosPermitidos.includes(meuCargoId)),
     [souAdmin, meuCargoId]
+  );
+
+  const paginaVisivelPraMim = useCallback(
+    (p: Pagina) => {
+      if (souAdmin) return true;
+      const cat = categorias.find((c) => c.id === p.categoriaId);
+      if (cat && !categoriaVisivelPraMim(cat)) return false;
+      return !p.cargosPermitidos || p.cargosPermitidos.length === 0 || (meuCargoId != null && p.cargosPermitidos.includes(meuCargoId));
+    },
+    [souAdmin, meuCargoId, categorias, categoriaVisivelPraMim]
   );
 
   const categoriasVisiveis = useMemo(() => {
     if (souAdmin) return categorias;
-    return categorias.filter((c) => paginas.some((p) => p.categoriaId === c.id && paginaVisivelPraMim(p)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categorias, souAdmin, paginas]);
+    return categorias.filter((c) => categoriaVisivelPraMim(c) && paginas.some((p) => p.categoriaId === c.id && paginaVisivelPraMim(p)));
+  }, [categorias, souAdmin, paginas, categoriaVisivelPraMim, paginaVisivelPraMim]);
 
   const paginasPorCategoria = useMemo(() => {
     const mapa = new Map<string, Pagina[]>();
@@ -457,6 +469,32 @@ export default function AcademyPage() {
     voltarPraHome();
   }
 
+  async function moverCategoria(id: string, direcao: "cima" | "baixo") {
+    const lista = [...categorias].sort((a, b) => a.ordem - b.ordem);
+    const indice = lista.findIndex((c) => c.id === id);
+    const alvo = direcao === "cima" ? indice - 1 : indice + 1;
+    if (indice === -1 || alvo < 0 || alvo >= lista.length) return;
+    [lista[indice], lista[alvo]] = [lista[alvo], lista[indice]];
+    const comNovaOrdem = lista.map((c, i) => ({ ...c, ordem: i }));
+    setCategorias(comNovaOrdem);
+    const supabase = createClient();
+    await Promise.all(comNovaOrdem.map((c) => supabase.from("academy_categorias").update({ ordem: c.ordem }).eq("id", c.id)));
+  }
+
+  async function moverPagina(id: string, direcao: "cima" | "baixo") {
+    const p = paginas.find((x) => x.id === id);
+    if (!p) return;
+    const doGrupo = paginas.filter((x) => x.categoriaId === p.categoriaId).sort((a, b) => a.ordem - b.ordem);
+    const indice = doGrupo.findIndex((x) => x.id === id);
+    const alvo = direcao === "cima" ? indice - 1 : indice + 1;
+    if (alvo < 0 || alvo >= doGrupo.length) return;
+    [doGrupo[indice], doGrupo[alvo]] = [doGrupo[alvo], doGrupo[indice]];
+    const comNovaOrdem = doGrupo.map((x, i) => ({ ...x, ordem: i }));
+    setPaginas((atual) => atual.map((x) => comNovaOrdem.find((y) => y.id === x.id) ?? x));
+    const supabase = createClient();
+    await Promise.all(comNovaOrdem.map((x) => supabase.from("academy_paginas").update({ ordem: x.ordem }).eq("id", x.id)));
+  }
+
   async function excluirCategoria(id: string) {
     if (!window.confirm("Excluir essa categoria? Todas as páginas dentro dela também somem, sem volta.")) return;
     const supabase = createClient();
@@ -596,7 +634,7 @@ export default function AcademyPage() {
           ) : categoriasVisiveis.length === 0 ? (
             <p className="px-4 text-xs text-white/30">{souAdmin ? "Crie a primeira categoria pra começar." : "Nada disponível pro seu cargo ainda."}</p>
           ) : (
-            categoriasVisiveis.map((cat) => {
+            categoriasVisiveis.map((cat, indiceCat) => {
               const paginasCat = (paginasPorCategoria.get(cat.id) ?? []).filter((p) => !busca || normalizar(p.titulo).includes(normalizar(busca)));
               if (busca && paginasCat.length === 0) return null;
               const colapsada = categoriasColapsadas.has(cat.id);
@@ -613,7 +651,23 @@ export default function AcademyPage() {
                       {cat.cargosPermitidos && cat.cargosPermitidos.length > 0 && <Lock size={10} className="text-white/25 shrink-0" />}
                     </button>
                     {souAdmin && (
-                      <div className="opacity-0 group-hover/cat:opacity-100 transition-opacity flex items-center gap-1.5 shrink-0 pr-1">
+                      <div className="opacity-0 group-hover/cat:opacity-100 transition-opacity flex items-center gap-1 shrink-0 pr-1">
+                        <button
+                          onClick={() => moverCategoria(cat.id, "cima")}
+                          disabled={indiceCat === 0}
+                          title="Mover pra cima"
+                          className="text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40"
+                        >
+                          <ChevronUp size={12} />
+                        </button>
+                        <button
+                          onClick={() => moverCategoria(cat.id, "baixo")}
+                          disabled={indiceCat === categoriasVisiveis.length - 1}
+                          title="Mover pra baixo"
+                          className="text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40"
+                        >
+                          <ChevronDown size={12} />
+                        </button>
                         <button onClick={() => setNovaPaginaCategoriaId(cat.id)} title="Nova página" className="text-white/40 hover:text-mint">
                           <Plus size={13} />
                         </button>
@@ -625,20 +679,52 @@ export default function AcademyPage() {
                   </div>
                   {!colapsada && (
                     <div className="space-y-0.5 pb-2">
-                      {paginasCat.map((p) => {
+                      {paginasCat.map((p, indicePag) => {
                         const prog = progressoDaPagina(p.id);
                         return (
-                          <button
-                            key={p.id}
-                            onClick={() => selecionarPagina(p.id)}
-                            className={`w-full text-left rounded-lg pl-6 pr-2.5 py-1.5 text-sm flex items-center gap-2 transition-colors ${
-                              paginaAtivaId === p.id ? "bg-forest text-white font-semibold" : "text-white/60 hover:bg-white/5 hover:text-white/90"
-                            }`}
-                          >
-                            <span className="shrink-0">{p.emoji || "📄"}</span>
-                            <span className="truncate flex-1">{p.titulo}</span>
-                            {prog.total > 0 && prog.pct === 100 && <CheckCircle2 size={13} className="text-mint shrink-0" />}
-                          </button>
+                          <div key={p.id} className="group/pag flex items-center gap-0.5">
+                            <button
+                              onClick={() => selecionarPagina(p.id)}
+                              className={`flex-1 min-w-0 text-left rounded-lg pl-6 pr-2.5 py-1.5 text-sm flex items-center gap-2 transition-colors ${
+                                paginaAtivaId === p.id ? "bg-forest text-white font-semibold" : "text-white/60 hover:bg-white/5 hover:text-white/90"
+                              }`}
+                            >
+                              <span className="shrink-0">{p.emoji || "📄"}</span>
+                              <span className="truncate flex-1">{p.titulo}</span>
+                              {p.cargosPermitidos && p.cargosPermitidos.length > 0 && <Lock size={10} className="text-white/25 shrink-0" />}
+                              {prog.total > 0 && prog.pct === 100 && <CheckCircle2 size={13} className="text-mint shrink-0" />}
+                            </button>
+                            {souAdmin && (
+                              <div className="opacity-0 group-hover/pag:opacity-100 transition-opacity flex items-center gap-0.5 shrink-0 pr-1">
+                                <button
+                                  onClick={() => moverPagina(p.id, "cima")}
+                                  disabled={indicePag === 0}
+                                  title="Mover pra cima"
+                                  className="text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40"
+                                >
+                                  <ChevronUp size={11} />
+                                </button>
+                                <button
+                                  onClick={() => moverPagina(p.id, "baixo")}
+                                  disabled={indicePag === paginasCat.length - 1}
+                                  title="Mover pra baixo"
+                                  className="text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40"
+                                >
+                                  <ChevronDown size={11} />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    selecionarPagina(p.id);
+                                    setEditandoTituloPagina(true);
+                                  }}
+                                  title="Editar treinamento"
+                                  className="text-white/40 hover:text-white"
+                                >
+                                  <Pencil size={11} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
                       {paginasCat.length === 0 && <p className="pl-6 text-xs text-white/25 italic">Sem páginas ainda</p>}
@@ -818,30 +904,42 @@ export default function AcademyPage() {
                   >
                     <ArrowLeft size={14} /> Voltar pro Academy
                   </button>
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-4xl shrink-0">{paginaAtual.emoji || "📄"}</span>
-                    <h1 className="text-3xl sm:text-4xl font-extrabold text-ink">{paginaAtual.titulo}</h1>
-                  </div>
-                  <p className="text-sm text-ink/50 mb-5">
-                    {temasDaPagina.length} {temasDaPagina.length === 1 ? "aula" : "aulas"} · {progressoDaPagina(paginaAtual.id).pct}% concluído
-                  </p>
 
-                  {souAdmin && (
-                    <div className="flex flex-wrap items-center gap-4 mb-5">
+                  <div className="relative rounded-3xl bg-white border border-black/5 shadow-sm p-6 mb-8">
+                    {souAdmin && (
                       <button
-                        onClick={() => setEditandoTituloPagina(true)}
-                        className="text-xs font-semibold text-ink/50 hover:text-ink flex items-center gap-1"
+                        onClick={() => excluirPagina(paginaAtual.id)}
+                        title="Excluir treinamento"
+                        className="absolute top-5 right-5 text-ink/20 hover:text-red-600 transition-colors"
                       >
-                        <Pencil size={12} /> Editar treinamento
+                        <Trash2 size={16} />
                       </button>
-                      <button onClick={() => setEditandoDescricao((v) => !v)} className="text-xs font-semibold text-forest hover:underline">
-                        {editandoDescricao ? "Ver como ficou" : "Editar descrição"}
-                      </button>
-                      <button onClick={() => excluirPagina(paginaAtual.id)} className="text-xs font-semibold text-ink/50 hover:text-red-600 ml-auto">
-                        Excluir treinamento
-                      </button>
+                    )}
+                    <div className="flex items-center gap-3 mb-2 pr-8">
+                      <span className="text-4xl shrink-0">{paginaAtual.emoji || "📄"}</span>
+                      <h1 className="text-3xl sm:text-4xl font-extrabold text-ink">{paginaAtual.titulo}</h1>
                     </div>
-                  )}
+                    <p className="text-sm text-ink/50 mb-5">
+                      {temasDaPagina.length} {temasDaPagina.length === 1 ? "aula" : "aulas"} · {progressoDaPagina(paginaAtual.id).pct}% concluído
+                    </p>
+
+                    {souAdmin && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={() => setEditandoTituloPagina(true)}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3.5 py-1.5 text-xs font-bold text-ink/70 hover:bg-mint hover:text-forest transition-colors"
+                        >
+                          <Pencil size={12} /> Editar treinamento
+                        </button>
+                        <button
+                          onClick={() => setEditandoDescricao((v) => !v)}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3.5 py-1.5 text-xs font-bold text-ink/70 hover:bg-mint hover:text-forest transition-colors"
+                        >
+                          {editandoDescricao ? "Ver como ficou" : "Editar descrição"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
 
                   {(paginaAtual.conteudo || souAdmin) && (
                     <div className="rounded-2xl bg-white border border-black/5 p-6 mb-8">
@@ -1262,6 +1360,7 @@ export default function AcademyPage() {
 
       {novaCategoriaAberta && (
         <ModalCategoria
+          cargos={cargos}
           onClose={() => setNovaCategoriaAberta(false)}
           onSalvo={(nova) => {
             setCategorias((atual) => [...atual, nova]);
@@ -1273,6 +1372,7 @@ export default function AcademyPage() {
       {editandoCategoria && (
         <ModalCategoria
           categoria={editandoCategoria}
+          cargos={cargos}
           onClose={() => setEditandoCategoria(null)}
           onSalvo={(atualizada) => {
             setCategorias((atual) => atual.map((c) => (c.id === atualizada.id ? atualizada : c)));
@@ -1361,6 +1461,7 @@ function FormTituloPagina({
   const [todosVeem, setTodosVeem] = useState(!pagina.cargosPermitidos || pagina.cargosPermitidos.length === 0);
   const [cargosSelecionados, setCargosSelecionados] = useState<string[]>(pagina.cargosPermitidos ?? []);
   const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
   function alternarCargo(id: string) {
     setCargosSelecionados((atual) => (atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]));
@@ -1368,6 +1469,11 @@ function FormTituloPagina({
 
   async function salvar() {
     if (!titulo.trim()) return;
+    if (!todosVeem && cargosSelecionados.length === 0) {
+      setErro("Marca pelo menos um cargo, ou deixa em \"Todo mundo\".");
+      return;
+    }
+    setErro(null);
     setSalvando(true);
     const supabase = createClient();
     const cargosFinal = todosVeem ? null : cargosSelecionados;
@@ -1392,7 +1498,14 @@ function FormTituloPagina({
       <div className="mb-4">
         <p className="text-sm font-semibold text-ink/70 mb-2">Quem tem acesso a esse treinamento?</p>
         <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
-          <input type="checkbox" checked={todosVeem} onChange={(e) => setTodosVeem(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={todosVeem}
+            onChange={(e) => {
+              setTodosVeem(e.target.checked);
+              setErro(null);
+            }}
+          />
           Todo mundo
         </label>
         {!todosVeem && (
@@ -1400,12 +1513,20 @@ function FormTituloPagina({
             {cargos.length === 0 && <p className="text-xs text-ink/40 px-2 py-1">Nenhum cargo cadastrado ainda.</p>}
             {cargos.map((c) => (
               <label key={c.id} className="flex items-center gap-2 text-sm px-2 py-1 rounded-lg hover:bg-surface cursor-pointer">
-                <input type="checkbox" checked={cargosSelecionados.includes(c.id)} onChange={() => alternarCargo(c.id)} />
+                <input
+                  type="checkbox"
+                  checked={cargosSelecionados.includes(c.id)}
+                  onChange={() => {
+                    alternarCargo(c.id);
+                    setErro(null);
+                  }}
+                />
                 {c.nome}
               </label>
             ))}
           </div>
         )}
+        {erro && <p className="text-xs text-red-600 mt-1.5">{erro}</p>}
       </div>
 
       <div className="flex items-center gap-3">
@@ -1426,29 +1547,43 @@ function FormTituloPagina({
 
 function ModalCategoria({
   categoria,
+  cargos,
   onClose,
   onSalvo,
   onExcluir,
 }: {
   categoria?: Categoria;
+  cargos: Cargo[];
   onClose: () => void;
   onSalvo: (c: Categoria) => void;
   onExcluir?: () => void;
 }) {
   const [nome, setNome] = useState(categoria?.nome ?? "");
   const [emoji, setEmoji] = useState(categoria?.emoji ?? "📁");
+  const [todosVeem, setTodosVeem] = useState(!categoria || !categoria.cargosPermitidos || categoria.cargosPermitidos.length === 0);
+  const [cargosSelecionados, setCargosSelecionados] = useState<string[]>(categoria?.cargosPermitidos ?? []);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+
+  function alternarCargo(id: string) {
+    setCargosSelecionados((atual) => (atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]));
+    setErro(null);
+  }
 
   async function salvar() {
     if (!nome.trim()) {
       setErro("Dê um nome pra categoria.");
       return;
     }
+    if (!todosVeem && cargosSelecionados.length === 0) {
+      setErro("Marca pelo menos um cargo, ou deixa em \"Todo mundo\".");
+      return;
+    }
     setSalvando(true);
     setErro(null);
     const supabase = createClient();
-    const payload = { nome: nome.trim(), emoji };
+    const cargosFinal = todosVeem ? null : cargosSelecionados;
+    const payload = { nome: nome.trim(), emoji, cargos_permitidos: cargosFinal };
     if (categoria) {
       const { error } = await supabase.from("academy_categorias").update(payload).eq("id", categoria.id);
       setSalvando(false);
@@ -1456,7 +1591,7 @@ function ModalCategoria({
         setErro(error.message);
         return;
       }
-      onSalvo({ id: categoria.id, ordem: categoria.ordem, cargosPermitidos: categoria.cargosPermitidos, ...payload });
+      onSalvo({ id: categoria.id, ordem: categoria.ordem, nome: payload.nome, emoji: payload.emoji, cargosPermitidos: cargosFinal });
     } else {
       const { data, error } = await supabase
         .from("academy_categorias")
@@ -1468,7 +1603,7 @@ function ModalCategoria({
         setErro(error?.message ?? "Erro ao criar categoria.");
         return;
       }
-      onSalvo({ id: data.id, ordem: data.ordem, cargosPermitidos: null, ...payload });
+      onSalvo({ id: data.id, ordem: data.ordem, nome: payload.nome, emoji: payload.emoji, cargosPermitidos: cargosFinal });
     }
   }
 
@@ -1487,9 +1622,35 @@ function ModalCategoria({
           </select>
           <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Treinamentos" className="input flex-1" autoFocus />
         </div>
-        <p className="text-xs text-ink/40 mb-4">
-          A categoria é só uma pasta pra organizar — quem pode ver cada treinamento você define ao editar a própria página.
-        </p>
+
+        <div className="mb-4">
+          <p className="text-sm font-semibold text-ink/70 mb-2">Quem pode ver essa categoria?</p>
+          <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={todosVeem}
+              onChange={(e) => {
+                setTodosVeem(e.target.checked);
+                setErro(null);
+              }}
+            />
+            Todo mundo
+          </label>
+          {!todosVeem && (
+            <div className="rounded-xl border border-black/10 p-2 max-h-40 overflow-y-auto space-y-1">
+              {cargos.length === 0 && <p className="text-xs text-ink/40 px-2 py-1">Nenhum cargo cadastrado ainda.</p>}
+              {cargos.map((c) => (
+                <label key={c.id} className="flex items-center gap-2 text-sm px-2 py-1 rounded-lg hover:bg-surface cursor-pointer">
+                  <input type="checkbox" checked={cargosSelecionados.includes(c.id)} onChange={() => alternarCargo(c.id)} />
+                  {c.nome}
+                </label>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-ink/35 mt-2">
+            Isso restringe a categoria inteira. Cada treinamento dentro dela ainda pode ter sua própria restrição também.
+          </p>
+        </div>
 
         {erro && <p className="text-sm text-red-600 mb-3">{erro}</p>}
 
