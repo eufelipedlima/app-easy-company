@@ -154,6 +154,7 @@ export function RichTextEditor({
   placeholder,
   semCaixa,
   mencionaveis,
+  referenciaveis,
 }: {
   valorHtml: string;
   onChange: (html: string) => void;
@@ -161,6 +162,7 @@ export function RichTextEditor({
   placeholder?: string;
   semCaixa?: boolean;
   mencionaveis?: { id: string; nome: string }[];
+  referenciaveis?: { id: string; titulo: string; tipo: "tarefa" | "conteudo" }[];
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -174,6 +176,8 @@ export function RichTextEditor({
   const [indiceSelecionado, setIndiceSelecionado] = useState(0);
   const [menuMencao, setMenuMencao] = useState<EstadoMenu | null>(null);
   const [indiceMencaoSelecionada, setIndiceMencaoSelecionada] = useState(0);
+  const [menuReferencia, setMenuReferencia] = useState<EstadoMenu | null>(null);
+  const [indiceReferenciaSelecionada, setIndiceReferenciaSelecionada] = useState(0);
   const montadoRef = useRef(false);
   const selecaoSalvaRef = useRef<Range | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -300,6 +304,78 @@ export function RichTextEditor({
     handleInput();
   }
 
+  function fecharMenuReferencia() {
+    setMenuReferencia(null);
+    setIndiceReferenciaSelecionada(0);
+  }
+
+  function verificarReferencia() {
+    if (!referenciaveis || referenciaveis.length === 0) {
+      fecharMenuReferencia();
+      return;
+    }
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) {
+      fecharMenuReferencia();
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const node = range.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE || !editorRef.current?.contains(node)) {
+      fecharMenuReferencia();
+      return;
+    }
+    const texto = node.textContent || "";
+    const offset = range.startOffset;
+    const antes = texto.slice(0, offset);
+    const match = antes.match(/(?:^|\s)#(\w{0,30})$/);
+    if (!match) {
+      fecharMenuReferencia();
+      return;
+    }
+    const query = match[1];
+    const inicioCerquilha = offset - query.length - 1;
+
+    const rangePos = document.createRange();
+    rangePos.setStart(node, inicioCerquilha);
+    rangePos.setEnd(node, offset);
+    const rect = rangePos.getBoundingClientRect();
+    const wrapperRect = wrapperRef.current?.getBoundingClientRect();
+    if (!wrapperRect) return;
+
+    setMenuReferencia({
+      textNode: node as Text,
+      inicio: inicioCerquilha,
+      fim: offset,
+      query,
+      top: rect.bottom - wrapperRect.top + 6,
+      left: Math.min(rect.left - wrapperRect.left, wrapperRect.width - 260),
+    });
+    setIndiceReferenciaSelecionada(0);
+  }
+
+  function selecionarReferencia(item: { id: string; titulo: string; tipo: "tarefa" | "conteudo" }) {
+    if (!menuReferencia) return;
+    const range = document.createRange();
+    range.setStart(menuReferencia.textNode, menuReferencia.inicio);
+    range.setEnd(menuReferencia.textNode, menuReferencia.fim);
+    range.deleteContents();
+    range.collapse(true);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    fecharMenuReferencia();
+    editorRef.current?.focus();
+    const href = item.tipo === "tarefa" ? `/tarefas/${item.id}` : `/conteudo/calendario/post/${item.id}`;
+    const emoji = item.tipo === "tarefa" ? "📋" : "📅";
+    document.execCommand(
+      "insertHTML",
+      false,
+      `<a href="${href}" target="_blank" rel="noopener noreferrer" class="referencia-item">${emoji} ${escaparHtml(item.titulo)}</a>&nbsp;`
+    );
+    handleInput();
+  }
+
   function verificarComandoBarra() {
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) {
@@ -347,6 +423,7 @@ export function RichTextEditor({
     setTransborda(editorRef.current.scrollHeight > ALTURA_COLAPSADA + 20);
     verificarComandoBarra();
     verificarMencao();
+    verificarReferencia();
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
@@ -482,6 +559,13 @@ export function RichTextEditor({
     return mencionaveis.filter((p) => p.nome.toLowerCase().includes(q));
   }, [menuMencao, mencionaveis]);
 
+  const referenciasFiltradas = useMemo(() => {
+    if (!menuReferencia || !referenciaveis) return [];
+    const q = menuReferencia.query.toLowerCase();
+    if (!q) return referenciaveis.slice(0, 30);
+    return referenciaveis.filter((r) => r.titulo.toLowerCase().includes(q)).slice(0, 30);
+  }, [menuReferencia, referenciaveis]);
+
   function executarComando(item: ComandoItem) {
     if (!menu) return;
     const range = document.createRange();
@@ -499,6 +583,24 @@ export function RichTextEditor({
   }
 
   function handleKeyDownEditor(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (menuReferencia) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setIndiceReferenciaSelecionada((i) => Math.min(i + 1, Math.max(referenciasFiltradas.length - 1, 0)));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setIndiceReferenciaSelecionada((i) => Math.max(i - 1, 0));
+      } else if (e.key === "Enter") {
+        if (referenciasFiltradas[indiceReferenciaSelecionada]) {
+          e.preventDefault();
+          selecionarReferencia(referenciasFiltradas[indiceReferenciaSelecionada]);
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        fecharMenuReferencia();
+      }
+      return;
+    }
     if (menuMencao) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -761,6 +863,35 @@ export function RichTextEditor({
         </div>
       )}
 
+      {menuReferencia && (
+        <div
+          style={{ top: menuReferencia.top, left: Math.max(menuReferencia.left, 0) }}
+          className="absolute z-30 w-64 bg-white rounded-xl shadow-lg border border-black/10 py-1.5 max-h-72 overflow-y-auto"
+        >
+          {referenciasFiltradas.length === 0 && <div className="px-3 py-2 text-xs text-ink/40">Nada encontrado</div>}
+          {referenciasFiltradas.map((item, i) => (
+            <button
+              key={`${item.tipo}-${item.id}`}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setIndiceReferenciaSelecionada(i)}
+              onClick={() => selecionarReferencia(item)}
+              className={`w-full text-left px-2.5 py-1.5 flex items-center gap-2.5 transition-colors ${
+                i === indiceReferenciaSelecionada ? "bg-surface" : "hover:bg-surface/60"
+              }`}
+            >
+              <span className="w-7 h-7 shrink-0 rounded-lg bg-surface flex items-center justify-center text-sm">
+                {item.tipo === "tarefa" ? "📋" : "📅"}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-ink truncate">{item.titulo}</span>
+                <span className="block text-[10px] text-ink/40">{item.tipo === "tarefa" ? "Tarefa" : "Conteúdo"}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <style jsx global>{`
         .rich-text-editor {
           min-height: 60px;
@@ -786,6 +917,21 @@ export function RichTextEditor({
         }
         .rich-text-editor p {
           margin: 0.2em 0;
+        }
+        .rich-text-editor .referencia-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.3rem;
+          background: rgba(2, 23, 11, 0.06);
+          color: var(--ec-ink, #02170b);
+          font-weight: 600;
+          border-radius: 0.4rem;
+          padding: 0.05rem 0.45rem;
+          text-decoration: none;
+        }
+        .rich-text-editor .referencia-item:hover {
+          background: rgba(2, 23, 11, 0.12);
+          color: var(--ec-ink, #02170b);
         }
         .rich-text-editor .mencao {
           color: var(--ec-forest, #143421);

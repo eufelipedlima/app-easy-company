@@ -219,6 +219,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   const [clientes, setClientes] = useState<Opcao[]>([]);
   const [funcionariosComAcesso, setFuncionariosComAcesso] = useState<Responsavel[]>([]);
   const [colegas, setColegas] = useState<Opcao[]>([]);
+  const [referenciaveis, setReferenciaveis] = useState<{ id: string; titulo: string; tipo: "tarefa" | "conteudo" }[]>([]);
   const [meuId, setMeuId] = useState<string | null>(null);
   const [meuNome, setMeuNome] = useState("Você");
   const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
@@ -298,6 +299,19 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       setDescricao(t.descricao ?? "");
       mencoesDescricaoRef.current = extrairMencoes(t.descricao ?? "");
       setClienteSelecionado(t.cliente_id ? listaClientes.find((c) => c.id === t.cliente_id) ?? null : null);
+      if (t.cliente_id) {
+        const supabase2 = createClient();
+        const [{ data: tarefasCliente }, { data: postsCliente }] = await Promise.all([
+          supabase2.from("tarefas").select("id, titulo").eq("cliente_id", t.cliente_id).is("excluido_em", null).neq("id", id).limit(40),
+          supabase2.from("posts_conteudo").select("id, titulo").eq("cliente_id", t.cliente_id).is("excluido_em", null).limit(40),
+        ]);
+        setReferenciaveis([
+          ...(tarefasCliente ?? []).map((x) => ({ id: x.id, titulo: x.titulo, tipo: "tarefa" as const })),
+          ...(postsCliente ?? []).map((x) => ({ id: x.id, titulo: x.titulo || "Sem título", tipo: "conteudo" as const })),
+        ]);
+      } else {
+        setReferenciaveis([]);
+      }
       setPrioridade(t.prioridade ?? "");
       setDataInicio(t.data_inicio ?? "");
       setPrazo(t.prazo ?? "");
@@ -1041,6 +1055,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
               }}
               placeholder="Detalhes da tarefa..."
               mencionaveis={funcionariosComAcesso.filter((f) => f.authUserId).map((f) => ({ id: f.authUserId!, nome: f.nome }))}
+              referenciaveis={referenciaveis}
             />
           </div>
 

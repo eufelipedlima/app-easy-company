@@ -28,6 +28,21 @@ export function ConteudoFormatado({ html, className = "" }: { html: string; clas
           border-top: 1px solid rgba(2, 23, 11, 0.1);
           margin: 1.2em 0;
         }
+        .conteudo-formatado .referencia-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.3rem;
+          background: rgba(2, 23, 11, 0.06);
+          color: var(--ec-ink, #02170b);
+          font-weight: 600;
+          border-radius: 0.4rem;
+          padding: 0.05rem 0.45rem;
+          text-decoration: none;
+        }
+        .conteudo-formatado .referencia-item:hover {
+          background: rgba(2, 23, 11, 0.12);
+          color: var(--ec-ink, #02170b);
+        }
         .conteudo-formatado .mencao {
           color: var(--ec-forest, #143421);
           background: var(--ec-mint, #e4ffef);

@@ -185,6 +185,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   const [clientes, setClientes] = useState<Opcao[]>([]);
   const [funcionariosComAcesso, setFuncionariosComAcesso] = useState<Responsavel[]>([]);
   const [colegas, setColegas] = useState<Opcao[]>([]);
+  const [referenciaveis, setReferenciaveis] = useState<{ id: string; titulo: string; tipo: "tarefa" | "conteudo" }[]>([]);
   const [meuId, setMeuId] = useState<string | null>(null);
   const [meuNome, setMeuNome] = useState("Você");
   const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
@@ -298,6 +299,19 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       setObservacoes(p.observacoes_internas ?? "");
       mencoesObservacoesRef.current = extrairMencoes(p.observacoes_internas ?? "");
       setClienteSelecionado(listaClientes.find((c) => c.id === p.cliente_id) ?? null);
+      if (p.cliente_id) {
+        const supabase2 = createClient();
+        const [{ data: tarefasCliente }, { data: postsCliente }] = await Promise.all([
+          supabase2.from("tarefas").select("id, titulo").eq("cliente_id", p.cliente_id).is("excluido_em", null).limit(40),
+          supabase2.from("posts_conteudo").select("id, titulo").eq("cliente_id", p.cliente_id).is("excluido_em", null).neq("id", id).limit(40),
+        ]);
+        setReferenciaveis([
+          ...(tarefasCliente ?? []).map((x) => ({ id: x.id, titulo: x.titulo, tipo: "tarefa" as const })),
+          ...(postsCliente ?? []).map((x) => ({ id: x.id, titulo: x.titulo || "Sem título", tipo: "conteudo" as const })),
+        ]);
+      } else {
+        setReferenciaveis([]);
+      }
       setObjetivo(p.objetivo ?? "");
       setFormato(p.formato ?? "");
       setLinkVideo(p.link_video ?? "");
@@ -1093,6 +1107,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
               }}
               placeholder="Anotações da equipe sobre esse conteúdo..."
               mencionaveis={funcionariosComAcesso.filter((f) => f.authUserId).map((f) => ({ id: f.authUserId!, nome: f.nome }))}
+              referenciaveis={referenciaveis}
             />
           </div>
 
