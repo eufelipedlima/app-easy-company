@@ -132,9 +132,10 @@ function formatarDataChip(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
-// Um cliente só entra no calendário de conteúdo se tiver pelo menos um contrato
+// Um cliente só entra no LINK PÚBLICO de aprovação se tiver pelo menos um contrato
 // recorrente ativo usando um serviço marcado como "Gera Calendário de Conteúdo"
-// (isso é configurado em Configurações → Serviços).
+// (isso é configurado em Configurações → Serviços) — faz sentido aqui, porque é
+// o link que o cliente pagante usa pra aprovar conteúdo.
 async function buscarClientesComConteudo(
   supabase: ReturnType<typeof createClient>
 ): Promise<(ClienteOpcao & { token: string })[]> {
@@ -164,6 +165,19 @@ async function buscarClientesComConteudo(
     papeis: { pessoas: { nome: string } | null } | null;
   }[])
     .map((c) => ({ id: c.id, nome: c.papeis?.pessoas?.nome ?? "—", token: c.link_publico_token }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
+// Pra CRIAR/EDITAR conteúdo (planejamento e post avulso), qualquer cliente
+// ativo na Central de Clientes pode ser escolhido — não precisa ter contrato
+// cadastrado ainda (só o link público de aprovação exige isso).
+async function buscarClientesAtivos(supabase: ReturnType<typeof createClient>): Promise<ClienteOpcao[]> {
+  const { data } = await supabase
+    .from("clientes")
+    .select("id, papeis ( pessoas ( nome ) )")
+    .eq("ativo_central_clientes", true);
+  return ((data ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[])
+    .map((c) => ({ id: c.id, nome: c.papeis?.pessoas?.nome ?? "—" }))
     .sort((a, b) => a.nome.localeCompare(b.nome));
 }
 
@@ -436,7 +450,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
 
   const carregarClientes = useCallback(async () => {
     const supabase = createClient();
-    const lista = await buscarClientesComConteudo(supabase);
+    const lista = await buscarClientesAtivos(supabase);
     setClientes(lista);
   }, []);
 
@@ -1339,7 +1353,7 @@ function PostModal({
   useEffect(() => {
     async function carregarClientes() {
       const supabase = createClient();
-      const lista = await buscarClientesComConteudo(supabase);
+      const lista = await buscarClientesAtivos(supabase);
       setClientes(lista);
     }
     carregarClientes();
