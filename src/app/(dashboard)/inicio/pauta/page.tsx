@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { IconeTarefa } from "@/components/icones-tarefa";
 import { ListTree } from "lucide-react";
+import { BuscaCliente } from "@/components/busca-cliente";
 import { EsqueletoLinha } from "@/components/esqueleto";
 
 interface Responsavel {
@@ -13,6 +14,11 @@ interface Responsavel {
   nome: string;
   fotoUrl: string | null;
   authUserId: string | null;
+}
+
+interface Opcao {
+  id: string;
+  nome: string;
 }
 
 interface ItemPauta {
@@ -246,7 +252,11 @@ function BlocoSemanaPessoa({
                         <IconeTarefa tamanho={12} /> {item.titulo}
                       </span>
                     </p>
-                    {item.clienteNome && <p className="text-[10px] opacity-50 truncate mt-0.5">{item.clienteNome}</p>}
+                    {item.clienteNome ? (
+                      <p className="text-[10px] opacity-50 truncate mt-0.5">{item.clienteNome}</p>
+                    ) : (
+                      <p className="text-[10px] opacity-40 italic truncate mt-0.5">Tarefa interna</p>
+                    )}
                     {(item.temDescricao || item.qtdSubitens > 0 || respItem.length > 0) && (
                       <div className="flex items-center justify-between mt-1">
                         <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
@@ -286,6 +296,8 @@ export default function PautaPage() {
   const [visualizacao, setVisualizacao] = useState<"semana" | "mes">("semana");
   const [meuFuncionarioId, setMeuFuncionarioId] = useState<string | null>(null);
   const [funcionarios, setFuncionarios] = useState<Responsavel[]>([]);
+  const [clientes, setClientes] = useState<Opcao[]>([]);
+  const [novaTarefaPendente, setNovaTarefaPendente] = useState<{ dataISO: string; funcionarioId: string | null } | null>(null);
   const [itens, setItens] = useState<ItemPauta[]>([]);
   const [statusList, setStatusList] = useState<{ id: string; nome: string; cor: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -327,11 +339,17 @@ export default function PautaPage() {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const [{ data: statusData }, { data: funcData }] = await Promise.all([
+    const [{ data: statusData }, { data: funcData }, { data: clientesAtivosData }] = await Promise.all([
       supabase.from("status_conteudo").select("id, nome, cor").order("ordem"),
       supabase.from("funcionarios").select("id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )").not("auth_user_id", "is", null),
+      supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )").eq("ativo_central_clientes", true),
     ]);
     setStatusList(statusData ?? []);
+    setClientes(
+      ((clientesAtivosData ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[])
+        .map((c) => ({ id: c.id, nome: c.papeis?.pessoas?.nome ?? "—" }))
+        .sort((a, b) => a.nome.localeCompare(b.nome))
+    );
     const listaFunc = ((funcData ?? []) as unknown as {
       id: string;
       auth_user_id: string | null;
@@ -423,11 +441,11 @@ export default function PautaPage() {
     carregar();
   }, [carregar]);
 
-  async function novaTarefaNoDia(dataISO: string, funcionarioId: string | null) {
+  async function novaTarefaNoDia(dataISO: string, funcionarioId: string | null, clienteId: string | null) {
     const supabase = createClient();
     const { data: nova } = await supabase
       .from("tarefas")
-      .insert({ titulo: "Nova tarefa", data_inicio: dataISO, status_id: statusList[0]?.id })
+      .insert({ titulo: "Nova tarefa", data_inicio: dataISO, status_id: statusList[0]?.id, cliente_id: clienteId })
       .select("id")
       .single();
     if (nova) {
@@ -666,7 +684,7 @@ export default function PautaPage() {
                         idsEmFaixa={idsEmFaixa}
                         funcionarios={funcionarios}
                         onAbrirItem={(link) => router.push(link)}
-                        onNovaTarefa={(dataISO, pessoaId) => novaTarefaNoDia(dataISO, pessoaId === "_todos" ? null : pessoaId)}
+                        onNovaTarefa={(dataISO, pessoaId) => setNovaTarefaPendente({ dataISO, funcionarioId: pessoaId === "_todos" ? null : pessoaId })}
                       />
                     );
                   })}
@@ -676,6 +694,54 @@ export default function PautaPage() {
           </div>
         )}
       </div>
+
+      {novaTarefaPendente && (
+        <ModalNovaTarefaRapida
+          clientes={clientes}
+          onClose={() => setNovaTarefaPendente(null)}
+          onEscolher={(clienteId) => {
+            novaTarefaNoDia(novaTarefaPendente.dataISO, novaTarefaPendente.funcionarioId, clienteId);
+            setNovaTarefaPendente(null);
+          }}
+        />
+      )}
     </main>
+  );
+}
+
+function ModalNovaTarefaRapida({
+  clientes,
+  onClose,
+  onEscolher,
+}: {
+  clientes: Opcao[];
+  onClose: () => void;
+  onEscolher: (clienteId: string | null) => void;
+}) {
+  const [clienteSelecionado, setClienteSelecionado] = useState<Opcao | null>(null);
+
+  return (
+    <div className="fixed inset-0 z-30 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-ink mb-1">Nova tarefa</h2>
+        <p className="text-sm text-ink/50 mb-4">De qual cliente é essa tarefa?</p>
+        <BuscaCliente clientes={clientes} valor={clienteSelecionado} onSelecionar={setClienteSelecionado} placeholder="Digite pra buscar..." />
+        <div className="flex items-center gap-3 mt-5">
+          <button
+            onClick={() => onEscolher(clienteSelecionado?.id ?? null)}
+            disabled={!clienteSelecionado}
+            className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-40"
+          >
+            Criar tarefa
+          </button>
+          <button onClick={() => onEscolher(null)} className="text-sm font-semibold text-ink/50 hover:text-ink">
+            É interna (sem cliente)
+          </button>
+          <button onClick={onClose} className="text-sm font-semibold text-ink/40 hover:text-ink ml-auto">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

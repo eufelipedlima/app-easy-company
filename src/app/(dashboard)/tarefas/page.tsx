@@ -1708,6 +1708,7 @@ function NovaTarefaModal({
   const [clienteSelecionado, setClienteSelecionado] = useState<Opcao | null>(
     clienteFixoId ? clientes.find((c) => c.id === clienteFixoId) ?? null : null
   );
+  const [ehInterna, setEhInterna] = useState(false);
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -1717,12 +1718,16 @@ function NovaTarefaModal({
       setErro("Dê um título pra tarefa.");
       return;
     }
+    if (!clienteSelecionado && !ehInterna) {
+      setErro('Escolhe um cliente, ou marca "Tarefa interna" se não for de nenhum cliente.');
+      return;
+    }
     setSaving(true);
     setErro(null);
     const supabase = createClient();
     const { data, error } = await supabase
       .from("tarefas")
-      .insert({ titulo: titulo.trim(), cliente_id: clienteSelecionado?.id ?? null, status_id: statusPadraoId })
+      .insert({ titulo: titulo.trim(), cliente_id: ehInterna ? null : clienteSelecionado?.id ?? null, status_id: statusPadraoId })
       .select("id")
       .single();
     setSaving(false);
@@ -1748,9 +1753,23 @@ function NovaTarefaModal({
             <BuscaCliente
               clientes={clientes}
               valor={clienteSelecionado}
-              onSelecionar={setClienteSelecionado}
-              placeholder="Digite pra buscar (deixe em branco = interna)..."
+              onSelecionar={(c) => {
+                setClienteSelecionado(c);
+                if (c) setEhInterna(false);
+              }}
+              placeholder="Digite pra buscar..."
             />
+          </label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={ehInterna}
+              onChange={(e) => {
+                setEhInterna(e.target.checked);
+                if (e.target.checked) setClienteSelecionado(null);
+              }}
+            />
+            Tarefa interna (não é de nenhum cliente)
           </label>
           {erro && <p className="text-sm text-red-600">{erro}</p>}
           <div className="flex items-center gap-3">
@@ -1793,6 +1812,7 @@ function NovoProjetoModal({
   const [titulo, setTitulo] = useState("");
   const [clienteSelecionado, setClienteSelecionado] = useState<Opcao | null>(null);
   const [carregandoModelos, setCarregandoModelos] = useState(true);
+  const [ehInterna, setEhInterna] = useState(false);
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -1855,12 +1875,16 @@ function NovoProjetoModal({
       setErro("Dê um nome pro projeto.");
       return;
     }
+    if (!clienteSelecionado && !ehInterna) {
+      setErro('Escolhe um cliente, ou marca "Projeto interno" se não for de nenhum cliente.');
+      return;
+    }
     setSaving(true);
     setErro(null);
     const supabase = createClient();
     const { data: projeto, error } = await supabase
       .from("tarefas")
-      .insert({ titulo: titulo.trim(), cliente_id: clienteSelecionado?.id ?? null, status_id: statusPadraoId, eh_projeto: true })
+      .insert({ titulo: titulo.trim(), cliente_id: ehInterna ? null : clienteSelecionado?.id ?? null, status_id: statusPadraoId, eh_projeto: true })
       .select("id")
       .single();
     if (error || !projeto) {
@@ -1956,9 +1980,23 @@ function NovoProjetoModal({
               <BuscaCliente
                 clientes={clientes}
                 valor={clienteSelecionado}
-                onSelecionar={setClienteSelecionado}
-                placeholder="Digite pra buscar (deixe em branco = interno)..."
+                onSelecionar={(c) => {
+                  setClienteSelecionado(c);
+                  if (c) setEhInterna(false);
+                }}
+                placeholder="Digite pra buscar..."
               />
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={ehInterna}
+                onChange={(e) => {
+                  setEhInterna(e.target.checked);
+                  if (e.target.checked) setClienteSelecionado(null);
+                }}
+              />
+              Projeto interno (não é de nenhum cliente)
             </label>
             {erro && <p className="text-sm text-red-600">{erro}</p>}
             <div className="flex items-center gap-3">
