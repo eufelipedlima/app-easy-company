@@ -12,6 +12,7 @@ import { Cronometro } from "@/components/cronometro";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Eye, Download, X, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface StatusItem {
   id: string;
@@ -213,6 +214,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   const [horaPublicacao, setHoraPublicacao] = useState("");
   const [midias, setMidias] = useState<Midia[]>([]);
   const [enviandoMidia, setEnviandoMidia] = useState(false);
+  const [indiceMidiaAberta, setIndiceMidiaAberta] = useState<number | null>(null);
   const inputMidiaRef = useRef<HTMLInputElement>(null);
 
   const [tituloPostPai, setTituloPostPai] = useState<string | null>(null);
@@ -459,6 +461,25 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   }, [carregarResponsaveis, carregarComentarios, carregarHistorico]);
 
   useEffect(() => {
+    if (indiceMidiaAberta === null) return;
+    function aoTeclar(e: KeyboardEvent) {
+      if (midias.length === 0) return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setIndiceMidiaAberta((i) => (i! > 0 ? i! - 1 : midias.length - 1));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setIndiceMidiaAberta((i) => (i! < midias.length - 1 ? i! + 1 : 0));
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setIndiceMidiaAberta(null);
+      }
+    }
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, [indiceMidiaAberta, midias.length]);
+
+  useEffect(() => {
     const supabase = createClient();
     const canal = supabase
       .channel(`post-${id}`)
@@ -586,9 +607,27 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   }
 
   async function removerMidia(midiaId: string) {
+    if (!window.confirm("Remover essa mídia do post?")) return;
     const supabase = createClient();
     await supabase.from("posts_conteudo_midias").delete().eq("id", midiaId);
     setMidias((atual) => atual.filter((m) => m.id !== midiaId));
+  }
+
+  async function baixarArquivo(url: string, nomeArquivo: string) {
+    try {
+      const resposta = await fetch(url);
+      const blob = await resposta.blob();
+      const urlBlob = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = urlBlob;
+      link.download = nomeArquivo;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(urlBlob);
+    } catch {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
   }
 
   async function moverMidia(index: number, direcao: -1 | 1) {
@@ -1166,7 +1205,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                 <input
                   ref={inputMidiaRef}
                   type="file"
-                  accept="image/*"
+                  accept={formato === "video" ? "image/*" : "image/*,video/*"}
                   multiple={formato === "carrossel"}
                   onChange={(e) => adicionarMidias(e.target.files)}
                   className="hidden"
@@ -1181,49 +1220,71 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                 </button>
                 {midias.length > 0 && (
                   <div className="mt-3 grid grid-cols-3 sm:grid-cols-4 gap-2.5">
-                    {midias.map((m, i) => (
-                      <div key={m.id} className="relative group rounded-xl overflow-hidden bg-surface border border-black/5 aspect-square">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={m.url} alt={m.arquivo_nome ?? "arte"} className="w-full h-full object-cover" />
-                        <span className="absolute top-1.5 left-1.5 h-5 w-5 rounded-full bg-ink/70 text-white text-[10px] font-bold flex items-center justify-center">
-                          {i + 1}
-                        </span>
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
-                          <button
-                            type="button"
-                            onClick={() => moverMidia(i, -1)}
-                            disabled={i === 0}
-                            className="h-7 w-7 rounded-full bg-white/90 text-ink text-xs flex items-center justify-center disabled:opacity-30"
-                            title="Mover pra esquerda"
-                          >
-                            ←
+                    {midias.map((m, i) => {
+                      const ehVideo = m.arquivo_tipo?.startsWith("video/");
+                      return (
+                        <div key={m.id} className="relative group rounded-xl overflow-hidden bg-surface border border-black/5 aspect-square">
+                          <button type="button" onClick={() => setIndiceMidiaAberta(i)} className="absolute inset-0 w-full h-full">
+                            {ehVideo ? (
+                              <video src={m.url} className="w-full h-full object-cover" muted />
+                            ) : (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={m.url} alt={m.arquivo_nome ?? "arte"} className="w-full h-full object-cover" />
+                            )}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => removerMidia(m.id)}
-                            className="h-7 w-7 rounded-full bg-white/90 text-red-600 text-xs flex items-center justify-center"
-                            title="Remover"
-                          >
-                            ✕
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => moverMidia(i, 1)}
-                            disabled={i === midias.length - 1}
-                            className="h-7 w-7 rounded-full bg-white/90 text-ink text-xs flex items-center justify-center disabled:opacity-30"
-                            title="Mover pra direita"
-                          >
-                            →
-                          </button>
+                          <span className="absolute top-1.5 left-1.5 h-5 w-5 rounded-full bg-ink/70 text-white text-[10px] font-bold flex items-center justify-center pointer-events-none">
+                            {i + 1}
+                          </span>
+                          {ehVideo && (
+                            <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <span className="h-8 w-8 rounded-full bg-black/50 flex items-center justify-center">▶</span>
+                            </span>
+                          )}
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
+                            <button
+                              type="button"
+                              onClick={() => moverMidia(i, -1)}
+                              disabled={i === 0}
+                              className="h-7 w-7 rounded-full bg-white/90 text-ink text-xs flex items-center justify-center disabled:opacity-30"
+                              title="Mover pra esquerda"
+                            >
+                              ←
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIndiceMidiaAberta(i)}
+                              className="h-7 w-7 rounded-full bg-white/90 text-ink text-xs flex items-center justify-center"
+                              title="Visualizar"
+                            >
+                              <Eye size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removerMidia(m.id)}
+                              className="h-7 w-7 rounded-full bg-white/90 text-red-600 text-xs flex items-center justify-center"
+                              title="Remover"
+                            >
+                              ✕
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moverMidia(i, 1)}
+                              disabled={i === midias.length - 1}
+                              className="h-7 w-7 rounded-full bg-white/90 text-ink text-xs flex items-center justify-center disabled:opacity-30"
+                              title="Mover pra direita"
+                            >
+                              →
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 <span className="block text-xs text-ink/40 mt-2">
                   {formato === "carrossel"
-                    ? "Passa o mouse na arte pra reordenar (setinhas) ou remover — a ordem aqui é a ordem que aparece no carrossel."
-                    : "Formato estático aceita só 1 arte."}
+                    ? "Passa o mouse na arte pra reordenar (setinhas), visualizar ou remover — a ordem aqui é a ordem que aparece no carrossel. Aceita foto ou vídeo leve."
+                    : "Formato estático aceita só 1 arte — foto ou vídeo leve."}
                 </span>
               </div>
             )}
@@ -1470,6 +1531,73 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
           </div>
         )}
       </div>
+
+      {indiceMidiaAberta !== null && midias[indiceMidiaAberta] && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-6"
+          onClick={() => setIndiceMidiaAberta(null)}
+        >
+          <button
+            onClick={() => setIndiceMidiaAberta(null)}
+            title="Fechar"
+            className="absolute top-5 right-5 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+          >
+            <X size={18} />
+          </button>
+
+          {midias.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIndiceMidiaAberta((i) => (i! > 0 ? i! - 1 : midias.length - 1));
+              }}
+              title="Anterior"
+              className="absolute left-4 sm:left-8 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors shrink-0"
+            >
+              <ChevronLeft size={20} />
+            </button>
+          )}
+
+          <div className="max-w-4xl max-h-[85vh] flex flex-col items-center gap-3" onClick={(e) => e.stopPropagation()}>
+            {midias[indiceMidiaAberta].arquivo_tipo?.startsWith("video/") ? (
+              <video src={midias[indiceMidiaAberta].url} className="max-w-full max-h-[75vh] rounded-xl shadow-2xl" controls autoPlay />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={midias[indiceMidiaAberta].url}
+                alt={midias[indiceMidiaAberta].arquivo_nome ?? "arte"}
+                className="max-w-full max-h-[75vh] rounded-xl object-contain shadow-2xl"
+              />
+            )}
+            <div className="flex items-center gap-4 text-white/70 text-sm">
+              <span>{midias[indiceMidiaAberta].arquivo_nome}</span>
+              <span className="text-white/30">
+                {indiceMidiaAberta + 1} / {midias.length}
+              </span>
+              <button
+                onClick={() => baixarArquivo(midias[indiceMidiaAberta].url, midias[indiceMidiaAberta].arquivo_nome ?? "arquivo")}
+                title="Baixar"
+                className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 hover:bg-white/20 transition-colors"
+              >
+                <Download size={14} /> Baixar
+              </button>
+            </div>
+          </div>
+
+          {midias.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIndiceMidiaAberta((i) => (i! < midias.length - 1 ? i! + 1 : 0));
+              }}
+              title="Próxima"
+              className="absolute right-4 sm:right-8 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors shrink-0"
+            >
+              <ChevronRight size={20} />
+            </button>
+          )}
+        </div>
+      )}
     </main>
   );
 }
