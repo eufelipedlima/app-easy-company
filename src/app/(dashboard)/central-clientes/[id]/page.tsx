@@ -134,7 +134,7 @@ function formatarHoraMsg(iso: string) {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-type Aba = "geral" | "tarefas" | "conteudo" | "calendario" | "chat" | "docs";
+type Aba = "geral" | "tarefas" | "conteudo" | "chat" | "docs";
 
 export default function CentralClienteDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -159,7 +159,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
   const [posts, setPosts] = useState<PostResumo[]>([]);
   const [progressoPosts, setProgressoPosts] = useState<Record<string, { total: number; completos: number }>>({});
   const [responsaveisPorPost, setResponsaveisPorPost] = useState<Record<string, Responsavel[]>>({});
-  const [visualizacaoConteudo, setVisualizacaoConteudo] = useState<"lista" | "kanban">("kanban");
+  const [visualizacaoConteudo, setVisualizacaoConteudo] = useState<"lista" | "kanban" | "calendario">("kanban");
   const [mostrarSubconteudos, setMostrarSubconteudos] = useState(false);
   const [docs, setDocs] = useState<DocResumo[]>([]);
   const [nomesPorAutor, setNomesPorAutor] = useState<Record<string, string>>({});
@@ -605,7 +605,6 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
     { chave: "geral", label: "Visão geral" },
     { chave: "tarefas", label: "Tarefas", contagem: tarefas.length },
     { chave: "conteudo", label: "Conteúdo", contagem: posts.length },
-    { chave: "calendario", label: "Calendário" },
     { chave: "chat", label: "Chat" },
     { chave: "docs", label: "Docs", contagem: docs.length },
   ];
@@ -616,35 +615,95 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
         ← Central de Clientes
       </button>
 
-      <div className="flex items-center gap-4 mb-1">
-        <div className="relative group/avatar">
-          {fotoCliente ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={fotoCliente} alt={nomeCliente} className="h-14 w-14 rounded-full object-cover" />
-          ) : (
-            <div className={`h-14 w-14 rounded-full ${corAvatar(nomeCliente)} text-white flex items-center justify-center font-bold text-lg shrink-0`}>
-              {nomeCliente.slice(0, 2).toUpperCase()}
+      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="relative group/avatar shrink-0">
+            {fotoCliente ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={fotoCliente} alt={nomeCliente} className="h-14 w-14 rounded-full object-cover" />
+            ) : (
+              <div className={`h-14 w-14 rounded-full ${corAvatar(nomeCliente)} text-white flex items-center justify-center font-bold text-lg shrink-0`}>
+                {nomeCliente.slice(0, 2).toUpperCase()}
+              </div>
+            )}
+            <button
+              onClick={() => inputFotoRef.current?.click()}
+              disabled={enviandoFoto}
+              className="absolute inset-0 rounded-full bg-black/50 text-white opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-[10px] font-semibold"
+              title="Trocar foto do cliente"
+            >
+              {enviandoFoto ? "..." : "Trocar"}
+            </button>
+            <input ref={inputFotoRef} type="file" accept="image/*" onChange={enviarFotoCliente} className="hidden" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-extrabold text-ink truncate">{nomeCliente}</h1>
+            <p className="text-sm text-ink/45 truncate">
+              Tudo o que envolve {nomeCliente} num só lugar — tarefas, conteúdo, docs e conversas.
+            </p>
+          </div>
+        </div>
+
+        {aba === "conteudo" && (
+          <div className="flex items-center gap-2.5 shrink-0 flex-wrap justify-end">
+            <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+              <button
+                onClick={() => setVisualizacaoConteudo("lista")}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                  visualizacaoConteudo === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                }`}
+              >
+                Lista
+              </button>
+              <button
+                onClick={() => setVisualizacaoConteudo("kanban")}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                  visualizacaoConteudo === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                }`}
+              >
+                Kanban
+              </button>
+              <button
+                onClick={() => setVisualizacaoConteudo("calendario")}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                  visualizacaoConteudo === "calendario" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                }`}
+              >
+                Calendário
+              </button>
             </div>
-          )}
-          <button
-            onClick={() => inputFotoRef.current?.click()}
-            disabled={enviandoFoto}
-            className="absolute inset-0 rounded-full bg-black/50 text-white opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-[10px] font-semibold"
-            title="Trocar foto do cliente"
-          >
-            {enviandoFoto ? "..." : "Trocar"}
-          </button>
-          <input ref={inputFotoRef} type="file" accept="image/*" onChange={enviarFotoCliente} className="hidden" />
-        </div>
-        <div className="min-w-0">
-          <h1 className="text-2xl font-extrabold text-ink">{nomeCliente}</h1>
-          <p className="text-sm text-ink/45">
-            Tudo o que envolve {nomeCliente} num só lugar — tarefas, conteúdo, docs e conversas.
-          </p>
-        </div>
+            {visualizacaoConteudo !== "calendario" && (
+              <label className="flex items-center gap-1.5 text-xs text-ink/60 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={mostrarSubconteudos}
+                  onChange={(e) => setMostrarSubconteudos(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded accent-forest"
+                />
+                Sub-conteúdos
+              </label>
+            )}
+            {filtroStatusAtivo && visualizacaoConteudo !== "calendario" && (
+              <button
+                onClick={() => setFiltroStatusAtivo(null)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-mint text-forest px-3 py-1.5 text-xs font-bold hover:brightness-95 transition"
+              >
+                {statusList.find((s) => s.id === filtroStatusAtivo)?.nome} ✕
+              </button>
+            )}
+            {visualizacaoConteudo !== "calendario" && (
+              <button
+                onClick={novoPostRapido}
+                className="rounded-full bg-ink text-white px-4 py-1.5 text-xs font-semibold hover:bg-forest transition-colors"
+              >
+                + Novo post
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="flex items-center justify-between gap-3 mb-6 mt-5 flex-wrap">
+      <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
         <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner">
           {ABAS.map((a) => (
             <button
@@ -688,12 +747,6 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
           </div>
         )}
       </div>
-
-      {aba === "calendario" && (
-        <div className="-mx-6 sm:-mx-8 lg:-mx-10">
-          <CalendarioConteudoConteudo viewInicial="calendario" clienteFixoId={id} />
-        </div>
-      )}
 
       {aba === "geral" && (
         <div className="space-y-4">
@@ -952,49 +1005,11 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
 
       {aba === "conteudo" && (
         <div>
-          <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
-            <div className="flex items-center gap-3">
-              <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
-                <button
-                  onClick={() => setVisualizacaoConteudo("lista")}
-                  className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
-                    visualizacaoConteudo === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-                  }`}
-                >
-                  Lista
-                </button>
-                <button
-                  onClick={() => setVisualizacaoConteudo("kanban")}
-                  className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
-                    visualizacaoConteudo === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-                  }`}
-                >
-                  Kanban
-                </button>
-              </div>
-              <label className="flex items-center gap-2 text-sm text-ink/60 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={mostrarSubconteudos}
-                  onChange={(e) => setMostrarSubconteudos(e.target.checked)}
-                  className="h-4 w-4 rounded accent-forest"
-                />
-                Mostrar sub-conteúdos
-              </label>
-              {filtroStatusAtivo && (
-                <button
-                  onClick={() => setFiltroStatusAtivo(null)}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-mint text-forest px-3 py-1.5 text-xs font-bold hover:brightness-95 transition"
-                >
-                  {statusList.find((s) => s.id === filtroStatusAtivo)?.nome} ✕
-                </button>
-              )}
+          {visualizacaoConteudo === "calendario" ? (
+            <div className="-mx-6 sm:-mx-8 lg:-mx-10 -mt-6">
+              <CalendarioConteudoConteudo viewInicial="calendario" clienteFixoId={id} />
             </div>
-            <button onClick={novoPostRapido} className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors">
-              + Novo post
-            </button>
-          </div>
-          {postsVisiveis.length === 0 ? (
+          ) : postsVisiveis.length === 0 ? (
             <p className="text-sm text-ink/50">Nenhum conteúdo ainda.</p>
           ) : visualizacaoConteudo === "kanban" ? (
             <MiniKanban
