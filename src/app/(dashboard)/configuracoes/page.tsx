@@ -13,6 +13,7 @@ import {
   Calendar,
   Trash2,
   UserCog,
+  Tags,
 } from "lucide-react";
 
 const SECOES = [
@@ -53,6 +54,12 @@ const SECOES = [
     label: "Status de conteúdo",
     desc: "Etapas do Calendário de Conteúdo",
     icon: <Calendar size={18} />,
+  },
+  {
+    href: "/configuracoes/grupos-lancamento",
+    label: "Grupos de lançamento",
+    desc: "Categorias de grupo usadas em Lançamentos e Despesas Fixas",
+    icon: <Tags size={18} />,
   },
 ];
 

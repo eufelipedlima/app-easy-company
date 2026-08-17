@@ -138,13 +138,13 @@ export function LancamentoForm({
         supabase.from("bancos").select("id, nome").eq("ativo", true).order("nome"),
         supabase.from("planos_conta").select("id, nome, tipo").order("nome"),
         supabase.from("servicos").select("id, nome, plano_conta_id").order("nome"),
-        supabase.from("lancamentos").select("grupo").not("grupo", "is", null),
+        supabase.from("grupos_lancamento").select("nome").order("nome"),
       ]);
       setPessoas(p ?? []);
       setBancos(b ?? []);
       setPlanosConta((pc as PlanoContaOpcao[]) ?? []);
       setServicos((s as { id: string; nome: string; plano_conta_id: string | null }[]) ?? []);
-      setGruposExistentes(Array.from(new Set((gruposData ?? []).map((g) => g.grupo).filter((g): g is string => !!g))).sort());
+      setGruposExistentes((gruposData ?? []).map((g) => g.nome));
 
       if (lancamentoEditando?.banco_id) {
         const banco = b?.find((x) => x.id === lancamentoEditando.banco_id);
@@ -290,6 +290,10 @@ export function LancamentoForm({
         const { data, error } = await supabase.from("servicos").insert({ nome: buscaServico.trim() }).select("id").single();
         if (error) throw error;
         servicoFinalId = data.id;
+      }
+
+      if (grupo.trim() && !gruposExistentes.includes(grupo.trim())) {
+        await supabase.from("grupos_lancamento").insert({ nome: grupo.trim() }).select("id").single();
       }
 
       let clienteId: string | null = null;

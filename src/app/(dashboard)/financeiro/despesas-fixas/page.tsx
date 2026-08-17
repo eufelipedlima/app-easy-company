@@ -20,6 +20,7 @@ interface DespesaFixa {
   motivo_encerramento: string | null;
   observacoes: string | null;
   ultima_verificacao_parcelas: string | null;
+  grupo: string | null;
   pessoas: { nome: string } | null;
   bancos: { nome: string } | null;
   planos_conta: { nome: string } | null;
@@ -56,6 +57,10 @@ export default function DespesasFixasPage() {
   const [despesas, setDespesas] = useState<DespesaFixa[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>("ativo");
+  const [filtroGrupo, setFiltroGrupo] = useState("");
+  const [buscaGrupoFiltro, setBuscaGrupoFiltro] = useState("");
+  const [mostrarGruposFiltro, setMostrarGruposFiltro] = useState(false);
+  const [gruposDisponiveis, setGruposDisponiveis] = useState<string[]>([]);
   const [painelAberto, setPainelAberto] = useState(false);
   const [editando, setEditando] = useState<DespesaFixa | null>(null);
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
@@ -68,7 +73,7 @@ export default function DespesasFixasPage() {
       .from("despesas_fixas")
       .select(
         `id, nome, fornecedor_pessoa_id, valor_mensal, banco_id, plano_conta_id, data_competencia, data_inicio,
-         status, data_encerramento, motivo_encerramento, observacoes, ultima_verificacao_parcelas,
+         status, data_encerramento, motivo_encerramento, observacoes, ultima_verificacao_parcelas, grupo,
          pessoas ( nome ), bancos ( nome ), planos_conta ( nome )`
       )
       .order("created_at", { ascending: false });
@@ -85,6 +90,15 @@ export default function DespesasFixasPage() {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  useEffect(() => {
+    async function carregarGrupos() {
+      const supabase = createClient();
+      const { data } = await supabase.from("grupos_lancamento").select("nome").order("nome");
+      setGruposDisponiveis((data ?? []).map((g) => g.nome));
+    }
+    carregarGrupos();
+  }, []);
 
   // Mesma lógica do contrato recorrente: mantém sempre pelo menos 3 meses de
   // parcela gerada à frente; quando cai abaixo disso, completa até 12 de novo.
@@ -145,7 +159,7 @@ export default function DespesasFixasPage() {
     }
   }
 
-  const filtradas = despesas.filter((d) => filtro === "todos" || d.status === filtro);
+  const filtradas = despesas.filter((d) => (filtro === "todos" || d.status === filtro) && (!filtroGrupo || d.grupo === filtroGrupo));
   const totalAtivasMensal = despesas.filter((d) => d.status === "ativo").reduce((s, d) => s + d.valor_mensal, 0);
 
   return (
@@ -179,18 +193,65 @@ export default function DespesasFixasPage() {
         <NumeroAnimado valor={totalAtivasMensal} formatar={formatarMoeda} className="block text-xl font-extrabold text-red-600" />
       </div>
 
-      <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner mb-6">
-        {(["ativo", "encerrado", "todos"] as Filtro[]).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFiltro(f)}
-            className={`rounded-full px-5 py-2 text-sm font-bold transition-all ${
-              filtro === f ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
-            }`}
-          >
-            {f === "ativo" ? "Ativas" : f === "encerrado" ? "Encerradas" : "Todas"}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
+        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner">
+          {(["ativo", "encerrado", "todos"] as Filtro[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFiltro(f)}
+              className={`rounded-full px-5 py-2 text-sm font-bold transition-all ${
+                filtro === f ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
+              }`}
+            >
+              {f === "ativo" ? "Ativas" : f === "encerrado" ? "Encerradas" : "Todas"}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative">
+          {filtroGrupo ? (
+            <button
+              onClick={() => {
+                setFiltroGrupo("");
+                setBuscaGrupoFiltro("");
+              }}
+              className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-3.5 py-2 text-xs font-bold"
+            >
+              Grupo: {filtroGrupo} ✕
+            </button>
+          ) : (
+            <input
+              value={buscaGrupoFiltro}
+              onChange={(e) => setBuscaGrupoFiltro(e.target.value)}
+              onFocus={() => setMostrarGruposFiltro(true)}
+              onBlur={() => setTimeout(() => setMostrarGruposFiltro(false), 150)}
+              placeholder="Filtrar por grupo..."
+              className="input text-sm !w-48"
+            />
+          )}
+          {mostrarGruposFiltro && !filtroGrupo && (
+            <div className="absolute right-0 z-10 mt-1 w-56 max-h-56 overflow-y-auto rounded-2xl bg-white border border-black/10 shadow-lg py-1">
+              {gruposDisponiveis.filter((g) => normalizar(g).includes(normalizar(buscaGrupoFiltro))).length === 0 ? (
+                <p className="px-3 py-2 text-xs text-ink/40">Nenhum grupo encontrado.</p>
+              ) : (
+                gruposDisponiveis
+                  .filter((g) => normalizar(g).includes(normalizar(buscaGrupoFiltro)))
+                  .map((g) => (
+                    <button
+                      key={g}
+                      onMouseDown={() => {
+                        setFiltroGrupo(g);
+                        setMostrarGruposFiltro(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-surface"
+                    >
+                      {g}
+                    </button>
+                  ))
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {(painelAberto || editando) && (

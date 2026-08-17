@@ -17,6 +17,7 @@ const ABAS = [
   { href: "/configuracoes/segmentos", label: "Segmentos" },
   { href: "/configuracoes/servicos", label: "Serviços" },
   { href: "/configuracoes/status-conteudo", label: "Status de conteúdo" },
+  { href: "/configuracoes/grupos-lancamento", label: "Grupos de lançamento" },
 ];
 
 export default function ConfiguracoesLayout({ children }: { children: React.ReactNode }) {
