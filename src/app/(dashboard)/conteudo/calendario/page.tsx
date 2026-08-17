@@ -189,6 +189,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
   const hoje = new Date();
   const [mes, setMes] = useState(hoje.getMonth());
   const [ano, setAno] = useState(hoje.getFullYear());
+  const [diaExpandidoId, setDiaExpandidoId] = useState<string | null>(null);
   const [clienteFiltroId, setClienteFiltroId] = useState("");
   const [clientes, setClientes] = useState<ClienteOpcao[]>([]);
   const [funcionariosComAcesso, setFuncionariosComAcesso] = useState<Responsavel[]>([]);
@@ -1024,7 +1025,14 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
                             {postsDoDia.slice(0, 3).map((p) => (
                               <CartaoPost key={p.id} p={p} />
                             ))}
-                            {postsDoDia.length > 3 && <p className="text-[10px] text-ink/40 px-1.5">+{postsDoDia.length - 3} mais</p>}
+                            {postsDoDia.length > 3 && (
+                              <button
+                                onClick={() => setDiaExpandidoId(iso)}
+                                className="text-[10px] font-semibold text-forest hover:underline px-1.5"
+                              >
+                                +{postsDoDia.length - 3} conteúdos
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -1196,6 +1204,49 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
             }
           }}
         />
+      )}
+
+      {diaExpandidoId && (
+        <div className="fixed inset-0 z-30 bg-ink/50 flex items-center justify-center p-6" onClick={() => setDiaExpandidoId(null)}>
+          <div
+            className="w-full max-w-sm rounded-3xl bg-card p-5 shadow-2xl max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-ink">{formatarDataChip(diaExpandidoId)}</h2>
+              <button onClick={() => setDiaExpandidoId(null)} className="text-ink/40 hover:text-ink text-sm font-semibold">
+                Fechar
+              </button>
+            </div>
+            <div className="space-y-1.5">
+              {(postsPorDia.get(diaExpandidoId) ?? []).map((p) => {
+                const mostrarTitulo = camposVisiveis.titulo && p.titulo;
+                const mostrarCliente = camposVisiveis.cliente && !clienteFiltroId;
+                const mostrarFormato = camposVisiveis.formato && p.formato;
+                const respDoPost = responsaveisPorPost[p.id] ?? [];
+                const mostrarResponsavel = camposVisiveis.responsavel && respDoPost.length > 0;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => router.push(`/conteudo/calendario/post/${p.id}`)}
+                    className={`w-full text-left rounded-xl px-2.5 py-2 leading-tight ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
+                  >
+                    {tituloPaiPorPost[p.id] && <p className="text-[10px] text-forest font-semibold truncate">↳ {tituloPaiPorPost[p.id]}</p>}
+                    <p className="text-sm font-semibold truncate">{mostrarTitulo ? p.titulo : p.hora_publicacao?.slice(0, 5) || "Post"}</p>
+                    {mostrarCliente && <p className="text-xs opacity-70 truncate">{nomeCliente(p)}</p>}
+                    {mostrarFormato && <p className="text-xs opacity-70 truncate">{FORMATO_CONFIG[p.formato!]?.label}</p>}
+                    {(p.observacoes_internas || mostrarResponsavel) && (
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-xs opacity-60">{p.observacoes_internas ? "☰" : ""}</span>
+                        {mostrarResponsavel && <AvatarStackPost pessoas={respDoPost} tamanho={16} />}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );

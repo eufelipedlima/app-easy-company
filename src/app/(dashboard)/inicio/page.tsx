@@ -86,7 +86,7 @@ export default function InicioPage() {
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
   const [canaisChat, setCanaisChat] = useState<CanalChat[]>([]);
   const [abaTarefas, setAbaTarefas] = useState<
-    "urgentes" | "atraso" | "semana" | "hoje" | "inicia_amanha" | "inicia_hoje"
+    "urgentes" | "atraso" | "semana" | "hoje" | "inicia_amanha" | "inicia_hoje" | "proximas"
   >("atraso");
 
   const carregar = useCallback(async () => {
@@ -283,14 +283,18 @@ export default function InicioPage() {
     hoje: itensAbertos.filter((i) => i.data === hojeISO),
     inicia_amanha: itensAbertos.filter((i) => i.dataInicio === amanhaISO),
     inicia_hoje: itensAbertos.filter((i) => i.dataInicio === hojeISO),
+    proximas: itensAbertos
+      .filter((i) => !(i.data && i.data <= hojeISO) && i.dataInicio !== amanhaISO)
+      .sort((a, b) => (a.data ?? a.dataInicio ?? "9999-99-99").localeCompare(b.data ?? b.dataInicio ?? "9999-99-99")),
   };
 
   const ABAS_TAREFAS: { chave: keyof typeof grupos; label: string; icone: string }[] = [
-    { chave: "urgentes", label: "Urgentes", icone: "🔥" },
     { chave: "atraso", label: "Em atraso", icone: "⏰" },
-    { chave: "semana", label: "Vencem em 7 dias", icone: "📅" },
     { chave: "hoje", label: "Vencem hoje", icone: "🎯" },
     { chave: "inicia_amanha", label: "Iniciam amanhã", icone: "🌅" },
+    { chave: "proximas", label: "Próximas tarefas", icone: "📋" },
+    { chave: "urgentes", label: "Urgentes", icone: "🔥" },
+    { chave: "semana", label: "Vencem em 7 dias", icone: "📅" },
     { chave: "inicia_hoje", label: "Iniciam hoje", icone: "▶️" },
   ];
 
