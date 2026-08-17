@@ -188,11 +188,16 @@ function BlocoSemanaPessoa({
               style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 2 }}
               className={`mx-2 mb-1.5 rounded-lg px-2 py-1.5 text-left overflow-hidden ${corDoStatus(fx.item.statusCor).cor}`}
             >
-              <p className="text-[11px] font-semibold truncate">
+              <p className="text-xs font-bold truncate">
                 <span className="inline-flex items-center gap-1">
                   <IconeTarefa tamanho={12} /> {fx.item.titulo}
                 </span>
               </p>
+              {fx.item.clienteNome ? (
+                <p className="text-[10px] opacity-50 truncate mt-0.5">{fx.item.clienteNome}</p>
+              ) : (
+                <p className="text-[10px] opacity-40 italic truncate mt-0.5">Tarefa interna</p>
+              )}
               {(fx.item.temDescricao || fx.item.qtdSubitens > 0 || respItem.length > 0) && (
                 <div className="flex items-center justify-between mt-1">
                   <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
