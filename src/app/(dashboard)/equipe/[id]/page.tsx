@@ -201,8 +201,8 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
     // do histórico (limitado a 300 registros e só dentro do período
     // selecionado), o que dava números bem menores e inconsistentes.
     const tempoTotalReal =
-      minhasTarefas.reduce((s, t) => s + (t.tempo_total_segundos ?? 0), 0) +
-      meusPosts.reduce((s, p) => s + (p.tempo_total_segundos ?? 0), 0);
+      minhasTarefas.filter((t) => dentroDoPeriodo(t.prazo)).reduce((s, t) => s + (t.tempo_total_segundos ?? 0), 0) +
+      meusPosts.filter((p) => dentroDoPeriodo(p.data_publicacao)).reduce((s, p) => s + (p.tempo_total_segundos ?? 0), 0);
     setTempoTotalGeral(tempoTotalReal);
 
     // O detalhamento "por cliente" abaixo continua respeitando o período
