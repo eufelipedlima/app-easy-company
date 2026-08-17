@@ -17,7 +17,7 @@ interface Responsavel {
 interface ItemPauta {
   id: string;
   titulo: string;
-  tipo: "tarefa" | "conteudo";
+  tipo: "tarefa";
   statusNome: string;
   statusCor: string;
   dataExibicao: string;
@@ -168,7 +168,7 @@ function BlocoSemanaPessoa({
                 className={`mx-0.5 mb-1 rounded-lg px-1.5 py-1 text-left text-[11px] font-medium truncate overflow-hidden ${corDoStatus(fx.item.statusCor).cor}`}
               >
                 <span className="inline-flex items-center gap-1">
-                  {fx.item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {fx.item.titulo}
+                  <IconeTarefa tamanho={12} /> {fx.item.titulo}
                 </span>
               </button>
             );
@@ -182,7 +182,7 @@ function BlocoSemanaPessoa({
             >
               <p className="text-[11px] font-semibold truncate">
                 <span className="inline-flex items-center gap-1">
-                  {fx.item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {fx.item.titulo}
+                  <IconeTarefa tamanho={12} /> {fx.item.titulo}
                 </span>
               </p>
               {(fx.item.temDescricao || fx.item.qtdSubitens > 0 || respItem.length > 0) && (
@@ -224,7 +224,7 @@ function BlocoSemanaPessoa({
                       className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(item.statusCor).cor}`}
                     >
                       <span className="inline-flex items-center gap-1">
-                        {item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {item.titulo}
+                        <IconeTarefa tamanho={12} /> {item.titulo}
                       </span>
                     </button>
                   );
@@ -237,7 +237,7 @@ function BlocoSemanaPessoa({
                   >
                     <p className="text-[11px] font-semibold truncate">
                       <span className="inline-flex items-center gap-1">
-                        {item.tipo === "tarefa" ? <IconeTarefa tamanho={12} /> : "📅"} {item.titulo}
+                        <IconeTarefa tamanho={12} /> {item.titulo}
                       </span>
                     </p>
                     {(item.temDescricao || item.qtdSubitens > 0 || respItem.length > 0) && (
@@ -323,17 +323,12 @@ export default function PautaPage() {
     setFuncionarios(listaFunc);
     if (user) setMeuFuncionarioId(listaFunc.find((f) => f.authUserId === user.id)?.id ?? null);
 
-    const [{ data: tarefasData }, { data: postsData }] = await Promise.all([
+    const [{ data: tarefasData }] = await Promise.all([
       supabase
         .from("tarefas")
         .select("id, titulo, data_inicio, prazo, status_id, descricao, status_conteudo ( nome, cor )")
         .is("tarefa_pai_id", null)
         .eq("arquivada", false)
-        .is("excluido_em", null),
-      supabase
-        .from("posts_conteudo")
-        .select("id, titulo, data_inicio, data_publicacao, status_id, observacoes_internas, status_conteudo ( nome, cor )")
-        .eq("arquivado", false)
         .is("excluido_em", null),
     ]);
 
@@ -346,34 +341,24 @@ export default function PautaPage() {
       status_conteudo: { nome: string; cor: string } | null;
     }[])
       .map((t) => ({ ...t, dataExibicao: t.data_inicio ?? t.prazo }))
-      .filter((t) => t.dataExibicao && t.dataExibicao >= inicioISO && t.dataExibicao <= fimISO);
-
-    const postsNoPeriodo = ((postsData ?? []) as unknown as {
-      id: string;
-      titulo: string | null;
-      data_inicio: string | null;
-      data_publicacao: string;
-      observacoes_internas: string | null;
-      status_conteudo: { nome: string; cor: string } | null;
-    }[])
-      .map((p) => ({ ...p, dataExibicao: p.data_inicio ?? p.data_publicacao }))
-      .filter((p) => p.dataExibicao && p.dataExibicao >= inicioISO && p.dataExibicao <= fimISO);
+      .filter((t) => {
+        // Uma tarefa aparece na pauta se o período dela (início até prazo) cruzar
+        // com o período visível — não só quando ela COMEÇA dentro dele. Isso é o
+        // que fazia uma tarefa que começou numa semana e termina na seguinte
+        // sumir da pauta assim que a gente virava a semana.
+        const inicio = t.data_inicio ?? t.prazo;
+        const fim = t.prazo ?? t.data_inicio;
+        return inicio && fim && inicio <= fimISO && fim >= inicioISO;
+      });
 
     const idsTarefas = tarefasNoPeriodo.map((t) => t.id);
-    const idsPosts = postsNoPeriodo.map((p) => p.id);
 
-    const [{ data: respTarefas }, { data: respPosts }, { data: subtarefasData }, { data: subpostsData }] = await Promise.all([
+    const [{ data: respTarefas }, { data: subtarefasData }] = await Promise.all([
       idsTarefas.length > 0
         ? supabase.from("tarefas_responsaveis").select("tarefa_id, funcionario_id").in("tarefa_id", idsTarefas)
         : Promise.resolve({ data: [] }),
-      idsPosts.length > 0
-        ? supabase.from("posts_conteudo_responsaveis").select("post_id, funcionario_id").in("post_id", idsPosts)
-        : Promise.resolve({ data: [] }),
       idsTarefas.length > 0
         ? supabase.from("tarefas").select("tarefa_pai_id").in("tarefa_pai_id", idsTarefas).is("excluido_em", null)
-        : Promise.resolve({ data: [] }),
-      idsPosts.length > 0
-        ? supabase.from("posts_conteudo").select("post_pai_id").in("post_pai_id", idsPosts).is("excluido_em", null)
         : Promise.resolve({ data: [] }),
     ]);
 
@@ -381,17 +366,9 @@ export default function PautaPage() {
     for (const r of respTarefas ?? []) {
       mapaRespT.set(r.tarefa_id, [...(mapaRespT.get(r.tarefa_id) ?? []), r.funcionario_id]);
     }
-    const mapaRespP = new Map<string, string[]>();
-    for (const r of respPosts ?? []) {
-      mapaRespP.set(r.post_id, [...(mapaRespP.get(r.post_id) ?? []), r.funcionario_id]);
-    }
     const mapaSubT = new Map<string, number>();
     for (const s of subtarefasData ?? []) {
       if (s.tarefa_pai_id) mapaSubT.set(s.tarefa_pai_id, (mapaSubT.get(s.tarefa_pai_id) ?? 0) + 1);
-    }
-    const mapaSubP = new Map<string, number>();
-    for (const s of subpostsData ?? []) {
-      if (s.post_pai_id) mapaSubP.set(s.post_pai_id, (mapaSubP.get(s.post_pai_id) ?? 0) + 1);
     }
 
     const itensT: ItemPauta[] = tarefasNoPeriodo.map((t) => ({
@@ -408,22 +385,8 @@ export default function PautaPage() {
       temDescricao: !!t.descricao,
       qtdSubitens: mapaSubT.get(t.id) ?? 0,
     }));
-    const itensP: ItemPauta[] = postsNoPeriodo.map((p) => ({
-      id: p.id,
-      titulo: p.titulo || "Sem título",
-      tipo: "conteudo",
-      statusNome: p.status_conteudo?.nome ?? "—",
-      statusCor: p.status_conteudo?.cor ?? "cinza",
-      dataExibicao: p.dataExibicao!,
-      dataInicio: p.data_inicio,
-      dataFim: p.data_publicacao,
-      link: `/conteudo/calendario/post/${p.id}?from=pauta`,
-      responsavelIds: mapaRespP.get(p.id) ?? [],
-      temDescricao: !!p.observacoes_internas,
-      qtdSubitens: mapaSubP.get(p.id) ?? 0,
-    }));
 
-    setItens([...itensT, ...itensP]);
+    setItens(itensT);
     setLoading(false);
   }, [inicioISO, fimISO]);
 

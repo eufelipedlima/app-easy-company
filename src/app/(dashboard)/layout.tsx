@@ -119,7 +119,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const [contasAbertas, setContasAbertas] = useState(false);
   const [colapsado, setColapsado] = useState(false);
-  const [hoverExpandido, setHoverExpandido] = useState(false);
   const [menuMobileAberto, setMenuMobileAberto] = useState(false);
 
   useEffect(() => {
@@ -139,7 +138,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     });
   }
 
-  const expandidoVisual = !colapsado || hoverExpandido;
+  const expandidoVisual = !colapsado;
 
   const [permissoes, setPermissoes] = useState<Record<string, "nenhum" | "visualizar" | "completo"> | null>(null);
 
@@ -409,16 +408,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         />
       )}
 
-      {colapsado && hoverExpandido && <div className="hidden lg:block w-[68px] shrink-0" />}
-
       <aside
-        onMouseEnter={() => colapsado && setHoverExpandido(true)}
-        onMouseLeave={() => setHoverExpandido(false)}
         className={`shrink-0 bg-ink text-white flex flex-col h-full transition-all duration-200 fixed lg:static inset-y-0 left-0 z-40 w-64 ${
           menuMobileAberto ? "translate-x-0" : "-translate-x-full"
-        } lg:translate-x-0 ${expandidoVisual ? "lg:w-64" : "lg:w-[68px]"} ${
-          colapsado && hoverExpandido ? "lg:absolute lg:z-30 lg:left-0 lg:top-0 lg:h-full lg:shadow-2xl" : "lg:relative"
-        }`}
+        } lg:translate-x-0 ${expandidoVisual ? "lg:w-64" : "lg:w-[68px]"} lg:relative`}
       >
         <div className={`px-6 py-7 flex items-center justify-between ${expandidoVisual ? "" : "lg:justify-center lg:px-0"}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -436,7 +429,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <button
               onClick={alternarColapsado}
               className="hidden lg:block text-white/40 hover:text-white transition-colors shrink-0"
-              title={colapsado ? "Fixar menu expandido" : "Minimizar menu"}
+              title={colapsado ? "Expandir menu" : "Minimizar menu"}
             >
               <ChevronsLeft size={18} className={colapsado ? "rotate-180" : ""} />
             </button>
