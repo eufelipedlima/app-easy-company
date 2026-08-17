@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { EstadoVazio } from "@/components/estado-vazio";
 import { EsqueletoGrade } from "@/components/esqueleto";
+import { Archive, ArchiveRestore } from "lucide-react";
 
 interface Membro {
   id: string;
@@ -15,6 +16,7 @@ interface Membro {
   concluidas: number;
   atrasadas: number;
   tempoTotalSegundos: number;
+  ocultoEquipe: boolean;
 }
 
 function formatarDuracao(totalSegundos: number) {
@@ -39,6 +41,7 @@ export default function EquipePage() {
   const router = useRouter();
   const [membros, setMembros] = useState<Membro[]>([]);
   const [loading, setLoading] = useState(true);
+  const [verArquivados, setVerArquivados] = useState(false);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -48,7 +51,7 @@ export default function EquipePage() {
     const [{ data: funcData }, { data: statusData }] = await Promise.all([
       supabase
         .from("funcionarios")
-        .select("id, papeis ( pessoas ( nome, foto_url ) ), cargos ( nome )")
+        .select("id, oculto_equipe, papeis ( pessoas ( nome, foto_url ) ), cargos ( nome )")
         .not("auth_user_id", "is", null),
       supabase.from("status_conteudo").select("id, cor"),
     ]);
@@ -57,6 +60,7 @@ export default function EquipePage() {
 
     const listaFunc = ((funcData ?? []) as unknown as {
       id: string;
+      oculto_equipe: boolean;
       papeis: { pessoas: { nome: string; foto_url: string | null } | null } | null;
       cargos: { nome: string } | null;
     }[]).map((f) => ({
@@ -64,6 +68,7 @@ export default function EquipePage() {
       nome: f.papeis?.pessoas?.nome ?? "—",
       fotoUrl: f.papeis?.pessoas?.foto_url ?? null,
       cargoNome: f.cargos?.nome ?? null,
+      ocultoEquipe: f.oculto_equipe,
     }));
 
     const idsFunc = listaFunc.map((f) => f.id);
@@ -114,29 +119,71 @@ export default function EquipePage() {
     carregar();
   }, [carregar]);
 
+  async function alternarArquivado(id: string, ocultoAtual: boolean) {
+    const supabase = createClient();
+    await supabase.from("funcionarios").update({ oculto_equipe: !ocultoAtual }).eq("id", id);
+    setMembros((atual) => atual.map((m) => (m.id === id ? { ...m, ocultoEquipe: !ocultoAtual } : m)));
+  }
+
+  const membrosExibidos = membros.filter((m) => m.ocultoEquipe === verArquivados);
+
   return (
     <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
-      <div className="mb-8">
-        <h1 className="text-2xl font-extrabold text-ink mb-1">Meu Time</h1>
-        <p className="text-sm text-ink/60">Carga de trabalho, entregas e tempo dedicado por pessoa.</p>
+      <div className="flex items-center justify-between gap-4 mb-8 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-extrabold text-ink mb-1">Meu Time</h1>
+          <p className="text-sm text-ink/60">Carga de trabalho, entregas e tempo dedicado por pessoa.</p>
+        </div>
+        <div className="inline-flex items-center gap-0.5 rounded-full bg-surface p-1 shrink-0">
+          <button
+            onClick={() => setVerArquivados(false)}
+            className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+              !verArquivados ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+            }`}
+          >
+            Ativos
+          </button>
+          <button
+            onClick={() => setVerArquivados(true)}
+            className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+              verArquivados ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+            }`}
+          >
+            Arquivados
+          </button>
+        </div>
       </div>
 
       {loading ? (
         <EsqueletoGrade itens={6} />
-      ) : membros.length === 0 ? (
-        <EstadoVazio emoji="👥" titulo="Nenhum membro com acesso ainda" descricao="Convide alguém em Configurações → Usuários." />
+      ) : membrosExibidos.length === 0 ? (
+        <EstadoVazio
+          emoji="👥"
+          titulo={verArquivados ? "Nenhum membro arquivado" : "Nenhum membro com acesso ainda"}
+          descricao={verArquivados ? "Quem for arquivado aqui aparece nessa lista." : "Convide alguém em Configurações → Usuários."}
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {membros.map((m, i) => {
+          {membrosExibidos.map((m, i) => {
             const total = m.abertas + m.concluidas;
             const pctConcluido = total > 0 ? Math.round((m.concluidas / total) * 100) : 0;
             return (
-              <button
+              <div
                 key={m.id}
-                onClick={() => router.push(`/equipe/${m.id}`)}
                 style={{ animationDelay: `${i * 60}ms` }}
-                className="animate-[entrada_0.4s_ease-out_backwards] group text-left rounded-3xl bg-card border border-black/5 p-5 hover:shadow-lg hover:-translate-y-1 hover:border-forest/20 transition-all duration-200"
+                className="relative group animate-[entrada_0.4s_ease-out_backwards] rounded-3xl bg-card border border-black/5 hover:shadow-lg hover:-translate-y-1 hover:border-forest/20 transition-all duration-200"
               >
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alternarArquivado(m.id, m.ocultoEquipe);
+                  }}
+                  title={m.ocultoEquipe ? "Desarquivar (voltar pra lista de ativos)" : "Arquivar (não controlar horas dessa pessoa)"}
+                  className="absolute top-4 right-4 z-10 h-7 w-7 rounded-full bg-white/80 backdrop-blur flex items-center justify-center text-ink/30 hover:text-ink opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                >
+                  {m.ocultoEquipe ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                </button>
+                <button onClick={() => router.push(`/equipe/${m.id}`)} className="w-full text-left p-5">
                 <div className="flex items-center gap-3 mb-4">
                   {m.fotoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -182,7 +229,8 @@ export default function EquipePage() {
                   <span className="flex items-center gap-1">⏱️ {formatarDuracao(m.tempoTotalSegundos)}</span>
                   <span className="font-semibold text-forest group-hover:underline">Ver detalhes →</span>
                 </div>
-              </button>
+                </button>
+              </div>
             );
           })}
         </div>

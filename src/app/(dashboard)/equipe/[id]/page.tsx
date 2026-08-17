@@ -91,6 +91,7 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
   const [itens, setItens] = useState<ItemTrabalho[]>([]);
   const [atividade, setAtividade] = useState<AtividadeItem[]>([]);
   const [tempoPorCliente, setTempoPorCliente] = useState<TempoPorCliente[]>([]);
+  const [tempoTotalGeral, setTempoTotalGeral] = useState(0);
   const [filtro, setFiltro] = useState<"abertas" | "concluidas" | "atrasadas">("abertas");
   const [periodo, setPeriodo] = useState<Periodo>("mes");
 
@@ -194,8 +195,35 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
     ];
     setItens(listaItens);
 
-    const clienteDaTarefa = new Map(minhasTarefas.map((t) => [t.id, t.clientes?.papeis?.pessoas?.nome ?? "Sem cliente"]));
-    const clienteDoPost = new Map(meusPosts.map((p) => [p.id, p.clientes?.papeis?.pessoas?.nome ?? "Sem cliente"]));
+    // Total geral de horas: soma direta do tempo_total_segundos de tudo que a
+    // pessoa é responsável — igual à tela de visão geral da Equipe faz. Antes,
+    // aqui embaixo o total vinha de tentar reconstruir o tempo lendo o texto
+    // do histórico (limitado a 300 registros e só dentro do período
+    // selecionado), o que dava números bem menores e inconsistentes.
+    const tempoTotalReal =
+      minhasTarefas.reduce((s, t) => s + (t.tempo_total_segundos ?? 0), 0) +
+      meusPosts.reduce((s, p) => s + (p.tempo_total_segundos ?? 0), 0);
+    setTempoTotalGeral(tempoTotalReal);
+
+    // O detalhamento "por cliente" abaixo continua respeitando o período
+    // selecionado, mas agora soma o tempo_total_segundos de cada tarefa/post
+    // (a mesma fonte confiável), em vez de tentar interpretar o texto do
+    // histórico.
+    const tempoMap = new Map<string, number>();
+    for (const t of minhasTarefas.filter((t) => dentroDoPeriodo(t.prazo))) {
+      const cli = t.clientes?.papeis?.pessoas?.nome ?? "Sem cliente";
+      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + (t.tempo_total_segundos ?? 0));
+    }
+    for (const p of meusPosts.filter((p) => dentroDoPeriodo(p.data_publicacao))) {
+      const cli = p.clientes?.papeis?.pessoas?.nome ?? "Sem cliente";
+      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + (p.tempo_total_segundos ?? 0));
+    }
+    setTempoPorCliente(
+      Array.from(tempoMap.entries())
+        .map(([clienteNome, segundos]) => ({ clienteNome, segundos }))
+        .filter((t) => t.segundos > 0)
+        .sort((a, b) => b.segundos - a.segundos)
+    );
 
     if (f?.auth_user_id) {
       let queryHistT = supabase
@@ -222,28 +250,6 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
       const listaHistT = (histT ?? []) as unknown as HistT[];
       const listaHistP = (histP ?? []) as unknown as HistP[];
 
-      // Soma os minutos registrados nas pausas do cronômetro dentro do período, por cliente
-      const tempoMap = new Map<string, number>();
-      const regexMinutos = /\+(\d+)min/;
-      for (const h of listaHistT) {
-        const match = h.descricao.match(regexMinutos);
-        if (!match) continue;
-        const cli = clienteDaTarefa.get(h.tarefa_id) ?? "Sem cliente";
-        tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + Number(match[1]) * 60);
-      }
-      for (const h of listaHistP) {
-        const match = h.descricao.match(regexMinutos);
-        if (!match) continue;
-        const cli = clienteDoPost.get(h.post_id) ?? "Sem cliente";
-        tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + Number(match[1]) * 60);
-      }
-      setTempoPorCliente(
-        Array.from(tempoMap.entries())
-          .map(([clienteNome, segundos]) => ({ clienteNome, segundos }))
-          .filter((t) => t.segundos > 0)
-          .sort((a, b) => b.segundos - a.segundos)
-      );
-
       const atv: AtividadeItem[] = [
         ...listaHistT.map((h) => ({
           id: h.id,
@@ -266,7 +272,6 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
         .slice(0, 15);
       setAtividade(atv);
     } else {
-      setTempoPorCliente([]);
       setAtividade([]);
     }
 
@@ -282,7 +287,7 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
   const concluidas = itens.filter((i) => corDoStatus(i.statusCor) && i.statusCor === "verde");
   const itensAbertos = itens.filter((i) => i.statusCor !== "verde");
   const atrasadas = itensAbertos.filter((i) => i.data && i.data < hojeISO);
-  const tempoTotal = tempoPorCliente.reduce((s, t) => s + t.segundos, 0);
+  const tempoTotal = tempoTotalGeral;
   const maiorTempo = Math.max(...tempoPorCliente.map((t) => t.segundos), 1);
 
   const listaFiltrada = filtro === "concluidas" ? concluidas : filtro === "atrasadas" ? atrasadas : itensAbertos;

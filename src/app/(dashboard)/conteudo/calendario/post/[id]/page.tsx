@@ -638,7 +638,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     await supabase.from("posts_conteudo").update({ tempo_total_segundos: novoTotal, timer_iniciado_em: null, timer_iniciado_por: null }).eq("id", id);
     setPost((p) => (p ? { ...p, tempo_total_segundos: novoTotal, timer_iniciado_em: null, timer_iniciado_por: null } : p));
     const minutos = Math.round(segundosCorridos / 60);
-    registrarHistorico(`pausou o cronômetro (+${minutos < 1 ? "menos de 1" : minutos}min)`);
+    registrarHistorico(`passou ${minutos < 1 ? "menos de 1min" : `${minutos}min`} trabalhando nesse conteúdo`);
   }
 
   async function toggleResponsavel(funcionarioId: string) {
