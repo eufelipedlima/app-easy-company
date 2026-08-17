@@ -345,7 +345,7 @@ export default function PautaPage() {
     const [{ data: tarefasData }] = await Promise.all([
       supabase
         .from("tarefas")
-        .select("id, titulo, data_inicio, prazo, status_id, descricao, cliente_id, clientes ( papeis ( pessoas ( nome ) ) ), status_conteudo ( nome, cor )")
+        .select("id, titulo, data_inicio, prazo, status_id, descricao, cliente_id, status_conteudo ( nome, cor )")
         .is("tarefa_pai_id", null)
         .eq("arquivada", false)
         .is("excluido_em", null),
@@ -358,7 +358,6 @@ export default function PautaPage() {
       prazo: string | null;
       descricao: string | null;
       cliente_id: string | null;
-      clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
       status_conteudo: { nome: string; cor: string } | null;
     }[])
       .map((t) => ({ ...t, dataExibicao: t.data_inicio ?? t.prazo }))
@@ -373,13 +372,17 @@ export default function PautaPage() {
       });
 
     const idsTarefas = tarefasNoPeriodo.map((t) => t.id);
+    const idsClientes = [...new Set(tarefasNoPeriodo.map((t) => t.cliente_id).filter((id): id is string => !!id))];
 
-    const [{ data: respTarefas }, { data: subtarefasData }] = await Promise.all([
+    const [{ data: respTarefas }, { data: subtarefasData }, { data: clientesData }] = await Promise.all([
       idsTarefas.length > 0
         ? supabase.from("tarefas_responsaveis").select("tarefa_id, funcionario_id").in("tarefa_id", idsTarefas)
         : Promise.resolve({ data: [] }),
       idsTarefas.length > 0
         ? supabase.from("tarefas").select("tarefa_pai_id").in("tarefa_pai_id", idsTarefas).is("excluido_em", null)
+        : Promise.resolve({ data: [] }),
+      idsClientes.length > 0
+        ? supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )").in("id", idsClientes)
         : Promise.resolve({ data: [] }),
     ]);
 
@@ -390,6 +393,10 @@ export default function PautaPage() {
     const mapaSubT = new Map<string, number>();
     for (const s of subtarefasData ?? []) {
       if (s.tarefa_pai_id) mapaSubT.set(s.tarefa_pai_id, (mapaSubT.get(s.tarefa_pai_id) ?? 0) + 1);
+    }
+    const mapaClienteNome = new Map<string, string>();
+    for (const c of (clientesData ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[]) {
+      if (c.papeis?.pessoas?.nome) mapaClienteNome.set(c.id, c.papeis.pessoas.nome);
     }
 
     const itensT: ItemPauta[] = tarefasNoPeriodo.map((t) => ({
@@ -405,7 +412,7 @@ export default function PautaPage() {
       responsavelIds: mapaRespT.get(t.id) ?? [],
       temDescricao: !!t.descricao,
       qtdSubitens: mapaSubT.get(t.id) ?? 0,
-      clienteNome: t.clientes?.papeis?.pessoas?.nome ?? null,
+      clienteNome: t.cliente_id ? mapaClienteNome.get(t.cliente_id) ?? null : null,
     }));
 
     setItens(itensT);
