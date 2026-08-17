@@ -427,7 +427,17 @@ export default function LancamentosPage() {
       .select("id, data_pagamento, banco_id, valor, taxa, desconto, bancos ( nome )")
       .eq("lancamento_id", detalhe.id)
       .order("data_pagamento", { ascending: false });
-    setPagamentos((p as unknown as Pagamento[]) ?? []);
+    const novosPagamentos = (p as unknown as Pagamento[]) ?? [];
+    setPagamentos(novosPagamentos);
+
+    // Se o total pago caiu abaixo do valor do lançamento, ele não está mais
+    // quitado — sem isso, ele ficava marcado "pago" com valor em aberto.
+    const novoTotalPago = novosPagamentos.reduce((s, pg) => s + pg.valor, 0);
+    if (detalhe.situacao === "pago" && novoTotalPago < detalhe.valor) {
+      await supabase.from("lancamentos").update({ situacao: "pendente", data_quitacao: null }).eq("id", detalhe.id);
+      setDetalhe((d) => (d ? { ...d, situacao: "pendente", data_quitacao: null } : d));
+    }
+    carregar();
   }
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [resumoAberto, setResumoAberto] = useState(false);
@@ -1248,13 +1258,18 @@ export default function LancamentosPage() {
                           onChange={(e) => setBancoPagamentoNovo(e.target.value)}
                           className="input text-sm"
                         >
-                          <option value="">Banco...</option>
+                          <option value="">{bancosOpcoesPagamento.length === 0 ? "Nenhum banco ativo" : "Banco..."}</option>
                           {bancosOpcoesPagamento.map((b) => (
                             <option key={b.id} value={b.id}>
                               {b.nome}
                             </option>
                           ))}
                         </select>
+                        {bancosOpcoesPagamento.length === 0 && (
+                          <p className="col-span-2 text-xs text-ink/40 -mt-1">
+                            Nenhum banco ativo encontrado. Confira em Financeiro → Bancos se algum não está arquivado.
+                          </p>
+                        )}
                         <input
                           type="number"
                           step="0.01"
@@ -1391,13 +1406,18 @@ export default function LancamentosPage() {
               <label className="block">
                 <span className="block text-sm font-medium text-ink/70 mb-1">Banco</span>
                 <select value={bancoLote} onChange={(e) => setBancoLote(e.target.value)} className="input">
-                  <option value="">Selecione...</option>
-                  {bancosOpcoesPagamento.map((b) => (
+                  <option value="">{bancosOpcoes.length === 0 ? "Nenhum banco ativo" : "Selecione..."}</option>
+                  {bancosOpcoes.map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.nome}
                     </option>
                   ))}
                 </select>
+                {bancosOpcoes.length === 0 && (
+                  <p className="text-xs text-ink/40 mt-1">
+                    Nenhum banco ativo encontrado. Confira em Financeiro → Bancos se algum não está arquivado.
+                  </p>
+                )}
               </label>
               <p className="text-xs text-ink/40">
                 Cada lançamento é quitado pelo valor restante dele (considerando pagamentos parciais já feitos).

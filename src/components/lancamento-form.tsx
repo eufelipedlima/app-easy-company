@@ -780,7 +780,7 @@ export function LancamentoForm({
           onFocus={() => setMostrarSugBanco(true)}
           placeholder="Digite o banco..."
         />
-        {mostrarSugBanco && buscaBanco && !bancoSelecionado && (
+        {mostrarSugBanco && !bancoSelecionado && (
           <ListaSugestoes>
             {sugBanco.length > 0 ? (
               sugBanco.map((b) => (
@@ -795,10 +795,14 @@ export function LancamentoForm({
                   {b.nome}
                 </ItemSugestao>
               ))
-            ) : (
+            ) : buscaBanco.trim() ? (
               <ItemSugestao destaque onClick={() => setMostrarSugBanco(false)}>
                 + Cadastrar &ldquo;{buscaBanco}&rdquo; como novo banco
               </ItemSugestao>
+            ) : (
+              <p className="px-3 py-2 text-xs text-ink/40">
+                Nenhum banco ativo encontrado. Cadastre um em Financeiro → Bancos, ou confira se algum não está arquivado lá.
+              </p>
             )}
           </ListaSugestoes>
         )}
@@ -817,7 +821,7 @@ export function LancamentoForm({
             onFocus={() => setMostrarSugBancoDestino(true)}
             placeholder="Digite o banco de destino..."
           />
-          {mostrarSugBancoDestino && buscaBancoDestino && !bancoDestinoSelecionado && (
+          {mostrarSugBancoDestino && !bancoDestinoSelecionado && (
             <ListaSugestoes>
               {sugBancoDestino.length > 0 ? (
                 sugBancoDestino.map((b) => (
@@ -832,10 +836,14 @@ export function LancamentoForm({
                     {b.nome}
                   </ItemSugestao>
                 ))
-              ) : (
+              ) : buscaBancoDestino.trim() ? (
                 <ItemSugestao destaque onClick={() => setMostrarSugBancoDestino(false)}>
                   + Cadastrar &ldquo;{buscaBancoDestino}&rdquo; como novo banco
                 </ItemSugestao>
+              ) : (
+                <p className="px-3 py-2 text-xs text-ink/40">
+                  Nenhum banco ativo encontrado. Cadastre um em Financeiro → Bancos, ou confira se algum não está arquivado lá.
+                </p>
               )}
             </ListaSugestoes>
           )}
