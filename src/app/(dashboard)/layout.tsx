@@ -461,7 +461,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   key={grupo.label}
                   href={grupo.href}
                   title={grupo.label}
-                  className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  className={`relative group/tip flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
                     !expandidoVisual ? "justify-center px-0" : ""
                   } ${ativo ? "bg-forest text-white" : "text-white/60 hover:bg-forest/50 hover:text-white"}`}
                 >
@@ -477,6 +477,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       {badge}
                     </span>
                   )}
+                  {!expandidoVisual && (
+                    <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 shadow-lg hidden lg:block">
+                      {grupo.label}
+                    </span>
+                  )}
                 </Link>
               );
             }
@@ -489,7 +494,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <button
                   onClick={() => (expandidoVisual ? setAberto(expandido ? null : grupo.label) : undefined)}
                   title={grupo.label}
-                  className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  className={`relative group/tip w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
                     !expandidoVisual ? "justify-center px-0" : ""
                   } ${grupoAtivo ? "text-white" : "text-white/60 hover:text-white"}`}
                 >
@@ -499,6 +504,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       <span className="flex-1 text-left">{grupo.label}</span>
                       <ChevronDown size={15} className={`transition-transform ${expandido ? "rotate-180" : ""}`} />
                     </>
+                  )}
+                  {!expandidoVisual && (
+                    <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 shadow-lg hidden lg:block">
+                      {grupo.label}
+                    </span>
                   )}
                 </button>
 
@@ -535,7 +545,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 carregarContas();
               }}
               title="Contas"
-              className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/60 hover:text-white transition-colors ${
+              className={`relative group/tip w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/60 hover:text-white transition-colors ${
                 !expandidoVisual ? "justify-center px-0" : ""
               }`}
             >
@@ -545,6 +555,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <span className="flex-1 text-left">Contas</span>
                   {contasAbertas ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                 </>
+              )}
+              {!expandidoVisual && (
+                <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 shadow-lg hidden lg:block">
+                  Contas
+                </span>
               )}
             </button>
 
@@ -578,12 +593,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link
             href="/perfil"
             title="Meu perfil"
-            className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/50 hover:bg-forest/50 hover:text-white transition-colors ${
+            className={`relative group/tip w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/50 hover:bg-forest/50 hover:text-white transition-colors ${
               !expandidoVisual ? "justify-center px-0" : ""
             }`}
           >
             <UserCircle size={16} />
             {expandidoVisual && "Meu perfil"}
+            {!expandidoVisual && (
+              <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 shadow-lg hidden lg:block">
+                Meu perfil
+              </span>
+            )}
           </Link>
           <button
             onClick={async () => {
@@ -592,12 +612,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               router.replace("/login");
             }}
             title="Sair"
-            className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/50 hover:bg-forest/50 hover:text-white transition-colors ${
+            className={`relative group/tip w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/50 hover:bg-forest/50 hover:text-white transition-colors ${
               !expandidoVisual ? "justify-center px-0" : ""
             }`}
           >
             <LogOut size={16} />
             {expandidoVisual && "Sair"}
+            {!expandidoVisual && (
+              <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 shadow-lg hidden lg:block">
+                Sair
+              </span>
+            )}
           </button>
         </div>
       </aside>

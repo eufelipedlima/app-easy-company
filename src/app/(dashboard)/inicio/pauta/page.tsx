@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { IconeTarefa } from "@/components/icones-tarefa";
+import { ListTree } from "lucide-react";
 import { EsqueletoLinha } from "@/components/esqueleto";
 
 interface Responsavel {
@@ -27,6 +28,7 @@ interface ItemPauta {
   responsavelIds: string[];
   temDescricao: boolean;
   qtdSubitens: number;
+  clienteNome: string | null;
 }
 
 const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -189,7 +191,11 @@ function BlocoSemanaPessoa({
                 <div className="flex items-center justify-between mt-1">
                   <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
                     {fx.item.temDescricao && <span title="Tem descrição">☰</span>}
-                    {fx.item.qtdSubitens > 0 && <span title="Subitens">🔗 {fx.item.qtdSubitens}</span>}
+                    {fx.item.qtdSubitens > 0 && (
+                      <span title="Tem subtarefas" className="inline-flex items-center gap-0.5">
+                        <ListTree size={11} /> {fx.item.qtdSubitens}
+                      </span>
+                    )}
                   </span>
                   <AvatarStack pessoas={respItem} tamanho={16} />
                 </div>
@@ -235,16 +241,21 @@ function BlocoSemanaPessoa({
                     onClick={() => onAbrirItem(item.link)}
                     className={`w-full text-left rounded-lg px-2 py-1.5 ${corDoStatus(item.statusCor).cor}`}
                   >
-                    <p className="text-[11px] font-semibold truncate">
+                    <p className="text-xs font-bold truncate">
                       <span className="inline-flex items-center gap-1">
                         <IconeTarefa tamanho={12} /> {item.titulo}
                       </span>
                     </p>
+                    {item.clienteNome && <p className="text-[10px] opacity-50 truncate mt-0.5">{item.clienteNome}</p>}
                     {(item.temDescricao || item.qtdSubitens > 0 || respItem.length > 0) && (
                       <div className="flex items-center justify-between mt-1">
                         <span className="flex items-center gap-1.5 opacity-60 text-[10px]">
                           {item.temDescricao && <span title="Tem descrição">☰</span>}
-                          {item.qtdSubitens > 0 && <span title="Subitens">🔗 {item.qtdSubitens}</span>}
+                          {item.qtdSubitens > 0 && (
+                            <span title="Tem subtarefas" className="inline-flex items-center gap-0.5">
+                              <ListTree size={11} /> {item.qtdSubitens}
+                            </span>
+                          )}
                         </span>
                         <AvatarStack pessoas={respItem} tamanho={16} />
                       </div>
@@ -263,7 +274,15 @@ function BlocoSemanaPessoa({
 
 export default function PautaPage() {
   const router = useRouter();
-  const [modo, setModo] = useState<"minha" | "equipe">("minha");
+  const [modo, setModoState] = useState<"minha" | "equipe">("minha");
+  function setModo(novo: "minha" | "equipe") {
+    setModoState(novo);
+    if (typeof window !== "undefined") localStorage.setItem("pauta-modo", novo);
+  }
+  useEffect(() => {
+    const salvo = typeof window !== "undefined" ? localStorage.getItem("pauta-modo") : null;
+    if (salvo === "minha" || salvo === "equipe") setModoState(salvo);
+  }, []);
   const [visualizacao, setVisualizacao] = useState<"semana" | "mes">("semana");
   const [meuFuncionarioId, setMeuFuncionarioId] = useState<string | null>(null);
   const [funcionarios, setFuncionarios] = useState<Responsavel[]>([]);
@@ -326,7 +345,7 @@ export default function PautaPage() {
     const [{ data: tarefasData }] = await Promise.all([
       supabase
         .from("tarefas")
-        .select("id, titulo, data_inicio, prazo, status_id, descricao, status_conteudo ( nome, cor )")
+        .select("id, titulo, data_inicio, prazo, status_id, descricao, cliente_id, clientes ( papeis ( pessoas ( nome ) ) ), status_conteudo ( nome, cor )")
         .is("tarefa_pai_id", null)
         .eq("arquivada", false)
         .is("excluido_em", null),
@@ -338,6 +357,8 @@ export default function PautaPage() {
       data_inicio: string | null;
       prazo: string | null;
       descricao: string | null;
+      cliente_id: string | null;
+      clientes: { papeis: { pessoas: { nome: string } | null } | null } | null;
       status_conteudo: { nome: string; cor: string } | null;
     }[])
       .map((t) => ({ ...t, dataExibicao: t.data_inicio ?? t.prazo }))
@@ -384,6 +405,7 @@ export default function PautaPage() {
       responsavelIds: mapaRespT.get(t.id) ?? [],
       temDescricao: !!t.descricao,
       qtdSubitens: mapaSubT.get(t.id) ?? 0,
+      clienteNome: t.clientes?.papeis?.pessoas?.nome ?? null,
     }));
 
     setItens(itensT);
