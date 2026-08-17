@@ -7,6 +7,8 @@ import { corDoStatus } from "@/lib/status-conteudo";
 import { IconeProjeto } from "@/components/icones-tarefa";
 import { normalizar } from "@/lib/normalizar";
 import { DndContext, useDraggable, useDroppable, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { CalendarioConteudoConteudo } from "@/app/(dashboard)/conteudo/calendario/page";
+import { Archive } from "lucide-react";
 
 interface Responsavel {
   id: string;
@@ -132,7 +134,7 @@ function formatarHoraMsg(iso: string) {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-type Aba = "geral" | "tarefas" | "conteudo" | "chat" | "docs";
+type Aba = "geral" | "tarefas" | "conteudo" | "calendario" | "chat" | "docs";
 
 export default function CentralClienteDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -603,6 +605,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
     { chave: "geral", label: "Visão geral" },
     { chave: "tarefas", label: "Tarefas", contagem: tarefas.length },
     { chave: "conteudo", label: "Conteúdo", contagem: posts.length },
+    { chave: "calendario", label: "Calendário" },
     { chave: "chat", label: "Chat" },
     { chave: "docs", label: "Docs", contagem: docs.length },
   ];
@@ -613,36 +616,60 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
         ← Central de Clientes
       </button>
 
-      <div className="flex items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-4">
-          <div className="relative group/avatar">
-            {fotoCliente ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={fotoCliente} alt={nomeCliente} className="h-14 w-14 rounded-full object-cover" />
-            ) : (
-              <div className={`h-14 w-14 rounded-full ${corAvatar(nomeCliente)} text-white flex items-center justify-center font-bold text-lg shrink-0`}>
-                {nomeCliente.slice(0, 2).toUpperCase()}
-              </div>
-            )}
-            <button
-              onClick={() => inputFotoRef.current?.click()}
-              disabled={enviandoFoto}
-              className="absolute inset-0 rounded-full bg-black/50 text-white opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-[10px] font-semibold"
-              title="Trocar foto do cliente"
-            >
-              {enviandoFoto ? "..." : "Trocar"}
-            </button>
-            <input ref={inputFotoRef} type="file" accept="image/*" onChange={enviarFotoCliente} className="hidden" />
-          </div>
-          <h1 className="text-2xl font-extrabold text-ink">{nomeCliente}</h1>
+      <div className="flex items-center gap-4 mb-1">
+        <div className="relative group/avatar">
+          {fotoCliente ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={fotoCliente} alt={nomeCliente} className="h-14 w-14 rounded-full object-cover" />
+          ) : (
+            <div className={`h-14 w-14 rounded-full ${corAvatar(nomeCliente)} text-white flex items-center justify-center font-bold text-lg shrink-0`}>
+              {nomeCliente.slice(0, 2).toUpperCase()}
+            </div>
+          )}
+          <button
+            onClick={() => inputFotoRef.current?.click()}
+            disabled={enviandoFoto}
+            className="absolute inset-0 rounded-full bg-black/50 text-white opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-[10px] font-semibold"
+            title="Trocar foto do cliente"
+          >
+            {enviandoFoto ? "..." : "Trocar"}
+          </button>
+          <input ref={inputFotoRef} type="file" accept="image/*" onChange={enviarFotoCliente} className="hidden" />
         </div>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-extrabold text-ink">{nomeCliente}</h1>
+          <p className="text-sm text-ink/45">
+            Tudo o que envolve {nomeCliente} num só lugar — tarefas, conteúdo, docs e conversas.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 mb-6 mt-5 flex-wrap">
+        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner">
+          {ABAS.map((a) => (
+            <button
+              key={a.chave}
+              onClick={() => setAba(a.chave)}
+              className={`rounded-full px-4 py-2 text-sm font-bold transition-all flex items-center gap-1.5 ${
+                aba === a.chave ? "bg-ink text-white shadow-md" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              {a.label}
+              {typeof a.contagem === "number" && a.contagem > 0 && (
+                <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${aba === a.chave ? "bg-white/20" : "bg-black/10"}`}>{a.contagem}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
         {souAdmin && (
           <div className="relative shrink-0">
             <button
               onClick={() => setConfirmandoArquivar((v) => !v)}
-              className="rounded-full border-2 border-red-200 text-red-600 px-4 py-2 text-sm font-semibold hover:bg-red-50 transition-colors"
+              title="Arquivar Central de Cliente"
+              className="h-9 w-9 rounded-full border-2 border-red-200 text-red-500 flex items-center justify-center hover:bg-red-50 transition-colors"
             >
-              Arquivar Central de Cliente
+              <Archive size={16} />
             </button>
             {confirmandoArquivar && (
               <div className="absolute z-10 top-full right-0 mt-2 w-72 rounded-2xl bg-white border border-red-200 shadow-lg p-4">
@@ -662,22 +689,11 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
         )}
       </div>
 
-      <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner mb-6">
-        {ABAS.map((a) => (
-          <button
-            key={a.chave}
-            onClick={() => setAba(a.chave)}
-            className={`rounded-full px-4 py-2 text-sm font-bold transition-all flex items-center gap-1.5 ${
-              aba === a.chave ? "bg-ink text-white shadow-md" : "text-ink/50 hover:text-ink"
-            }`}
-          >
-            {a.label}
-            {typeof a.contagem === "number" && a.contagem > 0 && (
-              <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${aba === a.chave ? "bg-white/20" : "bg-black/10"}`}>{a.contagem}</span>
-            )}
-          </button>
-        ))}
-      </div>
+      {aba === "calendario" && (
+        <div className="-mx-6 sm:-mx-8 lg:-mx-10">
+          <CalendarioConteudoConteudo viewInicial="calendario" clienteFixoId={id} />
+        </div>
+      )}
 
       {aba === "geral" && (
         <div className="space-y-4">

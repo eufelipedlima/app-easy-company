@@ -185,12 +185,18 @@ function nomeCliente(p: Post) {
   return p.clientes?.papeis?.pessoas?.nome ?? "—";
 }
 
-export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "calendario" | "kanban" | "lista" }) {
+export function CalendarioConteudoConteudo({
+  viewInicial,
+  clienteFixoId,
+}: {
+  viewInicial: "calendario" | "kanban" | "lista";
+  clienteFixoId?: string;
+}) {
   const hoje = new Date();
   const [mes, setMes] = useState(hoje.getMonth());
   const [ano, setAno] = useState(hoje.getFullYear());
   const [diaExpandidoId, setDiaExpandidoId] = useState<string | null>(null);
-  const [clienteFiltroId, setClienteFiltroId] = useState("");
+  const [clienteFiltroId, setClienteFiltroId] = useState(clienteFixoId ?? "");
   const [clientes, setClientes] = useState<ClienteOpcao[]>([]);
   const [funcionariosComAcesso, setFuncionariosComAcesso] = useState<Responsavel[]>([]);
   const [statusList, setStatusList] = useState<StatusItem[]>([]);
@@ -770,6 +776,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
           )}
         </div>
 
+        {!clienteFixoId && (
         <div className="relative">
           <button
             onClick={() => setFiltroDropdownAberto(filtroDropdownAberto === "vinculacao" ? null : "vinculacao")}
@@ -795,6 +802,7 @@ export function CalendarioConteudoConteudo({ viewInicial }: { viewInicial: "cale
             </div>
           )}
         </div>
+        )}
 
         <label className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold border border-black/10 text-ink/60 hover:bg-surface cursor-pointer transition-colors">
           <input
