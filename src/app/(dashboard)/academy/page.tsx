@@ -27,6 +27,10 @@ import {
   GripVertical,
   MoreVertical,
   Move,
+  PanelLeftOpen,
+  PanelLeftClose,
+  PanelRightOpen,
+  PanelRightClose,
   Link as LinkIcon,
   X,
   Lock,
@@ -225,6 +229,8 @@ export default function AcademyPage() {
   const [renomeandoTema, setRenomeandoTema] = useState<Tema | null>(null);
   const [editandoMetaTema, setEditandoMetaTema] = useState<Tema | null>(null);
   const [menuAcoesAberto, setMenuAcoesAberto] = useState(false);
+  const [sidebarEsquerdaAberta, setSidebarEsquerdaAberta] = useState(true);
+  const [sidebarDireitaAberta, setSidebarDireitaAberta] = useState(true);
   const [abaAtiva, setAbaAtiva] = useState<"conteudo" | "materiais" | "notas" | "duvidas">("conteudo");
   const [colegas, setColegas] = useState<Colega[]>([]);
   const [materiaisTema, setMateriaisTema] = useState<Material[]>([]);
@@ -444,6 +450,7 @@ export default function AcademyPage() {
     setEditandoDescricao(false);
     setMenuAcoesAberto(false);
     setAbaAtiva("conteudo");
+    setSidebarEsquerdaAberta(false);
     localStorage.setItem(CHAVE_ULTIMO, JSON.stringify({ paginaId, temaId }));
     setUltimoAcesso({ paginaId, temaId });
 
@@ -487,15 +494,18 @@ export default function AcademyPage() {
     setTemaAtivoId(null);
     setEditandoTituloPagina(false);
     setEditandoDescricao(false);
+    setSidebarEsquerdaAberta(true);
   }
 
   function voltarPraHome() {
     setPaginaAtivaId(null);
     setTemaAtivoId(null);
+    setSidebarEsquerdaAberta(true);
   }
 
   function voltarParaTreinamento() {
     setTemaAtivoId(null);
+    setSidebarEsquerdaAberta(true);
   }
 
   async function alternarConcluido(temaId: string) {
@@ -568,7 +578,7 @@ export default function AcademyPage() {
   }
 
   async function excluirTema(id: string) {
-    if (!window.confirm("Excluir esse tema/aula, com o texto e os vídeos dele?")) return;
+    if (!window.confirm("Excluir essa aula, com o texto e os vídeos dela?")) return;
     const supabase = createClient();
     await supabase.from("academy_temas").delete().eq("id", id);
     setTemas((atual) => atual.filter((t) => t.id !== id));
@@ -662,12 +672,31 @@ export default function AcademyPage() {
   return (
     <main className="h-screen flex bg-white">
       {/* Sidebar escura, no mesmo tom do resto do sistema */}
+      {!sidebarEsquerdaAberta ? (
+        <div className="w-12 shrink-0 bg-ink flex flex-col items-center pt-4 gap-4">
+          <button onClick={() => setSidebarEsquerdaAberta(true)} title="Mostrar menu" className="text-mint hover:text-white transition-colors">
+            <PanelLeftOpen size={20} />
+          </button>
+          <button onClick={voltarPraHome} title="Voltar pro Academy" className="text-white/30 hover:text-white transition-colors">
+            <GraduationCap size={18} />
+          </button>
+        </div>
+      ) : (
       <aside className="w-72 shrink-0 bg-ink text-white flex flex-col h-full">
         <div className="p-4 border-b border-white/10 shrink-0">
-          <button onClick={voltarPraHome} className="flex items-center gap-2 mb-3">
-            <GraduationCap size={20} className="text-mint" />
-            <span className="text-base font-extrabold">Academy</span>
-          </button>
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={voltarPraHome} className="flex items-center gap-2">
+              <GraduationCap size={20} className="text-mint" />
+              <span className="text-base font-extrabold">Academy</span>
+            </button>
+            <button
+              onClick={() => setSidebarEsquerdaAberta(false)}
+              title="Esconder menu"
+              className="text-white/30 hover:text-white transition-colors"
+            >
+              <PanelLeftClose size={17} />
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/35 z-10" />
@@ -720,7 +749,7 @@ export default function AcademyPage() {
                           </button>
                           {souAdmin && (
                             <div className="opacity-0 group-hover/cat:opacity-100 transition-opacity flex items-center gap-1.5 shrink-0 pr-1">
-                              <button onClick={() => setNovaPaginaCategoriaId(cat.id)} title="Nova página" className="text-white/40 hover:text-mint">
+                              <button onClick={() => setNovaPaginaCategoriaId(cat.id)} title="Novo treinamento" className="text-white/40 hover:text-mint">
                                 <Plus size={13} />
                               </button>
                               <button onClick={() => setEditandoCategoria(cat)} title="Editar categoria" className="text-white/40 hover:text-white">
@@ -773,7 +802,7 @@ export default function AcademyPage() {
                                 })}
                               </SortableContext>
                             </DndContext>
-                            {paginasCat.length === 0 && <p className="pl-6 text-xs text-white/25 italic">Sem páginas ainda</p>}
+                            {paginasCat.length === 0 && <p className="pl-6 text-xs text-white/25 italic">Sem treinamentos ainda</p>}
                           </div>
                         )}
                       </div>
@@ -802,11 +831,12 @@ export default function AcademyPage() {
           </div>
         </div>
       </aside>
+      )}
 
       {/* Conteúdo */}
       {!paginaAtual ? (
         <div className="flex-1 min-w-0 overflow-y-auto scrollbar-fina-clara bg-surface/20">
-          <div className="max-w-5xl mx-auto px-10 py-12">
+          <div className="max-w-6xl mx-auto px-10 py-12">
             <p className="text-sm text-ink/50 mb-1">👋 Olá, {meuNome}</p>
             <h1 className="text-3xl font-extrabold text-ink mb-2">Continue seu aprendizado</h1>
             <p className="text-sm text-ink/50 mb-8">Acesse treinamentos, guias e processos pra evoluir cada dia mais.</p>
@@ -881,7 +911,7 @@ export default function AcademyPage() {
         <div className="flex-1 min-w-0 flex overflow-hidden">
           <div className="flex-1 min-w-0 overflow-y-auto scrollbar-fina-clara bg-surface/20">
             <div className="border-b border-black/5 bg-white">
-              <div className="px-10 py-3 max-w-5xl mx-auto">
+              <div className="px-10 py-3 max-w-6xl mx-auto">
                 <p className="text-xs font-semibold text-ink/40">
                   <span className="hover:text-ink/70 cursor-default">Academy</span>
                   {categoriaAtual && (
@@ -911,7 +941,7 @@ export default function AcademyPage() {
             </div>
 
             {editandoTituloPagina && (
-              <div className="px-10 pt-6 max-w-5xl mx-auto">
+              <div className="px-10 pt-6 max-w-6xl mx-auto">
                 <FormTituloPagina
                   pagina={paginaAtual}
                   cargos={cargos}
@@ -925,18 +955,18 @@ export default function AcademyPage() {
             )}
 
             {temasDaPagina.length === 0 ? (
-              <div className="px-10 py-10 max-w-5xl mx-auto">
+              <div className="px-10 py-10 max-w-6xl mx-auto">
                 <h1 className="text-2xl font-extrabold text-ink mb-2 flex items-center gap-2">
                   <span>{paginaAtual.emoji || "📄"}</span> {paginaAtual.titulo}
                 </h1>
-                <p className="text-sm text-ink/40 mb-4">Esse treinamento ainda não tem nenhum tema/aula.</p>
+                <p className="text-sm text-ink/40 mb-4">Esse treinamento ainda não tem nenhuma aula.</p>
                 {souAdmin && (
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => setNovoTemaAberto(true)}
                       className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors"
                     >
-                      + Criar primeiro tema
+                      + Criar primeira aula
                     </button>
                     <button onClick={() => excluirPagina(paginaAtual.id)} className="text-sm font-semibold text-ink/40 hover:text-red-600">
                       Excluir treinamento
@@ -945,7 +975,7 @@ export default function AcademyPage() {
                 )}
               </div>
             ) : !temaAtivo ? (
-              <div className="px-10 py-8 max-w-5xl mx-auto">
+              <div className="px-10 py-8 max-w-6xl mx-auto">
                 <div className="max-w-3xl">
                   <button
                     onClick={voltarPraHome}
@@ -1016,7 +1046,7 @@ export default function AcademyPage() {
                         onClick={() => setNovoTemaAberto(true)}
                         className="text-xs font-semibold text-forest hover:underline flex items-center gap-1"
                       >
-                        <Plus size={12} /> Novo tema
+                        <Plus size={12} /> Nova aula
                       </button>
                     )}
                   </div>
@@ -1047,7 +1077,7 @@ export default function AcademyPage() {
                 </div>
               </div>
             ) : (
-              <div className="px-10 py-8 max-w-5xl mx-auto">
+              <div className="px-10 py-8 max-w-6xl mx-auto">
                 <div className="max-w-3xl">
                   <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
                     <button
@@ -1455,9 +1485,30 @@ export default function AcademyPage() {
             )}
           </div>
 
-          {temaAtivo && temasDaPagina.length > 0 && (
+          {temaAtivo && temasDaPagina.length > 0 && !sidebarDireitaAberta && (
+            <div className="w-10 shrink-0 border-l border-black/5 bg-white flex flex-col items-center pt-4">
+              <button
+                onClick={() => setSidebarDireitaAberta(true)}
+                title="Mostrar progresso"
+                className="text-ink/30 hover:text-ink transition-colors"
+              >
+                <PanelRightOpen size={18} />
+              </button>
+            </div>
+          )}
+
+          {temaAtivo && temasDaPagina.length > 0 && sidebarDireitaAberta && (
             <aside className="w-80 shrink-0 border-l border-black/5 bg-white overflow-y-auto scrollbar-fina-clara p-5">
-              <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Seu progresso nesse treinamento</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40">Seu progresso nesse treinamento</p>
+                <button
+                  onClick={() => setSidebarDireitaAberta(false)}
+                  title="Esconder"
+                  className="text-ink/30 hover:text-ink transition-colors shrink-0"
+                >
+                  <PanelRightClose size={16} />
+                </button>
+              </div>
               <p className="text-xl font-extrabold text-forest mb-1.5">{progressoDaPagina(paginaAtual.id).pct}% concluído</p>
               <div className="h-2 rounded-full bg-surface overflow-hidden mb-6">
                 <div className="h-full bg-forest rounded-full transition-all duration-500" style={{ width: `${progressoDaPagina(paginaAtual.id).pct}%` }} />
@@ -1501,7 +1552,7 @@ export default function AcademyPage() {
                   onClick={() => setNovoTemaAberto(true)}
                   className="w-full mt-3 rounded-xl border-2 border-dashed border-black/10 py-2.5 text-xs font-semibold text-ink/40 hover:text-forest hover:border-forest/30 transition-colors flex items-center justify-center gap-1.5"
                 >
-                  <Plus size={13} /> Novo tema
+                  <Plus size={13} /> Nova aula
                 </button>
               )}
 
@@ -1875,7 +1926,7 @@ function ModalNovaPagina({
 
   async function salvar() {
     if (!titulo.trim()) {
-      setErro("Dê um nome pra página.");
+      setErro("Dê um nome pro treinamento.");
       return;
     }
     setSalvando(true);
@@ -1897,7 +1948,7 @@ function ModalNovaPagina({
   return (
     <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
       <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-ink mb-4">Nova página</h2>
+        <h2 className="text-lg font-bold text-ink mb-4">Novo treinamento</h2>
         <div className="flex items-center gap-2 mb-4">
           <select value={emoji} onChange={(e) => setEmoji(e.target.value)} className="input !w-20 text-lg text-center">
             {EMOJIS_SUGERIDOS.map((e) => (
@@ -1922,7 +1973,7 @@ function ModalNovaPagina({
             disabled={salvando}
             className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
           >
-            {salvando ? "Criando..." : "Criar página"}
+            {salvando ? "Criando..." : "Criar treinamento"}
           </button>
           <button onClick={onClose} className="text-sm font-semibold text-ink/60 hover:text-ink">
             Cancelar
@@ -1950,7 +2001,7 @@ function ModalNovoTema({
 
   async function salvar() {
     if (!titulo.trim()) {
-      setErro("Dê um nome pro tema.");
+      setErro("Dê um nome pra aula.");
       return;
     }
     setSalvando(true);
@@ -1982,11 +2033,11 @@ function ModalNovoTema({
   return (
     <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
       <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-ink mb-4">Novo tema</h2>
+        <h2 className="text-lg font-bold text-ink mb-4">Nova aula</h2>
         <input
           value={titulo}
           onChange={(e) => setTitulo(e.target.value)}
-          placeholder="Ex: Etapa 1 — Briefing"
+          placeholder="Ex: Aula 1 — Briefing"
           className="input mb-4"
           autoFocus
           onKeyDown={(e) => e.key === "Enter" && salvar()}
@@ -1998,7 +2049,7 @@ function ModalNovoTema({
             disabled={salvando}
             className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
           >
-            {salvando ? "Criando..." : "Criar tema"}
+            {salvando ? "Criando..." : "Criar aula"}
           </button>
           <button onClick={onClose} className="text-sm font-semibold text-ink/60 hover:text-ink">
             Cancelar
@@ -2025,7 +2076,7 @@ function ModalRenomearTema({ tema, onClose, onSalvo }: { tema: Tema; onClose: ()
   return (
     <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
       <div className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-ink mb-4">Renomear tema</h2>
+        <h2 className="text-lg font-bold text-ink mb-4">Renomear aula</h2>
         <input
           value={titulo}
           onChange={(e) => setTitulo(e.target.value)}
