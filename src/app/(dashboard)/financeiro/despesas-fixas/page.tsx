@@ -57,10 +57,7 @@ export default function DespesasFixasPage() {
   const [despesas, setDespesas] = useState<DespesaFixa[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>("ativo");
-  const [filtroGrupo, setFiltroGrupo] = useState("");
-  const [buscaGrupoFiltro, setBuscaGrupoFiltro] = useState("");
-  const [mostrarGruposFiltro, setMostrarGruposFiltro] = useState(false);
-  const [gruposDisponiveis, setGruposDisponiveis] = useState<string[]>([]);
+  const [buscaTexto, setBuscaTexto] = useState("");
   const [painelAberto, setPainelAberto] = useState(false);
   const [editando, setEditando] = useState<DespesaFixa | null>(null);
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
@@ -90,15 +87,6 @@ export default function DespesasFixasPage() {
   useEffect(() => {
     carregar();
   }, [carregar]);
-
-  useEffect(() => {
-    async function carregarGrupos() {
-      const supabase = createClient();
-      const { data } = await supabase.from("grupos_lancamento").select("nome").order("nome");
-      setGruposDisponiveis((data ?? []).map((g) => g.nome));
-    }
-    carregarGrupos();
-  }, []);
 
   // Mesma lógica do contrato recorrente: mantém sempre pelo menos 3 meses de
   // parcela gerada à frente; quando cai abaixo disso, completa até 12 de novo.
@@ -159,26 +147,51 @@ export default function DespesasFixasPage() {
     }
   }
 
-  const filtradas = despesas.filter((d) => (filtro === "todos" || d.status === filtro) && (!filtroGrupo || d.grupo === filtroGrupo));
+  const filtradas = despesas.filter((d) => {
+    if (filtro !== "todos" && d.status !== filtro) return false;
+    if (!buscaTexto.trim()) return true;
+    const alvo = normalizar(buscaTexto);
+    return (
+      normalizar(d.nome).includes(alvo) ||
+      normalizar(d.pessoas?.nome ?? "").includes(alvo) ||
+      normalizar(d.grupo ?? "").includes(alvo) ||
+      String(d.valor_mensal).replace(".", ",").includes(buscaTexto.trim())
+    );
+  });
   const totalAtivasMensal = despesas.filter((d) => d.status === "ativo").reduce((s, d) => s + d.valor_mensal, 0);
 
   return (
     <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-extrabold text-ink mb-1">Despesas Fixas</h1>
           <p className="text-sm text-ink/60">
             Assinaturas, aluguel, sistemas e outras contas recorrentes da agência.
           </p>
         </div>
-        {!painelAberto && !editando && (
-          <button
-            onClick={() => setPainelAberto(true)}
-            className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
-          >
-            + Nova despesa fixa
-          </button>
-        )}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="inline-flex items-center gap-0.5 rounded-full bg-surface p-1">
+            {(["ativo", "encerrado", "todos"] as Filtro[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFiltro(f)}
+                className={`rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
+                  filtro === f ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                }`}
+              >
+                {f === "ativo" ? "Ativas" : f === "encerrado" ? "Encerradas" : "Todas"}
+              </button>
+            ))}
+          </div>
+          {!painelAberto && !editando && (
+            <button
+              onClick={() => setPainelAberto(true)}
+              className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors shrink-0"
+            >
+              + Nova despesa fixa
+            </button>
+          )}
+        </div>
       </div>
 
       {erroCarregamento && (
@@ -188,70 +201,18 @@ export default function DespesasFixasPage() {
         </div>
       )}
 
-      <div className="rounded-2xl bg-card border border-black/5 p-4 mb-6 w-fit anim-entrada">
-        <p className="text-xs text-ink/50 mb-0.5">Total mensal (ativas)</p>
-        <NumeroAnimado valor={totalAtivasMensal} formatar={formatarMoeda} className="block text-xl font-extrabold text-red-600" />
-      </div>
-
       <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
-        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner">
-          {(["ativo", "encerrado", "todos"] as Filtro[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFiltro(f)}
-              className={`rounded-full px-5 py-2 text-sm font-bold transition-all ${
-                filtro === f ? "bg-ink text-white shadow-md scale-105" : "text-ink/50 hover:text-ink hover:bg-white/60"
-              }`}
-            >
-              {f === "ativo" ? "Ativas" : f === "encerrado" ? "Encerradas" : "Todas"}
-            </button>
-          ))}
+        <div className="rounded-2xl bg-card border border-black/5 p-4 w-fit anim-entrada">
+          <p className="text-xs text-ink/50 mb-0.5">Total mensal (ativas)</p>
+          <NumeroAnimado valor={totalAtivasMensal} formatar={formatarMoeda} className="block text-xl font-extrabold text-red-600" />
         </div>
 
-        <div className="relative">
-          {filtroGrupo ? (
-            <button
-              onClick={() => {
-                setFiltroGrupo("");
-                setBuscaGrupoFiltro("");
-              }}
-              className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-3.5 py-2 text-xs font-bold"
-            >
-              Grupo: {filtroGrupo} ✕
-            </button>
-          ) : (
-            <input
-              value={buscaGrupoFiltro}
-              onChange={(e) => setBuscaGrupoFiltro(e.target.value)}
-              onFocus={() => setMostrarGruposFiltro(true)}
-              onBlur={() => setTimeout(() => setMostrarGruposFiltro(false), 150)}
-              placeholder="Filtrar por grupo..."
-              className="input text-sm !w-48"
-            />
-          )}
-          {mostrarGruposFiltro && !filtroGrupo && (
-            <div className="absolute right-0 z-10 mt-1 w-56 max-h-56 overflow-y-auto rounded-2xl bg-white border border-black/10 shadow-lg py-1">
-              {gruposDisponiveis.filter((g) => normalizar(g).includes(normalizar(buscaGrupoFiltro))).length === 0 ? (
-                <p className="px-3 py-2 text-xs text-ink/40">Nenhum grupo encontrado.</p>
-              ) : (
-                gruposDisponiveis
-                  .filter((g) => normalizar(g).includes(normalizar(buscaGrupoFiltro)))
-                  .map((g) => (
-                    <button
-                      key={g}
-                      onMouseDown={() => {
-                        setFiltroGrupo(g);
-                        setMostrarGruposFiltro(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-surface"
-                    >
-                      {g}
-                    </button>
-                  ))
-              )}
-            </div>
-          )}
-        </div>
+        <input
+          value={buscaTexto}
+          onChange={(e) => setBuscaTexto(e.target.value)}
+          placeholder="Buscar por nome, fornecedor, valor..."
+          className="input text-sm !w-64"
+        />
       </div>
 
       {(painelAberto || editando) && (
