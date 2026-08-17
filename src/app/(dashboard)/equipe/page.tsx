@@ -47,6 +47,10 @@ export default function EquipePage() {
     setLoading(true);
     const supabase = createClient();
     const hojeISO = new Date().toISOString().slice(0, 10);
+    const hoje = new Date();
+    const inicioMesISO = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10);
+    const fimMesISO = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).toISOString().slice(0, 10);
+    const noMes = (data: string | null) => !!data && data >= inicioMesISO && data <= fimMesISO;
 
     const [{ data: funcData }, { data: statusData }] = await Promise.all([
       supabase
@@ -105,7 +109,8 @@ export default function EquipePage() {
         minhasTarefas.filter((t) => !idsConcluido.has(t.status_id) && t.prazo && t.prazo < hojeISO).length +
         meusPosts.filter((p) => !idsConcluido.has(p.status_id) && p.data_publicacao < hojeISO).length;
       const tempoTotalSegundos =
-        minhasTarefas.reduce((s, t) => s + (t.tempo_total_segundos ?? 0), 0) + meusPosts.reduce((s, p) => s + (p.tempo_total_segundos ?? 0), 0);
+        minhasTarefas.filter((t) => noMes(t.prazo)).reduce((s, t) => s + (t.tempo_total_segundos ?? 0), 0) +
+        meusPosts.filter((p) => noMes(p.data_publicacao)).reduce((s, p) => s + (p.tempo_total_segundos ?? 0), 0);
 
       return { ...f, abertas, concluidas, atrasadas, tempoTotalSegundos };
     });
@@ -226,7 +231,7 @@ export default function EquipePage() {
                 )}
 
                 <div className="flex items-center justify-between text-xs text-ink/50 pt-2 border-t border-black/5">
-                  <span className="flex items-center gap-1">⏱️ {formatarDuracao(m.tempoTotalSegundos)}</span>
+                  <span className="flex items-center gap-1">⏱️ {formatarDuracao(m.tempoTotalSegundos)} este mês</span>
                   <span className="font-semibold text-forest group-hover:underline">Ver detalhes →</span>
                 </div>
                 </button>

@@ -484,7 +484,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     };
   }, [id, carregarComentarios]);
 
-  async function registrarHistorico(descricaoEvento: string) {
+  async function registrarHistorico(descricaoEvento: string, notificar: boolean = false) {
     const supabase = createClient();
     await supabase.from("tarefas_historico").insert({ tarefa_id: id, autor_id: meuId, descricao: descricaoEvento });
     setHistorico((atual) => [
@@ -492,6 +492,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       ...atual,
     ]);
 
+    if (!notificar) return;
     const destinatarios = responsaveis.filter((r) => r.authUserId && r.authUserId !== meuId).map((r) => r.authUserId!);
     if (destinatarios.length > 0) {
       await supabase.from("notificacoes").insert(
@@ -509,10 +510,10 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     }
   }
 
-  async function salvarCampo(campo: Record<string, string | null>, eventoHistorico?: string) {
+  async function salvarCampo(campo: Record<string, string | null>, eventoHistorico?: string, notificar: boolean = false) {
     const supabase = createClient();
     await supabase.from("tarefas").update(campo).eq("id", id);
-    if (eventoHistorico) registrarHistorico(eventoHistorico);
+    if (eventoHistorico) registrarHistorico(eventoHistorico, notificar);
   }
 
   async function adicionarAnexos(arquivos: FileList | null) {
@@ -533,7 +534,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
         });
       }
     }
-    registrarHistorico(`anexou ${arquivos.length > 1 ? `${arquivos.length} arquivos` : "um arquivo"}`);
+    registrarHistorico(`anexou ${arquivos.length > 1 ? `${arquivos.length} arquivos` : "um arquivo"}`, true);
     carregarAnexos();
     setEnviandoAnexo(false);
   }
@@ -571,8 +572,8 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     }
   }
 
-  async function salvarCampoDireto(nomeCampo: string, valor: string | null, eventoHistorico?: string) {
-    await salvarCampo({ [nomeCampo]: valor }, eventoHistorico);
+  async function salvarCampoDireto(nomeCampo: string, valor: string | null, eventoHistorico?: string, notificar: boolean = false) {
+    await salvarCampo({ [nomeCampo]: valor }, eventoHistorico, notificar);
   }
 
   const mencoesDescricaoRef = useRef<Set<string>>(new Set());
@@ -625,11 +626,11 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     if (jaTem) {
       setResponsaveis((atual) => atual.filter((r) => r.id !== funcionarioId));
       await supabase.from("tarefas_responsaveis").delete().eq("tarefa_id", id).eq("funcionario_id", funcionarioId);
-      if (pessoa) registrarHistorico(`removeu ${pessoa.nome} dos responsáveis`);
+      if (pessoa) registrarHistorico(`removeu ${pessoa.nome} dos responsáveis`, true);
     } else {
       if (pessoa) setResponsaveis((atual) => [...atual, pessoa]);
       await supabase.from("tarefas_responsaveis").insert({ tarefa_id: id, funcionario_id: funcionarioId });
-      if (pessoa) registrarHistorico(`atribuiu ${pessoa.nome} como responsável`);
+      if (pessoa) registrarHistorico(`atribuiu ${pessoa.nome} como responsável`, true);
       if (pessoa?.authUserId && pessoa.authUserId !== meuId) {
         await supabase.from("notificacoes").insert({
           destinatario_id: pessoa.authUserId,
@@ -735,6 +736,26 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             autor_nome: meuNome,
             autor_foto_url: meuFotoUrl,
           })).filter((n) => n.destinatario_id)
+        );
+      }
+      const idsAuthMencionados = new Set(
+        mencionados.map((c) => funcionariosComAcesso.find((f) => f.id === c.id)?.authUserId).filter(Boolean)
+      );
+      const destinatariosComentario = responsaveis
+        .filter((r) => r.authUserId && r.authUserId !== meuId && !idsAuthMencionados.has(r.authUserId))
+        .map((r) => r.authUserId!);
+      if (destinatariosComentario.length > 0) {
+        await supabase.from("notificacoes").insert(
+          destinatariosComentario.map((destId) => ({
+            destinatario_id: destId,
+            tipo: "comentario_tarefa",
+            titulo: `${meuNome} comentou numa tarefa sua`,
+            descricao: tarefa?.titulo ?? texto.slice(0, 120),
+            link: `/tarefas/${id}`,
+            autor_id: meuId,
+            autor_nome: meuNome,
+            autor_foto_url: meuFotoUrl,
+          }))
         );
       }
       void nomesColegas;
@@ -977,7 +998,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                       <button
                         key={s.id}
                         onClick={() => {
-                          salvarCampo({ status_id: s.id }, `mudou o status para "${s.nome}"`);
+                          salvarCampo({ status_id: s.id }, `mudou o status para "${s.nome}"`, true);
                           setTarefa((t) => (t ? { ...t, status_id: s.id } : t));
                           setStatusAberto(false);
                         }}
@@ -1067,7 +1088,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                 value={dataInicio}
                 onChange={(e) => {
                   setDataInicio(e.target.value);
-                  salvarCampo({ data_inicio: e.target.value || null }, "mudou a data de início");
+                  salvarCampo({ data_inicio: e.target.value || null }, "mudou a data de início", true);
                 }}
                 className="input"
               />
@@ -1080,7 +1101,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                 value={prazo}
                 onChange={(e) => {
                   setPrazo(e.target.value);
-                  salvarCampo({ prazo: e.target.value || null }, "mudou o prazo");
+                  salvarCampo({ prazo: e.target.value || null }, "mudou o prazo", true);
                 }}
                 className="input"
               />

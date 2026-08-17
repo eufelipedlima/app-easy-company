@@ -478,7 +478,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     };
   }, [id, carregarComentarios]);
 
-  async function registrarHistorico(descricaoEvento: string) {
+  async function registrarHistorico(descricaoEvento: string, notificar: boolean = false) {
     const supabase = createClient();
     await supabase.from("posts_conteudo_historico").insert({ post_id: id, autor_id: meuId, descricao: descricaoEvento });
     setHistorico((atual) => [
@@ -486,6 +486,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       ...atual,
     ]);
 
+    if (!notificar) return;
     const destinatarios = responsaveis.filter((r) => r.authUserId && r.authUserId !== meuId).map((r) => r.authUserId!);
     if (destinatarios.length > 0) {
       await supabase.from("notificacoes").insert(
@@ -503,10 +504,10 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     }
   }
 
-  async function salvarCampo(campo: Record<string, string | null>, eventoHistorico?: string) {
+  async function salvarCampo(campo: Record<string, string | null>, eventoHistorico?: string, notificar: boolean = false) {
     const supabase = createClient();
     await supabase.from("posts_conteudo").update(campo).eq("id", id);
-    if (eventoHistorico) registrarHistorico(eventoHistorico);
+    if (eventoHistorico) registrarHistorico(eventoHistorico, notificar);
   }
 
   const mencoesObservacoesRef = useRef<Set<string>>(new Set());
@@ -579,7 +580,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       alert(`Não foi possível subir ${erros.length === 1 ? "esse arquivo" : "esses arquivos"}:\n\n${erros.join("\n")}`);
     }
     if (arquivosParaEnviar.length > erros.length) {
-      registrarHistorico(`adicionou ${arquivosParaEnviar.length > 1 ? `${arquivosParaEnviar.length} artes` : "uma arte"}`);
+      registrarHistorico(`adicionou ${arquivosParaEnviar.length > 1 ? `${arquivosParaEnviar.length} artes` : "uma arte"}`, true);
     }
     setEnviandoMidia(false);
   }
@@ -648,11 +649,11 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     if (jaTem) {
       setResponsaveis((atual) => atual.filter((r) => r.id !== funcionarioId));
       await supabase.from("posts_conteudo_responsaveis").delete().eq("post_id", id).eq("funcionario_id", funcionarioId);
-      if (pessoa) registrarHistorico(`removeu ${pessoa.nome} dos responsáveis`);
+      if (pessoa) registrarHistorico(`removeu ${pessoa.nome} dos responsáveis`, true);
     } else {
       if (pessoa) setResponsaveis((atual) => [...atual, pessoa]);
       await supabase.from("posts_conteudo_responsaveis").insert({ post_id: id, funcionario_id: funcionarioId });
-      if (pessoa) registrarHistorico(`atribuiu ${pessoa.nome} como responsável`);
+      if (pessoa) registrarHistorico(`atribuiu ${pessoa.nome} como responsável`, true);
       if (pessoa?.authUserId && pessoa.authUserId !== meuId) {
         await supabase.from("notificacoes").insert({
           destinatario_id: pessoa.authUserId,
@@ -754,6 +755,26 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
               autor_foto_url: meuFotoUrl,
             }))
             .filter((n) => n.destinatario_id)
+        );
+      }
+      const idsAuthMencionados = new Set(
+        mencionados.map((c) => funcionariosComAcesso.find((f) => f.id === c.id)?.authUserId).filter(Boolean)
+      );
+      const destinatariosComentario = responsaveis
+        .filter((r) => r.authUserId && r.authUserId !== meuId && !idsAuthMencionados.has(r.authUserId))
+        .map((r) => r.authUserId!);
+      if (destinatariosComentario.length > 0) {
+        await supabase.from("notificacoes").insert(
+          destinatariosComentario.map((destId) => ({
+            destinatario_id: destId,
+            tipo: "comentario_conteudo",
+            titulo: `${meuNome} comentou num conteúdo seu`,
+            descricao: post?.titulo || texto.slice(0, 120),
+            link: `/conteudo/calendario/post/${id}`,
+            autor_id: meuId,
+            autor_nome: meuNome,
+            autor_foto_url: meuFotoUrl,
+          }))
         );
       }
       carregarComentarios();
@@ -951,7 +972,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                       <button
                         key={s.id}
                         onClick={() => {
-                          salvarCampo({ status_id: s.id }, `mudou o status para "${s.nome}"`);
+                          salvarCampo({ status_id: s.id }, `mudou o status para "${s.nome}"`, true);
                           setPost((p) => (p ? { ...p, status_id: s.id } : p));
                           setStatusAberto(false);
                         }}
@@ -1063,7 +1084,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                 value={dataInicio}
                 onChange={(e) => {
                   setDataInicio(e.target.value);
-                  salvarCampo({ data_inicio: e.target.value || null }, "mudou a data de início");
+                  salvarCampo({ data_inicio: e.target.value || null }, "mudou a data de início", true);
                 }}
                 className="input"
               />
@@ -1077,7 +1098,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                   value={dataPublicacao}
                   onChange={(e) => {
                     setDataPublicacao(e.target.value);
-                    salvarCampo({ data_publicacao: e.target.value }, "mudou a data de publicação");
+                    salvarCampo({ data_publicacao: e.target.value }, "mudou a data de publicação", true);
                   }}
                   className="input"
                 />
