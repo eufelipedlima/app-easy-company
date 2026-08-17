@@ -201,6 +201,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
 
   const [titulo, setTitulo] = useState("");
   const [legenda, setLegenda] = useState("");
+  const ultimaLegendaSalvaRef = useRef<string | null>(null);
   const legendaRef = useRef<HTMLTextAreaElement>(null);
   const [legendaRecolhida, setLegendaRecolhida] = useState(false);
   const [legendaTransborda, setLegendaTransborda] = useState(false);
@@ -299,6 +300,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       setPost(p);
       setTitulo(p.titulo ?? "");
       setLegenda(p.legenda ?? "");
+      ultimaLegendaSalvaRef.current = p.legenda ?? "";
       setObservacoes(p.observacoes_internas ?? "");
       mencoesObservacoesRef.current = extrairMencoes(p.observacoes_internas ?? "");
       setClienteSelecionado(listaClientes.find((c) => c.id === p.cliente_id) ?? null);
@@ -460,6 +462,20 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     carregarHistorico();
   }, [carregarResponsaveis, carregarComentarios, carregarHistorico]);
 
+  // Salva a legenda sozinha, alguns instantes depois que a pessoa para de
+  // digitar — assim, mesmo se ela fechar a aba ou sair rápido antes do campo
+  // perder o foco (que era o único jeito de salvar antes), o texto não se
+  // perde.
+  useEffect(() => {
+    if (ultimaLegendaSalvaRef.current === legenda) return;
+    const timer = setTimeout(async () => {
+      const supabase = createClient();
+      await supabase.from("posts_conteudo").update({ legenda: legenda || null }).eq("id", id);
+      ultimaLegendaSalvaRef.current = legenda;
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [legenda, id]);
+
   useEffect(() => {
     if (indiceMidiaAberta === null) return;
     function aoTeclar(e: KeyboardEvent) {
@@ -558,20 +574,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   async function adicionarMidias(arquivos: FileList | null) {
     if (!arquivos || arquivos.length === 0) return;
 
-    const limite = formato === "carrossel" ? 10 : 1;
-    const espacoLivre = limite - midias.length;
-    if (espacoLivre <= 0) {
-      alert(
-        formato === "carrossel"
-          ? "O carrossel já tem o máximo de 10 artes. Remove alguma antes de adicionar outra."
-          : "Formato estático aceita só 1 arte. Remove a atual antes de subir outra."
-      );
-      return;
-    }
-    const arquivosParaEnviar = Array.from(arquivos).slice(0, espacoLivre);
-    if (arquivosParaEnviar.length < arquivos.length) {
-      alert(`Só cabem mais ${espacoLivre} arte(s) nesse post — os arquivos extras foram ignorados.`);
-    }
+    const arquivosParaEnviar = Array.from(arquivos);
 
     setEnviandoMidia(true);
     const supabase = createClient();
@@ -1177,7 +1180,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
               <span className="block text-sm font-bold text-ink">Mídia</span>
               {formato !== "video" && (
                 <span className="text-xs text-ink/40">
-                  {midias.length}/{formato === "carrossel" ? 10 : 1}
+                  {midias.length} {midias.length === 1 ? "arquivo" : "arquivos"}
                 </span>
               )}
             </div>
@@ -1206,14 +1209,14 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                   ref={inputMidiaRef}
                   type="file"
                   accept={formato === "video" ? "image/*" : "image/*,video/*"}
-                  multiple={formato === "carrossel"}
+                  multiple
                   onChange={(e) => adicionarMidias(e.target.files)}
                   className="hidden"
                 />
                 <button
                   type="button"
                   onClick={() => inputMidiaRef.current?.click()}
-                  disabled={enviandoMidia || midias.length >= (formato === "carrossel" ? 10 : 1)}
+                  disabled={enviandoMidia}
                   className="rounded-full border-2 border-ink/15 text-ink px-4 py-2 text-xs font-semibold hover:bg-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {enviandoMidia ? "Enviando..." : midias.length === 0 ? "+ Adicionar arte" : "+ Adicionar mais artes"}
@@ -1284,7 +1287,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                 <span className="block text-xs text-ink/40 mt-2">
                   {formato === "carrossel"
                     ? "Passa o mouse na arte pra reordenar (setinhas), visualizar ou remover — a ordem aqui é a ordem que aparece no carrossel. Aceita foto ou vídeo leve."
-                    : "Formato estático aceita só 1 arte — foto ou vídeo leve."}
+                    : "Pode adicionar quantas artes precisar — foto ou vídeo leve."}
                 </span>
               </div>
             )}
@@ -1296,7 +1299,10 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
               ref={legendaRef}
               value={legenda}
               onChange={(e) => setLegenda(e.target.value)}
-              onBlur={() => salvarCampo({ legenda: legenda || null }, "atualizou a legenda")}
+              onBlur={() => {
+                salvarCampo({ legenda: legenda || null }, "atualizou a legenda");
+                ultimaLegendaSalvaRef.current = legenda;
+              }}
               className="input resize-none overflow-hidden"
               rows={1}
               style={legendaRecolhida && legendaTransborda ? { maxHeight: ALTURA_COLAPSADA_LEGENDA, overflow: "hidden" } : undefined}
