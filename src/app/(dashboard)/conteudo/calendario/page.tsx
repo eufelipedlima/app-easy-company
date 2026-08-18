@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useLayoutEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -185,19 +185,20 @@ function nomeCliente(p: Post) {
   return p.clientes?.papeis?.pessoas?.nome ?? "—";
 }
 
-export function CalendarioConteudoConteudo({
-  viewInicial,
-  clienteFixoId,
-  compacto,
-  visualizacaoExterna,
-  onMudarVisualizacao,
-}: {
-  viewInicial: "calendario" | "kanban" | "lista";
-  clienteFixoId?: string;
-  compacto?: boolean;
-  visualizacaoExterna?: "calendario" | "kanban" | "lista";
-  onMudarVisualizacao?: (v: "calendario" | "kanban" | "lista") => void;
-}) {
+export interface CalendarioConteudoHandle {
+  abrirLinkPublico: () => void;
+}
+
+export const CalendarioConteudoConteudo = forwardRef<
+  CalendarioConteudoHandle,
+  {
+    viewInicial: "calendario" | "kanban" | "lista";
+    clienteFixoId?: string;
+    compacto?: boolean;
+    visualizacaoExterna?: "calendario" | "kanban" | "lista";
+    onMudarVisualizacao?: (v: "calendario" | "kanban" | "lista") => void;
+  }
+>(function CalendarioConteudoConteudo({ viewInicial, clienteFixoId, compacto, visualizacaoExterna, onMudarVisualizacao }, ref) {
   const hoje = new Date();
   const [mes, setMes] = useState(hoje.getMonth());
   const [ano, setAno] = useState(hoje.getFullYear());
@@ -211,6 +212,7 @@ export function CalendarioConteudoConteudo({
   const [editando, setEditando] = useState<Post | null>(null);
   const [novoEmData, setNovoEmData] = useState<string | null>(null);
   const [linkPublicoAberto, setLinkPublicoAberto] = useState(false);
+  useImperativeHandle(ref, () => ({ abrirLinkPublico: () => setLinkPublicoAberto(true) }), []);
   const [criarDropdownAberto, setCriarDropdownAberto] = useState(false);
   const [planejamentoModalAberto, setPlanejamentoModalAberto] = useState(false);
   const [camposVisiveis, setCamposVisiveis] = useState<CamposVisiveis>(CAMPOS_VISIVEIS_PADRAO);
@@ -597,8 +599,8 @@ export function CalendarioConteudoConteudo({
         </div>
       )}
 
+      {!compacto && (
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        {!compacto && (
         <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 shrink-0">
           <button
             onClick={() => setVisualizacao("kanban")}
@@ -625,7 +627,6 @@ export function CalendarioConteudoConteudo({
             Lista
           </button>
         </div>
-        )}
 
         <div className="flex items-center gap-2">
           <button
@@ -669,6 +670,7 @@ export function CalendarioConteudoConteudo({
           </div>
         </div>
       </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 mb-6 pb-3 border-b border-black/5">
         <div className="relative">
@@ -1270,7 +1272,7 @@ export function CalendarioConteudoConteudo({
       )}
     </main>
   );
-}
+});
 
 export default function CalendarioConteudoPage() {
   return <CalendarioConteudoConteudo viewInicial="kanban" />;

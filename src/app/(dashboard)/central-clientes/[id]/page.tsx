@@ -7,8 +7,8 @@ import { corDoStatus } from "@/lib/status-conteudo";
 import { IconeProjeto } from "@/components/icones-tarefa";
 import { normalizar } from "@/lib/normalizar";
 import { DndContext, useDraggable, useDroppable, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { CalendarioConteudoConteudo } from "@/app/(dashboard)/conteudo/calendario/page";
-import { Archive } from "lucide-react";
+import { CalendarioConteudoConteudo, type CalendarioConteudoHandle } from "@/app/(dashboard)/conteudo/calendario/page";
+import { Archive, LayoutGrid, CheckSquare, FileText, MessageCircle, FolderOpen, Link2 } from "lucide-react";
 
 interface Responsavel {
   id: string;
@@ -146,6 +146,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
   const [fotoCliente, setFotoCliente] = useState<string | null>(null);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const inputFotoRef = useRef<HTMLInputElement>(null);
+  const calendarioRef = useRef<CalendarioConteudoHandle>(null);
   const [aba, setAba] = useState<Aba>("geral");
   const [souAdmin, setSouAdmin] = useState(false);
   const [confirmandoArquivar, setConfirmandoArquivar] = useState(false);
@@ -602,77 +603,121 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
     (p) => !filtroStatusAtivo || p.status_id === filtroStatusAtivo
   );
 
-  const ABAS: { chave: Aba; label: string; contagem?: number }[] = [
-    { chave: "geral", label: "Visão geral" },
-    { chave: "tarefas", label: "Tarefas", contagem: tarefas.length },
-    { chave: "conteudo", label: "Conteúdo", contagem: posts.length },
-    { chave: "chat", label: "Chat" },
-    { chave: "docs", label: "Docs", contagem: docs.length },
+  const ABAS: { chave: Aba; label: string; contagem?: number; icone: React.ReactNode }[] = [
+    { chave: "geral", label: "Visão geral", icone: <LayoutGrid size={14} /> },
+    { chave: "tarefas", label: "Tarefas", contagem: tarefas.length, icone: <CheckSquare size={14} /> },
+    { chave: "conteudo", label: "Conteúdo", contagem: posts.length, icone: <FileText size={14} /> },
+    { chave: "chat", label: "Chat", icone: <MessageCircle size={14} /> },
+    { chave: "docs", label: "Docs", contagem: docs.length, icone: <FolderOpen size={14} /> },
   ];
 
   return (
-    <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
-      <button onClick={() => router.push("/central-clientes")} className="text-sm font-semibold text-ink/50 hover:text-ink mb-4">
+    <main className="w-full px-6 sm:px-8 lg:px-10 py-8">
+      <button onClick={() => router.push("/central-clientes")} className="text-sm font-semibold text-ink/50 hover:text-ink mb-3">
         ← Central de Clientes
       </button>
 
-      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
-        <div className="flex items-center gap-4 min-w-0">
+      <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+        <div className="flex items-center gap-3 min-w-0 shrink-0">
           <div className="relative group/avatar shrink-0">
             {fotoCliente ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={fotoCliente} alt={nomeCliente} className="h-14 w-14 rounded-full object-cover" />
+              <img src={fotoCliente} alt={nomeCliente} className="h-11 w-11 rounded-full object-cover" />
             ) : (
-              <div className={`h-14 w-14 rounded-full ${corAvatar(nomeCliente)} text-white flex items-center justify-center font-bold text-lg shrink-0`}>
+              <div className={`h-11 w-11 rounded-full ${corAvatar(nomeCliente)} text-white flex items-center justify-center font-bold text-sm shrink-0`}>
                 {nomeCliente.slice(0, 2).toUpperCase()}
               </div>
             )}
             <button
               onClick={() => inputFotoRef.current?.click()}
               disabled={enviandoFoto}
-              className="absolute inset-0 rounded-full bg-black/50 text-white opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-[10px] font-semibold"
+              className="absolute inset-0 rounded-full bg-black/50 text-white opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-[9px] font-semibold"
               title="Trocar foto do cliente"
             >
               {enviandoFoto ? "..." : "Trocar"}
             </button>
             <input ref={inputFotoRef} type="file" accept="image/*" onChange={enviarFotoCliente} className="hidden" />
           </div>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-extrabold text-ink truncate">{nomeCliente}</h1>
-            <p className="text-sm text-ink/45 truncate">
-              Tudo o que envolve {nomeCliente} num só lugar — tarefas, conteúdo, docs e conversas.
-            </p>
-          </div>
+          <h1 className="text-xl font-extrabold text-ink truncate">{nomeCliente}</h1>
         </div>
 
-        {aba === "conteudo" && (
-          <div className="flex items-center gap-2.5 shrink-0 flex-wrap justify-end">
-            <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 shadow-inner overflow-x-auto">
+            {ABAS.map((a) => (
               <button
-                onClick={() => setVisualizacaoConteudo("kanban")}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                  visualizacaoConteudo === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                key={a.chave}
+                onClick={() => setAba(a.chave)}
+                className={`rounded-full px-3.5 py-2 text-sm font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                  aba === a.chave ? "bg-ink text-white shadow-md" : "text-ink/50 hover:text-ink"
                 }`}
               >
-                Kanban
+                {a.icone}
+                {a.label}
+                {typeof a.contagem === "number" && a.contagem > 0 && (
+                  <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${aba === a.chave ? "bg-white/20" : "bg-black/10"}`}>{a.contagem}</span>
+                )}
               </button>
+            ))}
+          </div>
+
+          {souAdmin && (
+            <div className="relative shrink-0">
               <button
-                onClick={() => setVisualizacaoConteudo("calendario")}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                  visualizacaoConteudo === "calendario" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-                }`}
+                onClick={() => setConfirmandoArquivar((v) => !v)}
+                title="Arquivar Central de Cliente"
+                className="h-9 w-9 rounded-full border-2 border-red-200 text-red-500 flex items-center justify-center hover:bg-red-50 transition-colors"
               >
-                Calendário
+                <Archive size={16} />
               </button>
-              <button
-                onClick={() => setVisualizacaoConteudo("lista")}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                  visualizacaoConteudo === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-                }`}
-              >
-                Lista
-              </button>
+              {confirmandoArquivar && (
+                <div className="absolute z-10 top-full right-0 mt-2 w-72 rounded-2xl bg-white border border-red-200 shadow-lg p-4">
+                  <p className="text-xs text-ink/60 mb-3">
+                    Isso tira {nomeCliente} da lista da Central de Clientes. Nada é excluído — tarefas, conteúdo e docs continuam
+                    guardados, só ficam inacessíveis por aqui até reativar.
+                  </p>
+                  <button
+                    onClick={arquivarCentral}
+                    className="w-full rounded-full bg-red-600 text-white px-4 py-2 text-xs font-semibold hover:bg-red-700 transition-colors"
+                  >
+                    Confirmar arquivamento
+                  </button>
+                </div>
+              )}
             </div>
+          )}
+        </div>
+      </div>
+
+      {aba === "conteudo" && (
+        <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+          <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+            <button
+              onClick={() => setVisualizacaoConteudo("kanban")}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                visualizacaoConteudo === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Kanban
+            </button>
+            <button
+              onClick={() => setVisualizacaoConteudo("calendario")}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                visualizacaoConteudo === "calendario" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Calendário
+            </button>
+            <button
+              onClick={() => setVisualizacaoConteudo("lista")}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                visualizacaoConteudo === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Lista
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap justify-end">
             {visualizacaoConteudo !== "calendario" && (
               <label className="flex items-center gap-1.5 text-xs text-ink/60 cursor-pointer">
                 <input
@@ -692,62 +737,23 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
                 {statusList.find((s) => s.id === filtroStatusAtivo)?.nome} ✕
               </button>
             )}
-            {visualizacaoConteudo !== "calendario" && (
+            {visualizacaoConteudo === "calendario" && (
               <button
-                onClick={novoPostRapido}
-                className="rounded-full bg-ink text-white px-4 py-1.5 text-xs font-semibold hover:bg-forest transition-colors"
+                onClick={() => calendarioRef.current?.abrirLinkPublico()}
+                className="inline-flex items-center gap-1.5 rounded-full border-2 border-ink/15 text-ink px-3.5 py-1.5 text-xs font-semibold hover:bg-surface transition-colors"
               >
-                + Novo post
+                <Link2 size={13} /> Link público
               </button>
             )}
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
-        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner">
-          {ABAS.map((a) => (
             <button
-              key={a.chave}
-              onClick={() => setAba(a.chave)}
-              className={`rounded-full px-4 py-2 text-sm font-bold transition-all flex items-center gap-1.5 ${
-                aba === a.chave ? "bg-ink text-white shadow-md" : "text-ink/50 hover:text-ink"
-              }`}
+              onClick={novoPostRapido}
+              className="rounded-full bg-ink text-white px-4 py-1.5 text-xs font-semibold hover:bg-forest transition-colors"
             >
-              {a.label}
-              {typeof a.contagem === "number" && a.contagem > 0 && (
-                <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${aba === a.chave ? "bg-white/20" : "bg-black/10"}`}>{a.contagem}</span>
-              )}
+              + Novo post
             </button>
-          ))}
+          </div>
         </div>
-
-        {souAdmin && (
-          <div className="relative shrink-0">
-            <button
-              onClick={() => setConfirmandoArquivar((v) => !v)}
-              title="Arquivar Central de Cliente"
-              className="h-9 w-9 rounded-full border-2 border-red-200 text-red-500 flex items-center justify-center hover:bg-red-50 transition-colors"
-            >
-              <Archive size={16} />
-            </button>
-            {confirmandoArquivar && (
-              <div className="absolute z-10 top-full right-0 mt-2 w-72 rounded-2xl bg-white border border-red-200 shadow-lg p-4">
-                <p className="text-xs text-ink/60 mb-3">
-                  Isso tira {nomeCliente} da lista da Central de Clientes. Nada é excluído — tarefas, conteúdo e docs continuam
-                  guardados, só ficam inacessíveis por aqui até reativar.
-                </p>
-                <button
-                  onClick={arquivarCentral}
-                  className="w-full rounded-full bg-red-600 text-white px-4 py-2 text-xs font-semibold hover:bg-red-700 transition-colors"
-                >
-                  Confirmar arquivamento
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      )}
 
       {aba === "geral" && (
         <div className="space-y-4">
@@ -1008,6 +1014,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
         <div>
           {visualizacaoConteudo === "calendario" ? (
             <CalendarioConteudoConteudo
+              ref={calendarioRef}
               viewInicial="calendario"
               clienteFixoId={id}
               compacto
