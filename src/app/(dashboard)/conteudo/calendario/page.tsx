@@ -188,9 +188,15 @@ function nomeCliente(p: Post) {
 export function CalendarioConteudoConteudo({
   viewInicial,
   clienteFixoId,
+  compacto,
+  visualizacaoExterna,
+  onMudarVisualizacao,
 }: {
   viewInicial: "calendario" | "kanban" | "lista";
   clienteFixoId?: string;
+  compacto?: boolean;
+  visualizacaoExterna?: "calendario" | "kanban" | "lista";
+  onMudarVisualizacao?: (v: "calendario" | "kanban" | "lista") => void;
 }) {
   const hoje = new Date();
   const [mes, setMes] = useState(hoje.getMonth());
@@ -222,7 +228,9 @@ export function CalendarioConteudoConteudo({
     });
   }
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
-  const [visualizacao, setVisualizacao] = useState<"calendario" | "kanban" | "lista">(viewInicial);
+  const [visualizacaoInterna, setVisualizacaoInterna] = useState<"calendario" | "kanban" | "lista">(viewInicial);
+  const visualizacao = visualizacaoExterna ?? visualizacaoInterna;
+  const setVisualizacao = onMudarVisualizacao ?? setVisualizacaoInterna;
   const [postsKanban, setPostsKanban] = useState<Post[]>([]);
   const [filtroStatusId, setFiltroStatusId] = useState("");
   const [filtroFormato, setFiltroFormato] = useState("");
@@ -574,11 +582,13 @@ export function CalendarioConteudoConteudo({
   }
 
   return (
-    <main className="mx-auto max-w-[2000px] px-6 py-6">
-      <div className="mb-4">
-        <h1 className="text-lg font-extrabold text-ink">Conteúdos</h1>
-        <p className="text-xs text-ink/50">Visão centralizada de todos os conteúdos.</p>
-      </div>
+    <main className={compacto ? "w-full" : "mx-auto max-w-[2000px] px-6 py-6"}>
+      {!compacto && (
+        <div className="mb-4">
+          <h1 className="text-lg font-extrabold text-ink">Conteúdos</h1>
+          <p className="text-xs text-ink/50">Visão centralizada de todos os conteúdos.</p>
+        </div>
+      )}
 
       {erroCarregamento && (
         <div className="rounded-2xl bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 mb-6">
@@ -588,6 +598,7 @@ export function CalendarioConteudoConteudo({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        {!compacto && (
         <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 shrink-0">
           <button
             onClick={() => setVisualizacao("kanban")}
@@ -614,6 +625,7 @@ export function CalendarioConteudoConteudo({
             Lista
           </button>
         </div>
+        )}
 
         <div className="flex items-center gap-2">
           <button

@@ -648,14 +648,6 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
           <div className="flex items-center gap-2.5 shrink-0 flex-wrap justify-end">
             <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
               <button
-                onClick={() => setVisualizacaoConteudo("lista")}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                  visualizacaoConteudo === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-                }`}
-              >
-                Lista
-              </button>
-              <button
                 onClick={() => setVisualizacaoConteudo("kanban")}
                 className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
                   visualizacaoConteudo === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
@@ -670,6 +662,14 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
                 }`}
               >
                 Calendário
+              </button>
+              <button
+                onClick={() => setVisualizacaoConteudo("lista")}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                  visualizacaoConteudo === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                }`}
+              >
+                Lista
               </button>
             </div>
             {visualizacaoConteudo !== "calendario" && (
@@ -1006,9 +1006,13 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       {aba === "conteudo" && (
         <div>
           {visualizacaoConteudo === "calendario" ? (
-            <div className="-mx-6 sm:-mx-8 lg:-mx-10 -mt-6">
-              <CalendarioConteudoConteudo viewInicial="calendario" clienteFixoId={id} />
-            </div>
+            <CalendarioConteudoConteudo
+              viewInicial="calendario"
+              clienteFixoId={id}
+              compacto
+              visualizacaoExterna={visualizacaoConteudo}
+              onMudarVisualizacao={setVisualizacaoConteudo}
+            />
           ) : postsVisiveis.length === 0 ? (
             <p className="text-sm text-ink/50">Nenhum conteúdo ainda.</p>
           ) : visualizacaoConteudo === "kanban" ? (
