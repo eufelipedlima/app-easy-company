@@ -2065,7 +2065,7 @@ function KanbanColuna({
   return (
     <div
       ref={setNodeRef}
-      className={`w-72 shrink-0 rounded-3xl border-2 p-3 min-h-[75vh] transition-all duration-150 ${cor.colBg} ${
+      className={`w-72 shrink-0 rounded-3xl border-2 p-3 min-h-[calc(100vh-280px)] transition-all duration-150 ${cor.colBg} ${
         isOver ? `${cor.colBorder} scale-[1.02] shadow-lg` : "border-transparent"
       }`}
     >
@@ -2074,7 +2074,7 @@ function KanbanColuna({
         <p className="text-sm font-bold text-ink truncate">{coluna.nome}</p>
         <span className={`ml-auto text-xs font-bold rounded-full px-2 py-0.5 shrink-0 ${cor.cor}`}>{cards.length}</span>
       </div>
-      <div data-coluna-scroll className="space-y-2 min-h-[80px] max-h-[75vh] overflow-y-auto pr-1">
+      <div data-coluna-scroll className="space-y-2 min-h-[80px] max-h-[calc(100vh-380px)] overflow-y-auto pr-1">
         {cards.map((p) => (
           <KanbanCardArrastavel
             key={p.id}

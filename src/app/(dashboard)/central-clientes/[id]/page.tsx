@@ -945,9 +945,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
           </div>
           {(() => {
             const tarefasFiltradas = filtroStatusAtivo ? tarefas.filter((t) => t.status_id === filtroStatusAtivo) : tarefas;
-            return tarefasFiltradas.length === 0 ? (
-            <p className="text-sm text-ink/50">Nenhuma tarefa {filtroStatusAtivo ? "nesse status" : "ainda"}.</p>
-          ) : visualizacaoTarefas === "kanban" ? (
+            return visualizacaoTarefas === "kanban" ? (
             <MiniKanban
               statusList={statusList}
               itens={tarefasFiltradas.map((t) => ({
@@ -963,6 +961,8 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
               onMover={moverTarefaStatus}
               onAbrir={(itemId) => router.push(`/tarefas/${itemId}`)}
             />
+          ) : tarefasFiltradas.length === 0 ? (
+            <p className="text-sm text-ink/50">Nenhuma tarefa {filtroStatusAtivo ? "nesse status" : "ainda"}.</p>
           ) : (
             <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
               <div className="grid grid-cols-[1fr_90px_100px_110px_100px] gap-2 px-5 py-2 text-[11px] font-bold uppercase tracking-wide text-ink/40 bg-surface/60">
@@ -1021,8 +1021,6 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
               visualizacaoExterna={visualizacaoConteudo}
               onMudarVisualizacao={setVisualizacaoConteudo}
             />
-          ) : postsVisiveis.length === 0 ? (
-            <p className="text-sm text-ink/50">Nenhum conteúdo ainda.</p>
           ) : visualizacaoConteudo === "kanban" ? (
             <MiniKanban
               statusList={statusList}
@@ -1039,6 +1037,8 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
               onMover={moverPostStatus}
               onAbrir={(itemId) => router.push(`/conteudo/calendario/post/${itemId}`)}
             />
+          ) : postsVisiveis.length === 0 ? (
+            <p className="text-sm text-ink/50">Nenhum conteúdo ainda.</p>
           ) : (
             <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
               <div className="grid grid-cols-[1fr_90px_100px_110px_100px] gap-2 px-5 py-2 text-[11px] font-bold uppercase tracking-wide text-ink/40 bg-surface/60">
@@ -1086,7 +1086,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       )}
 
       {aba === "chat" && (
-        <div className="rounded-3xl bg-card border border-black/5 overflow-hidden flex flex-col" style={{ height: "65vh" }}>
+        <div className="rounded-3xl bg-card border border-black/5 overflow-hidden flex flex-col" style={{ height: "calc(100vh - 260px)" }}>
           {!canalChatId ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3">
               <p className="text-sm text-ink/50">Esse cliente ainda não tem um canal de chat.</p>
@@ -1246,7 +1246,7 @@ function MiniKanbanColuna({
   return (
     <div
       ref={setNodeRef}
-      className={`w-64 shrink-0 rounded-3xl border-2 p-3 min-h-[50vh] transition-all duration-150 ${cor.colBg} ${
+      className={`w-64 shrink-0 rounded-3xl border-2 p-3 min-h-[calc(100vh-280px)] transition-all duration-150 ${cor.colBg} ${
         isOver ? `${cor.colBorder} scale-[1.02] shadow-lg` : "border-transparent"
       }`}
     >
@@ -1255,7 +1255,7 @@ function MiniKanbanColuna({
         <p className="text-sm font-bold text-ink truncate">{coluna.nome}</p>
         <span className={`ml-auto text-xs font-bold rounded-full px-2 py-0.5 shrink-0 ${cor.cor}`}>{itens.length}</span>
       </div>
-      <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+      <div className="space-y-2 max-h-[calc(100vh-380px)] overflow-y-auto pr-1">
         {itens.map((item) => (
           <MiniKanbanCard key={item.id} item={item} statusAtual={coluna.id} onAbrir={onAbrir} />
         ))}
