@@ -124,7 +124,8 @@ function formatarQuandoRelativo(iso: string) {
   if (d < 7) return `há ${d}d`;
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
-function formatarData(iso: string) {
+function formatarData(iso: string | null) {
+  if (!iso) return "Sem data";
   return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 function formatarDataHora(iso: string) {

@@ -162,7 +162,7 @@ export function RichTextEditor({
   placeholder?: string;
   semCaixa?: boolean;
   mencionaveis?: { id: string; nome: string; fotoUrl?: string | null }[];
-  referenciaveis?: { id: string; titulo: string; tipo: "tarefa" | "conteudo" }[];
+  referenciaveis?: { id: string; titulo: string; tipo: "tarefa" | "conteudo"; clienteNome?: string | null }[];
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -563,7 +563,9 @@ export function RichTextEditor({
     if (!menuReferencia || !referenciaveis) return [];
     const q = menuReferencia.query.toLowerCase();
     if (!q) return referenciaveis.slice(0, 30);
-    return referenciaveis.filter((r) => r.titulo.toLowerCase().includes(q)).slice(0, 30);
+    return referenciaveis
+      .filter((r) => r.titulo.toLowerCase().includes(q) || (r.clienteNome ?? "").toLowerCase().includes(q))
+      .slice(0, 30);
   }, [menuReferencia, referenciaveis]);
 
   function executarComando(item: ComandoItem) {
@@ -890,7 +892,10 @@ export function RichTextEditor({
               </span>
               <span className="min-w-0">
                 <span className="block text-sm font-semibold text-ink truncate">{item.titulo}</span>
-                <span className="block text-[10px] text-ink/40">{item.tipo === "tarefa" ? "Tarefa" : "Conteúdo"}</span>
+                <span className="block text-[10px] text-ink/40 truncate">
+                  {item.tipo === "tarefa" ? "Tarefa" : "Conteúdo"}
+                  {item.clienteNome && ` · ${item.clienteNome}`}
+                </span>
               </span>
             </button>
           ))}

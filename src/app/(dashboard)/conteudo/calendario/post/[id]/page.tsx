@@ -148,7 +148,8 @@ function AvatarStack({ pessoas, tamanho = 22 }: { pessoas: Responsavel[]; tamanh
   );
 }
 
-function formatarDataCurta(iso: string) {
+function formatarDataCurta(iso: string | null) {
+  if (!iso) return "Sem data";
   return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
@@ -186,7 +187,9 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   const [clientes, setClientes] = useState<Opcao[]>([]);
   const [funcionariosComAcesso, setFuncionariosComAcesso] = useState<Responsavel[]>([]);
   const [colegas, setColegas] = useState<Opcao[]>([]);
-  const [referenciaveis, setReferenciaveis] = useState<{ id: string; titulo: string; tipo: "tarefa" | "conteudo" }[]>([]);
+  const [referenciaveis, setReferenciaveis] = useState<{ id: string; titulo: string; tipo: "tarefa" | "conteudo"; clienteNome: string | null }[]>(
+    []
+  );
   const [meuId, setMeuId] = useState<string | null>(null);
   const [meuNome, setMeuNome] = useState("Você");
   const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
@@ -304,18 +307,33 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       setObservacoes(p.observacoes_internas ?? "");
       mencoesObservacoesRef.current = extrairMencoes(p.observacoes_internas ?? "");
       setClienteSelecionado(listaClientes.find((c) => c.id === p.cliente_id) ?? null);
-      if (p.cliente_id) {
+      {
         const supabase2 = createClient();
-        const [{ data: tarefasCliente }, { data: postsCliente }] = await Promise.all([
-          supabase2.from("tarefas").select("id, titulo").eq("cliente_id", p.cliente_id).is("excluido_em", null).limit(40),
-          supabase2.from("posts_conteudo").select("id, titulo").eq("cliente_id", p.cliente_id).is("excluido_em", null).neq("id", id).limit(40),
+        const [{ data: todasTarefas }, { data: todosPosts }] = await Promise.all([
+          supabase2
+            .from("tarefas")
+            .select("id, titulo, clientes ( papeis ( pessoas ( nome ) ) )")
+            .is("excluido_em", null)
+            .eq("arquivada", false)
+            .order("created_at", { ascending: false })
+            .limit(300),
+          supabase2
+            .from("posts_conteudo")
+            .select("id, titulo, clientes ( papeis ( pessoas ( nome ) ) )")
+            .is("excluido_em", null)
+            .eq("arquivado", false)
+            .neq("id", id)
+            .order("created_at", { ascending: false })
+            .limit(300),
         ]);
         setReferenciaveis([
-          ...(tarefasCliente ?? []).map((x) => ({ id: x.id, titulo: x.titulo, tipo: "tarefa" as const })),
-          ...(postsCliente ?? []).map((x) => ({ id: x.id, titulo: x.titulo || "Sem título", tipo: "conteudo" as const })),
+          ...((todasTarefas ?? []) as unknown as { id: string; titulo: string; clientes: { papeis: { pessoas: { nome: string } | null } | null } | null }[]).map(
+            (x) => ({ id: x.id, titulo: x.titulo, tipo: "tarefa" as const, clienteNome: x.clientes?.papeis?.pessoas?.nome ?? null })
+          ),
+          ...((todosPosts ?? []) as unknown as { id: string; titulo: string | null; clientes: { papeis: { pessoas: { nome: string } | null } | null } | null }[]).map(
+            (x) => ({ id: x.id, titulo: x.titulo || "Sem título", tipo: "conteudo" as const, clienteNome: x.clientes?.papeis?.pessoas?.nome ?? null })
+          ),
         ]);
-      } else {
-        setReferenciaveis([]);
       }
       setObjetivo(p.objetivo ?? "");
       setFormato(p.formato ?? "");
@@ -1140,7 +1158,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                   value={dataPublicacao}
                   onChange={(e) => {
                     setDataPublicacao(e.target.value);
-                    salvarCampo({ data_publicacao: e.target.value }, "mudou a data de publicação", true);
+                    salvarCampo({ data_publicacao: e.target.value || null }, "mudou a data de publicação", true);
                   }}
                   className="input"
                 />
@@ -1355,7 +1373,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                         responsaveis={responsaveisPorSub[s.id] ?? []}
                         onAbrir={() => router.push(`/conteudo/calendario/post/${s.id}`)}
                         onSalvarNome={(novoNome) => salvarCampoSub(s.id, { titulo: novoNome })}
-                        onSalvarData={(novaData) => salvarCampoSub(s.id, { data_publicacao: novaData })}
+                        onSalvarData={(novaData) => salvarCampoSub(s.id, { data_publicacao: novaData || null })}
                         onSalvarStatus={(novoStatusId) => salvarCampoSub(s.id, { status_id: novoStatusId })}
                         onToggleResponsavel={(funcionarioId) => toggleResponsavelSub(s.id, funcionarioId)}
                       />
@@ -1735,7 +1753,7 @@ function LinhaSubConteudoEditavel({
             type="date"
             defaultValue={sub.data_publicacao}
             onBlur={(e) => {
-              if (e.target.value) onSalvarData(e.target.value);
+              onSalvarData(e.target.value);
               setCampoEditando(null);
             }}
             className="input py-1 text-xs"

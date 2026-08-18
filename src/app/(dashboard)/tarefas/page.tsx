@@ -1170,11 +1170,13 @@ function TarefaCardConteudo({
         {tarefa.data_inicio && <span className="text-[10px] text-ink/40">Início: {formatarPrazo(tarefa.data_inicio)}</span>}
         {tarefa.prazo &&
           (() => {
-            const atraso = diasAtraso(tarefa.prazo);
+            const statusAtual = acoes?.statusList.find((s) => s.id === tarefa.status_id);
+            const concluida = statusAtual?.cor === "verde";
+            const atraso = concluida ? 0 : diasAtraso(tarefa.prazo);
             return (
               <span className={`text-[10px] ${atraso ? "text-red-600 font-bold" : "text-ink/40"}`}>
                 Vencimento: {formatarPrazo(tarefa.prazo)}
-                {atraso && ` · ${atraso}d atrasado`}
+                {atraso ? ` · ${atraso}d atrasado` : concluida ? " · concluída" : ""}
               </span>
             );
           })()}
