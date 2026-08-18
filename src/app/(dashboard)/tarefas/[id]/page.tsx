@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { comLinks } from "@/lib/linkify";
+import { comMencoesColoridas } from "@/lib/mencao-highlight";
 import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
@@ -1369,50 +1370,61 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                   )}
                 </div>
                 <div className="p-4 border-t border-black/5 shrink-0 relative">
-                  <textarea
-                    ref={comentarioRef}
-                    value={novoComentario}
-                    onChange={(e) => {
-                      const valor = e.target.value;
-                      setNovoComentario(valor);
-                      const pos = e.target.selectionStart ?? valor.length;
-                      const antes = valor.slice(0, pos);
-                      const match = antes.match(/@([a-zA-ZÀ-ÿ]*)$/);
-                      setMencaoBusca(match ? match[1] : null);
-                      setIndiceMencaoComentario(0);
-                    }}
-                    onKeyDown={(e) => {
-                      if (mencaoBusca !== null && colegasParaMencao.length > 0) {
-                        if (e.key === "ArrowDown") {
-                          e.preventDefault();
-                          setIndiceMencaoComentario((i) => Math.min(i + 1, colegasParaMencao.length - 1));
-                          return;
+                  <div className="relative">
+                    <div
+                      aria-hidden
+                      className="text-sm whitespace-pre-wrap break-words pointer-events-none absolute inset-0 overflow-hidden rounded-xl"
+                      style={{ padding: "0.55rem 0.9rem", color: "var(--ec-ink)" }}
+                    >
+                      {comMencoesColoridas(novoComentario, colegas)}
+                      {novoComentario.endsWith("\n") ? "\u200b" : ""}
+                    </div>
+                    <textarea
+                      ref={comentarioRef}
+                      value={novoComentario}
+                      onChange={(e) => {
+                        const valor = e.target.value;
+                        setNovoComentario(valor);
+                        const pos = e.target.selectionStart ?? valor.length;
+                        const antes = valor.slice(0, pos);
+                        const match = antes.match(/@([a-zA-ZÀ-ÿ]*)$/);
+                        setMencaoBusca(match ? match[1] : null);
+                        setIndiceMencaoComentario(0);
+                      }}
+                      onKeyDown={(e) => {
+                        if (mencaoBusca !== null && colegasParaMencao.length > 0) {
+                          if (e.key === "ArrowDown") {
+                            e.preventDefault();
+                            setIndiceMencaoComentario((i) => Math.min(i + 1, colegasParaMencao.length - 1));
+                            return;
+                          }
+                          if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            setIndiceMencaoComentario((i) => Math.max(i - 1, 0));
+                            return;
+                          }
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            selecionarMencao(colegasParaMencao[indiceMencaoComentario].nome);
+                            return;
+                          }
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            setMencaoBusca(null);
+                            return;
+                          }
                         }
-                        if (e.key === "ArrowUp") {
+                        if (e.key === "Enter" && !e.shiftKey && mencaoBusca === null) {
                           e.preventDefault();
-                          setIndiceMencaoComentario((i) => Math.max(i - 1, 0));
-                          return;
+                          enviarComentario();
                         }
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          selecionarMencao(colegasParaMencao[indiceMencaoComentario].nome);
-                          return;
-                        }
-                        if (e.key === "Escape") {
-                          e.preventDefault();
-                          setMencaoBusca(null);
-                          return;
-                        }
-                      }
-                      if (e.key === "Enter" && !e.shiftKey && mencaoBusca === null) {
-                        e.preventDefault();
-                        enviarComentario();
-                      }
-                    }}
-                    rows={2}
-                    placeholder="Escreva um comentário... (@ pra mencionar)"
-                    className="input resize-none w-full text-sm"
-                  />
+                      }}
+                      rows={2}
+                      placeholder="Escreva um comentário... (@ pra mencionar)"
+                      className="input resize-none w-full text-sm relative bg-transparent"
+                      style={{ color: "transparent", caretColor: "var(--ec-ink)" }}
+                    />
+                  </div>
                   {mencaoBusca !== null && colegasParaMencao.length > 0 && (
                     <div className="absolute z-20 bottom-20 left-4 right-4 rounded-2xl bg-white border border-black/10 shadow-lg py-1 max-h-48 overflow-y-auto">
                       {colegasParaMencao.map((c, i) => (

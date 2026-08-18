@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef, use } from "
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { comLinks } from "@/lib/linkify";
+import { comMencoesColoridas } from "@/lib/mencao-highlight";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { RichTextEditor } from "@/components/rich-text-editor";
@@ -12,7 +13,7 @@ import { Cronometro } from "@/components/cronometro";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Eye, Download, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Eye, Download, X, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 
 interface StatusItem {
   id: string;
@@ -1205,13 +1206,26 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
             {formato === "video" ? (
               <label className="block">
                 <span className="block text-xs text-ink/50 mb-1">Link do vídeo (Google Drive, etc.)</span>
-                <input
-                  value={linkVideo}
-                  onChange={(e) => setLinkVideo(e.target.value)}
-                  onBlur={() => salvarCampo({ link_video: linkVideo.trim() || null }, "atualizou o link do vídeo")}
-                  className="input"
-                  placeholder="https://drive.google.com/..."
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    value={linkVideo}
+                    onChange={(e) => setLinkVideo(e.target.value)}
+                    onBlur={() => salvarCampo({ link_video: linkVideo.trim() || null }, "atualizou o link do vídeo")}
+                    className="input"
+                    placeholder="https://drive.google.com/..."
+                  />
+                  {linkVideo.trim() && (
+                    <a
+                      href={linkVideo.trim()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Abrir vídeo"
+                      className="shrink-0 h-9 w-9 rounded-full bg-surface flex items-center justify-center text-ink/50 hover:text-forest hover:bg-mint transition-colors"
+                    >
+                      <ExternalLink size={15} />
+                    </a>
+                  )}
+                </div>
                 <span className="block text-xs text-ink/40 mt-1">
                   Vídeos não ficam hospedados aqui — deixa o arquivo no Drive e cola o link de acesso.
                 </span>
@@ -1467,50 +1481,61 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                   )}
                 </div>
                 <div className="p-4 border-t border-black/5 shrink-0 relative">
-                  <textarea
-                    ref={comentarioRef}
-                    value={novoComentario}
-                    onChange={(e) => {
-                      const valor = e.target.value;
-                      setNovoComentario(valor);
-                      const pos = e.target.selectionStart ?? valor.length;
-                      const antes = valor.slice(0, pos);
-                      const match = antes.match(/@([a-zA-ZÀ-ÿ]*)$/);
-                      setMencaoBusca(match ? match[1] : null);
-                      setIndiceMencaoComentario(0);
-                    }}
-                    onKeyDown={(e) => {
-                      if (mencaoBusca !== null && colegasParaMencao.length > 0) {
-                        if (e.key === "ArrowDown") {
-                          e.preventDefault();
-                          setIndiceMencaoComentario((i) => Math.min(i + 1, colegasParaMencao.length - 1));
-                          return;
+                  <div className="relative">
+                    <div
+                      aria-hidden
+                      className="text-sm whitespace-pre-wrap break-words pointer-events-none absolute inset-0 overflow-hidden rounded-xl"
+                      style={{ padding: "0.55rem 0.9rem", color: "var(--ec-ink)" }}
+                    >
+                      {comMencoesColoridas(novoComentario, colegas)}
+                      {novoComentario.endsWith("\n") ? "\u200b" : ""}
+                    </div>
+                    <textarea
+                      ref={comentarioRef}
+                      value={novoComentario}
+                      onChange={(e) => {
+                        const valor = e.target.value;
+                        setNovoComentario(valor);
+                        const pos = e.target.selectionStart ?? valor.length;
+                        const antes = valor.slice(0, pos);
+                        const match = antes.match(/@([a-zA-ZÀ-ÿ]*)$/);
+                        setMencaoBusca(match ? match[1] : null);
+                        setIndiceMencaoComentario(0);
+                      }}
+                      onKeyDown={(e) => {
+                        if (mencaoBusca !== null && colegasParaMencao.length > 0) {
+                          if (e.key === "ArrowDown") {
+                            e.preventDefault();
+                            setIndiceMencaoComentario((i) => Math.min(i + 1, colegasParaMencao.length - 1));
+                            return;
+                          }
+                          if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            setIndiceMencaoComentario((i) => Math.max(i - 1, 0));
+                            return;
+                          }
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            selecionarMencao(colegasParaMencao[indiceMencaoComentario].nome);
+                            return;
+                          }
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            setMencaoBusca(null);
+                            return;
+                          }
                         }
-                        if (e.key === "ArrowUp") {
+                        if (e.key === "Enter" && !e.shiftKey && mencaoBusca === null) {
                           e.preventDefault();
-                          setIndiceMencaoComentario((i) => Math.max(i - 1, 0));
-                          return;
+                          enviarComentario();
                         }
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          selecionarMencao(colegasParaMencao[indiceMencaoComentario].nome);
-                          return;
-                        }
-                        if (e.key === "Escape") {
-                          e.preventDefault();
-                          setMencaoBusca(null);
-                          return;
-                        }
-                      }
-                      if (e.key === "Enter" && !e.shiftKey && mencaoBusca === null) {
-                        e.preventDefault();
-                        enviarComentario();
-                      }
-                    }}
-                    rows={2}
-                    placeholder="Escreva um comentário... (@ pra mencionar)"
-                    className="input resize-none w-full text-sm"
-                  />
+                      }}
+                      rows={2}
+                      placeholder="Escreva um comentário... (@ pra mencionar)"
+                      className="input resize-none w-full text-sm relative bg-transparent"
+                      style={{ color: "transparent", caretColor: "var(--ec-ink)" }}
+                    />
+                  </div>
                   {mencaoBusca !== null && colegasParaMencao.length > 0 && (
                     <div className="absolute z-20 bottom-20 left-4 right-4 rounded-2xl bg-white border border-black/10 shadow-lg py-1 max-h-48 overflow-y-auto">
                       {colegasParaMencao.map((c, i) => (
