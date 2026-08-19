@@ -1484,7 +1484,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                   <div className="relative">
                     <div
                       aria-hidden
-                      className="text-sm whitespace-pre-wrap break-words pointer-events-none absolute inset-0 overflow-hidden rounded-xl"
+                      className="text-sm whitespace-pre-wrap break-words pointer-events-none absolute inset-0 overflow-hidden rounded-xl z-10"
                       style={{ padding: "0.55rem 0.9rem", color: "var(--ec-ink)" }}
                     >
                       {comMencoesColoridas(novoComentario, colegas)}
