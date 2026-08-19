@@ -55,7 +55,9 @@ interface DocResumo {
   emoji: string | null;
   conteudo: string | null;
   criado_por: string | null;
+  categoria_id: string | null;
   created_at: string;
+  updated_at: string;
   qtdFilhos: number;
 }
 
@@ -164,6 +166,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
   const [visualizacaoConteudo, setVisualizacaoConteudo] = useState<"lista" | "kanban" | "calendario">("kanban");
   const [mostrarSubconteudos, setMostrarSubconteudos] = useState(false);
   const [docs, setDocs] = useState<DocResumo[]>([]);
+  const [categoriasDocs, setCategoriasDocs] = useState<{ id: string; nome: string; cor: string }[]>([]);
   const [nomesPorAutor, setNomesPorAutor] = useState<Record<string, string>>({});
   const [statusList, setStatusList] = useState<{ id: string; nome: string; cor: string; ordem: number }[]>([]);
 
@@ -202,10 +205,10 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
           .limit(60),
         supabase
           .from("docs")
-          .select("id, titulo, emoji, conteudo, criado_por, created_at, doc_pai_id")
+          .select("id, titulo, emoji, conteudo, criado_por, categoria_id, created_at, updated_at, doc_pai_id")
           .eq("cliente_id", id)
           .is("excluido_em", null)
-          .order("created_at", { ascending: false }),
+          .order("updated_at", { ascending: false }),
         supabase.from("chat_canais").select("id").eq("tipo", "cliente").eq("cliente_id", id).maybeSingle(),
         supabase.from("funcionarios").select("id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )").not("auth_user_id", "is", null),
         supabase.from("status_conteudo").select("id, nome, cor, ordem").order("ordem"),
@@ -313,7 +316,17 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       if (d.doc_pai_id) contFilhosDocs[d.doc_pai_id] = (contFilhosDocs[d.doc_pai_id] ?? 0) + 1;
     }
     setDocs(
-      ((docsData ?? []) as { id: string; titulo: string; emoji: string | null; conteudo: string | null; criado_por: string | null; created_at: string; doc_pai_id: string | null }[])
+      ((docsData ?? []) as {
+        id: string;
+        titulo: string;
+        emoji: string | null;
+        conteudo: string | null;
+        criado_por: string | null;
+        categoria_id: string | null;
+        created_at: string;
+        updated_at: string;
+        doc_pai_id: string | null;
+      }[])
         .filter((d) => !d.doc_pai_id)
         .map((d) => ({ ...d, qtdFilhos: contFilhosDocs[d.id] ?? 0 }))
     );
@@ -422,6 +435,15 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  useEffect(() => {
+    async function carregarCategoriasDocs() {
+      const supabase = createClient();
+      const { data } = await supabase.from("doc_categorias").select("id, nome, cor").order("nome");
+      setCategoriasDocs(data ?? []);
+    }
+    carregarCategoriasDocs();
+  }, []);
 
   useEffect(() => {
     async function carregarPermissao() {
@@ -1155,28 +1177,52 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
             <p className="text-sm text-ink/50">Nenhum documento ainda.</p>
           ) : (
             <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
-              <div className="grid grid-cols-[1fr_90px_100px_110px_90px] gap-2 px-5 py-2 text-[11px] font-bold uppercase tracking-wide text-ink/40 bg-surface/60">
+              <div className="grid grid-cols-[1fr_120px_100px_100px_80px] gap-2 px-5 py-2 text-[11px] font-bold uppercase tracking-wide text-ink/40 bg-surface/60">
                 <span>Nome</span>
-                <span>☰</span>
+                <span>Categoria</span>
                 <span>Criado em</span>
-                <span>Criado por</span>
+                <span>Atualizado em</span>
                 <span>Sub-docs</span>
               </div>
-              {docs.map((d) => (
-                <button
-                  key={d.id}
-                  onClick={() => router.push(`/docs/${d.id}`)}
-                  className="w-full grid grid-cols-[1fr_90px_100px_110px_90px] items-center gap-2 px-5 py-3 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
-                >
-                  <span className="text-sm text-ink truncate flex items-center gap-1.5">
-                    <span>{d.emoji || "📄"}</span> {d.titulo}
-                  </span>
-                  <span className="text-ink/30">{d.conteudo && d.conteudo.replace(/<[^>]*>/g, "").trim() ? "☰" : ""}</span>
-                  <span className="text-xs text-ink/40">{formatarDataHora(d.created_at)}</span>
-                  <span className="text-xs text-ink/50 truncate">{(d.criado_por && nomesPorAutor[d.criado_por]) || "—"}</span>
-                  <span className="text-xs text-ink/40">{d.qtdFilhos > 0 ? d.qtdFilhos : "—"}</span>
-                </button>
-              ))}
+              {docs.map((d) => {
+                const categoria = categoriasDocs.find((c) => c.id === d.categoria_id);
+                const resumo = d.conteudo
+                  ? d.conteudo
+                      .replace(/<[^>]+>/g, " ")
+                      .replace(/&nbsp;/g, " ")
+                      .replace(/\s+/g, " ")
+                      .trim()
+                      .slice(0, 70)
+                  : "";
+                return (
+                  <button
+                    key={d.id}
+                    onClick={() => router.push(`/docs/${d.id}`)}
+                    className="w-full grid grid-cols-[1fr_120px_100px_100px_80px] items-center gap-2 px-5 py-3 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
+                  >
+                    <span className="flex items-center gap-2.5 min-w-0">
+                      <span className="h-8 w-8 rounded-lg bg-surface flex items-center justify-center text-base shrink-0">{d.emoji || "📄"}</span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-bold text-ink truncate">{d.titulo}</span>
+                        {resumo && <span className="block text-xs text-ink/40 truncate">{resumo}</span>}
+                      </span>
+                    </span>
+                    <span>
+                      {categoria ? (
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold w-fit ${corDoStatus(categoria.cor).cor}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${corDoStatus(categoria.cor).dot}`} />
+                          {categoria.nome}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-ink/30">—</span>
+                      )}
+                    </span>
+                    <span className="text-xs text-ink/40">{formatarDataHora(d.created_at)}</span>
+                    <span className="text-xs text-ink/40">{formatarDataHora(d.updated_at)}</span>
+                    <span className="text-xs text-ink/40">{d.qtdFilhos > 0 ? d.qtdFilhos : "—"}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
