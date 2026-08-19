@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, use } from "react";
+import { useEffect, useState, useCallback, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { RichTextEditor } from "@/components/rich-text-editor";
@@ -9,6 +9,7 @@ import { BuscaCliente, type OpcaoCliente } from "@/components/busca-cliente";
 interface Doc {
   id: string;
   titulo: string;
+  descricao: string | null;
   conteudo: string | null;
   emoji: string | null;
   cliente_id: string | null;
@@ -19,6 +20,7 @@ interface Doc {
   updated_at: string;
   excluido_em: string | null;
   excluido_por: string | null;
+  link_publico_token: string | null;
 }
 
 interface HistoricoItem {
@@ -47,6 +49,18 @@ const DOC_EMOJIS = [
 
 function formatarQuando(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function formatarRelativo(iso: string) {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return "agora há pouco";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `há ${d}d`;
+  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
 function construirArvore(lista: DocResumo[]): DocNode[] {
@@ -83,6 +97,7 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
   const [docsDoEscopo, setDocsDoEscopo] = useState<DocResumo[]>([]);
   const [clientes, setClientes] = useState<OpcaoCliente[]>([]);
   const [colegas, setColegas] = useState<Record<string, string>>({});
+  const [colegasFoto, setColegasFoto] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
   const [meuId, setMeuId] = useState<string | null>(null);
@@ -90,12 +105,18 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const [seletorClienteAberto, setSeletorClienteAberto] = useState(false);
   const [seletorEmojiAberto, setSeletorEmojiAberto] = useState(false);
+  const [compartilharAberto, setCompartilharAberto] = useState(false);
+  const [copiadoLink, setCopiadoLink] = useState(false);
+  const [titulos, setTitulos] = useState<{ texto: string; nivel: number }[]>([]);
+  const conteudoWrapperRef = useRef<HTMLDivElement>(null);
 
   const [titulo, setTitulo] = useState("");
+  const [descricao, setDescricao] = useState("");
   const [emoji, setEmoji] = useState<string | null>(null);
   const [conteudo, setConteudo] = useState("");
   const [clienteSelecionado, setClienteSelecionado] = useState<OpcaoCliente | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [ultimoSalvamento, setUltimoSalvamento] = useState<string | null>(null);
 
   const carregarDocsDoEscopo = useCallback(async (clienteId: string | null) => {
     const supabase = createClient();
@@ -117,7 +138,7 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
     const [{ data: d }, { data: clientesData }, { data: funcData }] = await Promise.all([
       supabase.from("docs").select("*").eq("id", id).maybeSingle(),
       supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )"),
-      supabase.from("funcionarios").select("auth_user_id, papeis ( pessoas ( nome, apelido ) )").not("auth_user_id", "is", null),
+      supabase.from("funcionarios").select("auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )").not("auth_user_id", "is", null),
     ]);
 
     const listaClientes = ((clientesData ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[])
@@ -126,14 +147,21 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
     setClientes(listaClientes);
 
     const mapaColegas: Record<string, string> = {};
-    for (const f of (funcData ?? []) as unknown as { auth_user_id: string; papeis: { pessoas: { nome: string; apelido: string | null } | null } | null }[]) {
+    const mapaColegasFoto: Record<string, string | null> = {};
+    for (const f of (funcData ?? []) as unknown as {
+      auth_user_id: string;
+      papeis: { pessoas: { nome: string; apelido: string | null; foto_url: string | null } | null } | null;
+    }[]) {
       mapaColegas[f.auth_user_id] = f.papeis?.pessoas?.apelido || f.papeis?.pessoas?.nome || "Alguém";
+      mapaColegasFoto[f.auth_user_id] = f.papeis?.pessoas?.foto_url ?? null;
     }
     setColegas(mapaColegas);
+    setColegasFoto(mapaColegasFoto);
 
     if (d) {
       setDoc(d);
       setTitulo(d.titulo);
+      setDescricao(d.descricao ?? "");
       setEmoji(d.emoji);
       setConteudo(d.conteudo ?? "");
       setClienteSelecionado(d.cliente_id ? listaClientes.find((c) => c.id === d.cliente_id) ?? null : null);
@@ -155,6 +183,22 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
     carregar();
   }, [carregar]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const div = document.createElement("div");
+    div.innerHTML = conteudo;
+    const encontrados = Array.from(div.querySelectorAll("h1, h2, h3")).map((el) => ({
+      texto: el.textContent?.trim() || "",
+      nivel: Number(el.tagName[1]),
+    }));
+    setTitulos(encontrados);
+  }, [conteudo]);
+
+  function irParaTitulo(indice: number) {
+    const el = conteudoWrapperRef.current?.querySelectorAll("h1, h2, h3")[indice];
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   async function registrarHistorico(descricaoEvento: string) {
     const supabase = createClient();
     await supabase.from("docs_historico").insert({ doc_id: id, autor_id: meuId, descricao: descricaoEvento });
@@ -170,16 +214,38 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
     const {
       data: { user },
     } = await supabase.auth.getUser();
+    const agora = new Date().toISOString();
     await supabase
       .from("docs")
       .update({ ...campo, atualizado_por: user?.id ?? null })
       .eq("id", id);
     setSalvando(false);
-    setDoc((atual) => (atual ? { ...atual, ...campo, updated_at: new Date().toISOString() } : atual));
+    setUltimoSalvamento(agora);
+    setDoc((atual) => (atual ? { ...atual, ...campo, updated_at: agora } : atual));
     if ("titulo" in campo) {
       setDocsDoEscopo((atual) => atual.map((d) => (d.id === id ? { ...d, titulo: campo.titulo || d.titulo } : d)));
     }
     if (eventoHistorico) registrarHistorico(eventoHistorico);
+  }
+
+  async function gerarOuAbrirLinkPublico() {
+    if (!doc) return;
+    if (doc.link_publico_token) {
+      setCompartilharAberto(true);
+      return;
+    }
+    const supabase = createClient();
+    const token = crypto.randomUUID();
+    await supabase.from("docs").update({ link_publico_token: token }).eq("id", id);
+    setDoc((atual) => (atual ? { ...atual, link_publico_token: token } : atual));
+    setCompartilharAberto(true);
+  }
+
+  async function revogarLinkPublico() {
+    if (!window.confirm("Revogar esse link? Quem já tinha o link antigo não vai conseguir mais acessar.")) return;
+    const supabase = createClient();
+    await supabase.from("docs").update({ link_publico_token: null }).eq("id", id);
+    setDoc((atual) => (atual ? { ...atual, link_publico_token: null } : atual));
   }
 
   async function excluirDoc() {
@@ -277,7 +343,21 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
           ← Docs
         </button>
         <div className="flex items-center gap-3">
-          {salvando && <span className="text-xs text-ink/40">Salvando...</span>}
+          <span className="text-xs text-ink/40 flex items-center gap-1">
+            {salvando ? (
+              "Salvando..."
+            ) : ultimoSalvamento ? (
+              <>
+                <span className="text-forest">✓</span> Salvo {formatarRelativo(ultimoSalvamento)}
+              </>
+            ) : null}
+          </span>
+          <button
+            onClick={gerarOuAbrirLinkPublico}
+            className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors"
+          >
+            🔗 Compartilhar
+          </button>
           {!doc.excluido_em && (
             <button onClick={excluirDoc} className="text-sm font-semibold text-red-500 hover:text-red-700">
               Excluir
@@ -385,86 +465,184 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
               onBlur={() => {
                 if (titulo.trim() && titulo.trim() !== doc.titulo) salvarCampo({ titulo: titulo.trim() }, `renomeou para "${titulo.trim()}"`);
               }}
-              className="text-3xl font-extrabold text-ink w-full mb-3 outline-none focus:bg-white rounded-lg px-1 -mx-1 bg-transparent"
+              className="text-3xl font-extrabold text-ink w-full mb-2 outline-none focus:bg-white rounded-lg px-1 -mx-1 bg-transparent"
             />
 
-            <div className="flex items-center gap-3 mb-8 text-xs text-ink/40">
-              <span>
-                Atualizado em {formatarQuando(doc.updated_at)}
-                {doc.atualizado_por && colegas[doc.atualizado_por] && ` por ${colegas[doc.atualizado_por]}`}
-              </span>
-              <span className="text-ink/20">·</span>
-              <div className="relative">
-                <button
-                  onClick={() => setSeletorClienteAberto((v) => !v)}
-                  className="hover:text-ink transition-colors"
-                >
-                  {clienteSelecionado ? clienteSelecionado.nome : "+ Vincular a um cliente"}
-                </button>
-                {seletorClienteAberto && (
-                  <div
-                    className="absolute z-20 top-6 left-0 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
-                    onMouseLeave={() => setSeletorClienteAberto(false)}
-                  >
-                    <BuscaCliente
-                      clientes={clientes}
-                      valor={clienteSelecionado}
-                      onSelecionar={async (c) => {
-                        setClienteSelecionado(c);
-                        await salvarCampo({ cliente_id: c?.id ?? null }, c ? `mudou o cliente para ${c.nome}` : "removeu o cliente");
-                        const escopo = await carregarDocsDoEscopo(c?.id ?? null);
-                        setExpandidos(new Set(ancestrais(escopo, id)));
-                        setSeletorClienteAberto(false);
-                      }}
-                      placeholder="Digite pra buscar (deixe em branco = interno)..."
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="relative ml-auto">
-                <button
-                  onClick={() => setHistoricoAberto((v) => !v)}
-                  className={`h-8 w-8 rounded-full flex items-center justify-center text-base transition-colors ${
-                    historicoAberto ? "bg-ink text-white" : "bg-surface text-ink/60 hover:bg-black/10 hover:text-ink"
-                  }`}
-                  title="Histórico de alterações"
-                >
-                  🕐
-                </button>
-                {historicoAberto && (
-                  <div
-                    className="absolute z-20 top-10 right-0 w-72 max-h-80 overflow-y-auto rounded-2xl bg-white border border-black/10 shadow-lg p-3"
-                    onMouseLeave={() => setHistoricoAberto(false)}
-                  >
-                    <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Histórico</p>
-                    {historico.length === 0 ? (
-                      <p className="text-xs text-ink/40">Nenhuma alteração registrada ainda.</p>
-                    ) : (
-                      <div className="space-y-2.5">
-                        {historico.map((h) => (
-                          <div key={h.id} className="text-xs text-ink/60 border-l-2 border-black/10 pl-2.5 py-0.5">
-                            <span className="font-semibold text-ink">{(h.autor_id && colegas[h.autor_id]) || "Alguém"}</span> {h.descricao}
-                            <span className="block text-[10px] text-ink/40 mt-0.5">{formatarQuando(h.created_at)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+            <input
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              onBlur={() => {
+                if (descricao !== (doc.descricao ?? "")) salvarCampo({ descricao: descricao.trim() || null });
+              }}
+              placeholder="Adicione uma descrição (opcional)..."
+              className="text-sm text-ink/45 w-full mb-6 outline-none focus:bg-white rounded-lg px-1 -mx-1 bg-transparent"
+            />
+
+            <div ref={conteudoWrapperRef}>
+              <RichTextEditor
+                valorHtml={conteudo}
+                onChange={setConteudo}
+                onSalvar={() => salvarCampo({ conteudo: conteudo || null }, "atualizou o conteúdo")}
+                placeholder="Escreva aqui... anotações de reunião, links importantes, entregáveis, inspirações..."
+                semCaixa
+                toolbarSempreAberta
+              />
             </div>
-
-            <RichTextEditor
-              valorHtml={conteudo}
-              onChange={setConteudo}
-              onSalvar={() => salvarCampo({ conteudo: conteudo || null }, "atualizou o conteúdo")}
-              placeholder="Escreva aqui... anotações de reunião, links importantes, entregáveis, inspirações..."
-              semCaixa
-            />
           </div>
         </div>
+
+        <div className="w-72 shrink-0 border-l border-black/5 bg-card overflow-y-auto px-5 py-6 space-y-6">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-3">Propriedades</p>
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-ink/45 text-xs">Criado por</span>
+                <span className="flex items-center gap-1.5 font-medium text-ink text-xs">
+                  {doc.criado_por && colegasFoto[doc.criado_por] ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={colegasFoto[doc.criado_por]!} alt="" className="h-5 w-5 rounded-full object-cover" />
+                  ) : (
+                    <span className="h-5 w-5 rounded-full bg-forest/20 text-forest flex items-center justify-center text-[9px] font-bold">
+                      {((doc.criado_por && colegas[doc.criado_por]) || "?").slice(0, 2).toUpperCase()}
+                    </span>
+                  )}
+                  {(doc.criado_por && colegas[doc.criado_por]) || "—"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-ink/45 text-xs">Criado em</span>
+                <span className="text-ink text-xs font-medium">{formatarQuando(doc.created_at).split(" ")[0]}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-ink/45 text-xs">Atualizado em</span>
+                <span className="text-ink text-xs font-medium">{formatarQuando(doc.updated_at)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-ink/45 text-xs shrink-0">Localização</span>
+                <div className="relative">
+                  <button onClick={() => setSeletorClienteAberto((v) => !v)} className="text-xs font-medium text-ink hover:text-forest transition-colors truncate max-w-[140px]">
+                    📁 {clienteSelecionado ? clienteSelecionado.nome : "Docs internos"}
+                  </button>
+                  {seletorClienteAberto && (
+                    <div
+                      className="absolute z-20 top-6 right-0 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+                      onMouseLeave={() => setSeletorClienteAberto(false)}
+                    >
+                      <BuscaCliente
+                        clientes={clientes}
+                        valor={clienteSelecionado}
+                        onSelecionar={async (c) => {
+                          setClienteSelecionado(c);
+                          await salvarCampo({ cliente_id: c?.id ?? null }, c ? `mudou o cliente para ${c.nome}` : "removeu o cliente");
+                          const escopo = await carregarDocsDoEscopo(c?.id ?? null);
+                          setExpandidos(new Set(ancestrais(escopo, id)));
+                          setSeletorClienteAberto(false);
+                        }}
+                        placeholder="Digite pra buscar (deixe em branco = interno)..."
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-ink/45 text-xs">Permissão</span>
+                <span className="text-ink text-xs font-medium">👥 Acesso da equipe</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setHistoricoAberto((v) => !v)}
+              className="mt-3 text-xs font-semibold text-ink/40 hover:text-ink transition-colors"
+            >
+              🕐 Ver histórico de alterações
+            </button>
+            {historicoAberto && (
+              <div className="mt-2 max-h-64 overflow-y-auto rounded-2xl bg-surface p-3">
+                {historico.length === 0 ? (
+                  <p className="text-xs text-ink/40">Nenhuma alteração registrada ainda.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {historico.map((h) => (
+                      <div key={h.id} className="text-xs text-ink/60 border-l-2 border-black/10 pl-2.5 py-0.5">
+                        <span className="font-semibold text-ink">{(h.autor_id && colegas[h.autor_id]) || "Alguém"}</span> {h.descricao}
+                        <span className="block text-[10px] text-ink/40 mt-0.5">{formatarQuando(h.created_at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {titulos.length > 0 && (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-3">Navegação</p>
+              <div className="space-y-1.5 border-l-2 border-black/5">
+                {titulos.map((t, i) => (
+                  <button
+                    key={i}
+                    onClick={() => irParaTitulo(i)}
+                    style={{ paddingLeft: 12 + (t.nivel - 1) * 12 }}
+                    className={`block w-full text-left text-xs truncate hover:text-forest transition-colors -ml-0.5 border-l-2 border-transparent hover:border-forest pl-3 py-0.5 ${
+                      t.nivel === 1 ? "font-semibold text-ink" : "text-ink/50"
+                    }`}
+                  >
+                    {t.texto || "(sem título)"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+
+      {compartilharAberto && doc.link_publico_token && (
+        <CompartilharModal
+          token={doc.link_publico_token}
+          onRevogar={() => {
+            revogarLinkPublico();
+            setCompartilharAberto(false);
+          }}
+          onClose={() => setCompartilharAberto(false)}
+        />
+      )}
     </main>
+  );
+}
+
+function CompartilharModal({ token, onRevogar, onClose }: { token: string; onRevogar: () => void; onClose: () => void }) {
+  const [copiado, setCopiado] = useState(false);
+  const link = typeof window !== "undefined" ? `${window.location.origin}/docs-publico/${token}` : "";
+
+  return (
+    <div className="fixed inset-0 z-30 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-ink mb-1">Compartilhar documento</h2>
+        <p className="text-sm text-ink/60 mb-4">
+          Quem tiver esse link vê só o conteúdo do documento — sem editar, sem ver propriedades, sem acesso ao resto do sistema.
+        </p>
+        <div className="flex items-center gap-2 mb-4">
+          <input readOnly value={link} className="input text-xs flex-1" onFocus={(e) => e.target.select()} />
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(link);
+              setCopiado(true);
+              setTimeout(() => setCopiado(false), 2000);
+            }}
+            className="shrink-0 rounded-full bg-ink text-white px-4 py-2 text-xs font-semibold hover:bg-forest transition-colors"
+          >
+            {copiado ? "Copiado!" : "Copiar"}
+          </button>
+        </div>
+        <div className="flex items-center justify-between">
+          <button onClick={onRevogar} className="text-xs font-semibold text-red-500 hover:text-red-700">
+            Revogar link
+          </button>
+          <button onClick={onClose} className="text-sm font-semibold text-ink/60 hover:text-ink">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

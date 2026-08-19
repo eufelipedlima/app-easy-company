@@ -155,6 +155,7 @@ export function RichTextEditor({
   semCaixa,
   mencionaveis,
   referenciaveis,
+  toolbarSempreAberta,
 }: {
   valorHtml: string;
   onChange: (html: string) => void;
@@ -163,6 +164,7 @@ export function RichTextEditor({
   semCaixa?: boolean;
   mencionaveis?: { id: string; nome: string; fotoUrl?: string | null }[];
   referenciaveis?: { id: string; titulo: string; tipo: "tarefa" | "conteudo"; clienteNome?: string | null }[];
+  toolbarSempreAberta?: boolean;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -171,7 +173,7 @@ export function RichTextEditor({
   const [transborda, setTransborda] = useState(false);
   const [enviandoImagem, setEnviandoImagem] = useState(false);
   const [popoverAberto, setPopoverAberto] = useState<"texto" | "fundo" | null>(null);
-  const [toolbarAberta, setToolbarAberta] = useState(false);
+  const [toolbarAberta, setToolbarAberta] = useState(!!toolbarSempreAberta);
   const [menu, setMenu] = useState<EstadoMenu | null>(null);
   const [indiceSelecionado, setIndiceSelecionado] = useState(0);
   const [menuMencao, setMenuMencao] = useState<EstadoMenu | null>(null);
@@ -645,15 +647,17 @@ export function RichTextEditor({
   return (
     <div ref={wrapperRef} className="relative">
       <div className="flex items-center gap-2 mb-2">
-        <button
-          type="button"
-          onClick={() => setToolbarAberta((v) => !v)}
-          className="h-7 px-2.5 rounded-lg text-xs font-semibold bg-surface text-ink/60 hover:text-ink hover:bg-surface/80 transition-colors inline-flex items-center gap-1"
-          title="Mostrar/ocultar opções de formatação"
-        >
-          Aa Formatar
-          <span className={`text-[10px] transition-transform duration-150 ${toolbarAberta ? "rotate-180" : ""}`}>▾</span>
-        </button>
+        {!toolbarSempreAberta && (
+          <button
+            type="button"
+            onClick={() => setToolbarAberta((v) => !v)}
+            className="h-7 px-2.5 rounded-lg text-xs font-semibold bg-surface text-ink/60 hover:text-ink hover:bg-surface/80 transition-colors inline-flex items-center gap-1"
+            title="Mostrar/ocultar opções de formatação"
+          >
+            Aa Formatar
+            <span className={`text-[10px] transition-transform duration-150 ${toolbarAberta ? "rotate-180" : ""}`}>▾</span>
+          </button>
+        )}
         <span className="text-[11px] text-ink/35">
           ou digite <kbd className="px-1 py-0.5 rounded bg-surface font-mono text-[10px]">/</kbd> no texto pra ver as opções
         </span>
