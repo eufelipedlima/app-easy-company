@@ -753,6 +753,13 @@ export default function LancamentosPage() {
             )}
           </div>
 
+          <input
+            value={filtroCliente}
+            onChange={(e) => setFiltroCliente(e.target.value)}
+            placeholder="🔍 Buscar por pessoa..."
+            className="input py-2.5 !w-52"
+          />
+
           <button
             onClick={() => setBuscaAvancadaAberta((v) => !v)}
             className={`flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold border-2 transition-colors ${

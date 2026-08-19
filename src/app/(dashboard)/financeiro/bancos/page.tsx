@@ -16,6 +16,8 @@ interface Banco {
 interface PagamentoComTipo {
   banco_id: string | null;
   valor: number;
+  taxa: number | null;
+  desconto: number | null;
   data_pagamento: string;
   lancamentos: { tipo: "receita" | "despesa" | "transferencia"; descricao: string | null } | null;
 }
@@ -122,7 +124,7 @@ export default function BancosPage() {
       buscarTudo<PagamentoComTipo>((from, to) =>
         supabase
           .from("lancamento_pagamentos")
-          .select("banco_id, valor, data_pagamento, lancamentos ( tipo, descricao )")
+          .select("banco_id, valor, taxa, desconto, data_pagamento, lancamentos ( tipo, descricao )")
           .range(from, to)
       ),
       buscarTudo<Transferencia>((from, to) =>
@@ -159,8 +161,12 @@ export default function BancosPage() {
     let saldo = banco.saldo_inicial;
     for (const p of pagamentos) {
       if (p.banco_id !== banco.id || p.data_pagamento > dataLimite) continue;
-      if (p.lancamentos?.tipo === "receita") saldo += p.valor;
-      else if (p.lancamentos?.tipo === "despesa") saldo -= p.valor;
+      // Valor líquido é o que realmente entra/sai do banco: o valor
+      // combinado, menos a taxa cobrada (ex: taxa de cartão/PIX), menos
+      // um desconto concedido.
+      const liquido = p.valor - (p.taxa ?? 0) - (p.desconto ?? 0);
+      if (p.lancamentos?.tipo === "receita") saldo += liquido;
+      else if (p.lancamentos?.tipo === "despesa") saldo -= liquido;
     }
     for (const t of transferencias) {
       if (!t.data_quitacao || t.data_quitacao > dataLimite) continue;
@@ -317,12 +323,15 @@ export default function BancosPage() {
   const movimentacoes = useMemo(() => {
     const doPagamento = pagamentos
       .filter((p) => p.lancamentos?.tipo !== "transferencia")
-      .map((p) => ({
-        descricao: p.lancamentos?.descricao || (p.lancamentos?.tipo === "receita" ? "Recebimento" : "Pagamento"),
-        valor: p.lancamentos?.tipo === "receita" ? p.valor : -p.valor,
-        data: p.data_pagamento,
-        bancoId: p.banco_id,
-      }));
+      .map((p) => {
+        const liquido = p.valor - (p.taxa ?? 0) - (p.desconto ?? 0);
+        return {
+          descricao: p.lancamentos?.descricao || (p.lancamentos?.tipo === "receita" ? "Recebimento" : "Pagamento"),
+          valor: p.lancamentos?.tipo === "receita" ? liquido : -liquido,
+          data: p.data_pagamento,
+          bancoId: p.banco_id,
+        };
+      });
     const dasTransferencias = transferencias
       .filter((t) => t.data_quitacao)
       .flatMap((t) => [

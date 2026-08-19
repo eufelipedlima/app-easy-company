@@ -363,20 +363,26 @@ function DespesaFixaForm({
   const [buscaPlanoConta, setBuscaPlanoConta] = useState(despesaEditando?.planos_conta?.nome ?? "");
   const [mostrarSugPlanoConta, setMostrarSugPlanoConta] = useState(false);
 
+  const [grupo, setGrupo] = useState(despesaEditando?.grupo ?? "");
+  const [gruposExistentes, setGruposExistentes] = useState<string[]>([]);
+  const [mostrarSugGrupo, setMostrarSugGrupo] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
     async function carregarTudo() {
       const supabase = createClient();
-      const [{ data: p }, { data: b }, { data: pc }] = await Promise.all([
+      const [{ data: p }, { data: b }, { data: pc }, { data: g }] = await Promise.all([
         supabase.from("pessoas").select("id, nome").order("nome"),
         supabase.from("bancos").select("id, nome").eq("ativo", true).order("nome"),
         supabase.from("planos_conta").select("id, nome").eq("tipo", "despesa").order("nome"),
+        supabase.from("grupos_lancamento").select("nome").order("nome"),
       ]);
       setPessoas(p ?? []);
       setBancos(b ?? []);
       setPlanosConta(pc ?? []);
+      setGruposExistentes((g ?? []).map((x) => x.nome));
     }
     carregarTudo();
   }, []);
@@ -384,6 +390,7 @@ function DespesaFixaForm({
   const sugFornecedor = pessoas.filter((p) => normalizar(p.nome).includes(normalizar(buscaFornecedor)));
   const sugBanco = bancos.filter((b) => normalizar(b.nome).includes(normalizar(buscaBanco)));
   const sugPlanoConta = planosConta.filter((p) => normalizar(p.nome).includes(normalizar(buscaPlanoConta)));
+  const sugGrupo = gruposExistentes.filter((g) => normalizar(g).includes(normalizar(grupo)));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -428,6 +435,10 @@ function DespesaFixaForm({
         planoContaFinalId = data.id;
       }
 
+      if (grupo.trim() && !gruposExistentes.includes(grupo.trim())) {
+        await supabase.from("grupos_lancamento").insert({ nome: grupo.trim() });
+      }
+
       if (editando && despesaEditando) {
         const { error } = await supabase
           .from("despesas_fixas")
@@ -437,6 +448,7 @@ function DespesaFixaForm({
             valor_mensal: Number(valorMensal),
             banco_id: bancoFinalId,
             plano_conta_id: planoContaFinalId,
+            grupo: grupo.trim() || null,
             data_inicio: dataInicio,
             observacoes: observacoes || null,
             status,
@@ -477,6 +489,7 @@ function DespesaFixaForm({
             valor_mensal: Number(valorMensal),
             banco_id: bancoFinalId,
             plano_conta_id: planoContaFinalId,
+            grupo: grupo.trim() || null,
             data_inicio: dataInicio,
             observacoes: observacoes || null,
           })
@@ -705,6 +718,52 @@ function DespesaFixaForm({
               >
                 + Cadastrar &ldquo;{buscaPlanoConta}&rdquo; como novo plano de despesa
               </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="relative">
+        <span className="block text-sm font-medium text-ink/70 mb-1">Grupo</span>
+        <input
+          value={grupo}
+          onChange={(e) => {
+            setGrupo(e.target.value);
+            setMostrarSugGrupo(true);
+          }}
+          onFocus={() => setMostrarSugGrupo(true)}
+          className="input"
+          placeholder="Digite pra buscar ou criar um grupo..."
+        />
+        {mostrarSugGrupo && (
+          <div
+            className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto"
+            onMouseLeave={() => setMostrarSugGrupo(false)}
+          >
+            {sugGrupo.length > 0 ? (
+              sugGrupo.map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => {
+                    setGrupo(g);
+                    setMostrarSugGrupo(false);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-surface"
+                >
+                  {g}
+                </button>
+              ))
+            ) : grupo.trim() ? (
+              <button
+                type="button"
+                onClick={() => setMostrarSugGrupo(false)}
+                className="w-full text-left px-4 py-2.5 text-sm font-semibold text-forest hover:bg-surface"
+              >
+                + Criar &ldquo;{grupo}&rdquo; como novo grupo
+              </button>
+            ) : (
+              <p className="px-4 py-2.5 text-xs text-ink/40">Nenhum grupo cadastrado ainda.</p>
             )}
           </div>
         )}
