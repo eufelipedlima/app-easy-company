@@ -146,48 +146,45 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
   }
 
   return (
-    <main className="min-h-screen bg-surface px-6 py-10">
+    <main className="min-h-screen bg-surface px-4 sm:px-6 py-6 sm:py-10">
       <div className="mx-auto max-w-5xl">
-        <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div className="flex items-center gap-3">
             {fotoCliente ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={fotoCliente} alt={nomeCliente} className="h-12 w-12 rounded-full object-cover shrink-0" />
+              <img src={fotoCliente} alt={nomeCliente} className="h-11 w-11 sm:h-12 sm:w-12 rounded-full object-cover shrink-0" />
             ) : (
-              <div className="h-12 w-12 rounded-full bg-ink text-white flex items-center justify-center font-bold shrink-0">
+              <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-full bg-ink text-white flex items-center justify-center font-bold shrink-0">
                 {nomeCliente.slice(0, 2).toUpperCase()}
               </div>
             )}
-            <div>
-              <h1 className="text-xl font-extrabold text-ink">{loading ? "Carregando..." : nomeCliente}</h1>
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-extrabold text-ink truncate">{loading ? "Carregando..." : nomeCliente}</h1>
               <p className="text-xs text-ink/40">Equipe de marketing · Easy Company</p>
             </div>
           </div>
-          <div className="text-right shrink-0">
-            <p className="text-xs text-ink/40 mb-1">
+          <div className="flex items-center justify-between sm:flex-col sm:items-end gap-2 sm:gap-1 shrink-0">
+            <p className="text-[11px] text-ink/40">
               {ultimaAtualizacao
-                ? `Última atualização: ${ultimaAtualizacao.toLocaleDateString("pt-BR")} às ${ultimaAtualizacao.toLocaleTimeString(
-                    "pt-BR",
-                    { hour: "2-digit", minute: "2-digit" }
-                  )}`
+                ? `Atualizado ${ultimaAtualizacao.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
                 : ""}
             </p>
             <button
               onClick={carregar}
               disabled={atualizando}
-              className="inline-flex items-center gap-1.5 rounded-full border-2 border-ink/15 text-ink px-3 py-1.5 text-xs font-semibold hover:bg-white transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-full border-2 border-ink/15 text-ink px-3 py-1.5 text-xs font-semibold hover:bg-white active:bg-white transition-colors disabled:opacity-50 shrink-0"
             >
-              {atualizando ? "Atualizando..." : "🔄 Atualizar"}
+              {atualizando ? "Atualizando..." : "↻ Atualizar"}
             </button>
           </div>
         </div>
 
         <div className="mb-5">
-          <h2 className="text-2xl font-extrabold text-ink">📋 Aprovação de Conteúdo</h2>
+          <h2 className="text-xl sm:text-2xl font-extrabold text-ink">Aprovação de Conteúdo</h2>
           <p className="text-sm text-ink/50 mt-0.5">
             Aqui você acompanha, aprova e pede ajustes nos conteúdos programados pra sua empresa.
             {postsPendentes.length > 0 && (
-              <span className="font-semibold text-forest">
+              <span className="block sm:inline font-semibold text-forest mt-1 sm:mt-0">
                 {" "}
                 {postsPendentes.length} {postsPendentes.length === 1 ? "conteúdo aguardando" : "conteúdos aguardando"} sua aprovação.
               </span>
@@ -195,14 +192,14 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
           </p>
         </div>
 
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-2 sm:gap-3 mb-6">
           <button
             onClick={() => {
               const d = new Date(ano, mes - 1, 1);
               setMes(d.getMonth());
               setAno(d.getFullYear());
             }}
-            className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-white text-ink/50"
+            className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-white active:bg-white text-ink/50 shrink-0"
           >
             ←
           </button>
@@ -211,7 +208,7 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
               setMes(hoje.getMonth());
               setAno(hoje.getFullYear());
             }}
-            className="rounded-full border-2 border-ink/15 px-4 py-1.5 text-sm font-semibold hover:bg-white"
+            className="rounded-full border-2 border-ink/15 px-3 sm:px-4 py-1.5 text-sm font-semibold hover:bg-white active:bg-white shrink-0"
           >
             Hoje
           </button>
@@ -221,16 +218,18 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
               setMes(d.getMonth());
               setAno(d.getFullYear());
             }}
-            className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-white text-ink/50"
+            className="rounded-full h-9 w-9 flex items-center justify-center hover:bg-white active:bg-white text-ink/50 shrink-0"
           >
             →
           </button>
-          <h2 className="text-lg font-bold text-ink ml-2">
+          <h2 className="text-base sm:text-lg font-bold text-ink ml-1 sm:ml-2 truncate">
             {MESES[mes]} {ano}
           </h2>
         </div>
 
-        <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
+        {/* Grade mensal — só em telas maiores. Numa tela de celular, 7 colunas ficam pequenas
+            demais pra serem clicáveis/legíveis, então usamos uma lista abaixo. */}
+        <div className="hidden sm:block rounded-3xl bg-card border border-black/5 overflow-hidden">
           <div className="grid grid-cols-7 bg-ink text-xs font-bold text-white/90 uppercase tracking-wide">
             {DIAS_SEMANA.map((d) => (
               <div key={d} className="px-3 py-2.5 text-center">
@@ -279,6 +278,57 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
               );
             })}
           </div>
+        </div>
+
+        {/* Lista/agenda — só em celular. Mostra os dias do mês que têm algo
+            marcado, um embaixo do outro, com os posts em cards grandes e
+            fáceis de tocar. */}
+        <div className="sm:hidden space-y-3">
+          {dias.filter((d) => d.getMonth() === mes && (postsPorDia.get(toISODate(d))?.length ?? 0) > 0).length === 0 ? (
+            <div className="rounded-2xl bg-card border border-black/5 p-6 text-center">
+              <p className="text-sm text-ink/40">Nenhum conteúdo programado em {MESES[mes].toLowerCase()}.</p>
+            </div>
+          ) : (
+            dias
+              .filter((d) => d.getMonth() === mes)
+              .map((dia) => {
+                const iso = toISODate(dia);
+                const postsDoDia = postsPorDia.get(iso) ?? [];
+                if (postsDoDia.length === 0) return null;
+                return (
+                  <div key={iso}>
+                    <div className="flex items-center gap-2 mb-1.5 px-1">
+                      <span
+                        className={`text-xs font-bold h-6 w-6 rounded-full flex items-center justify-center shrink-0 ${
+                          iso === hojeISO ? "bg-ink text-white" : "bg-surface text-ink/50"
+                        }`}
+                      >
+                        {dia.getDate()}
+                      </span>
+                      <span className="text-xs font-semibold text-ink/50 uppercase tracking-wide">
+                        {DIAS_SEMANA[dia.getDay()]}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {postsDoDia.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => setPostAberto(p)}
+                          className={`w-full text-left rounded-2xl px-4 py-3 active:scale-[0.98] transition-transform ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
+                        >
+                          <p className="text-sm font-bold truncate">{p.titulo || p.hora_publicacao?.slice(0, 5) || "Post"}</p>
+                          {(p.formato || p.hora_publicacao) && (
+                            <p className="text-xs opacity-70 mt-0.5">
+                              {[p.formato ? FORMATO_LABEL[p.formato] : null, p.hora_publicacao?.slice(0, 5)].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
+          )}
         </div>
       </div>
 
@@ -373,19 +423,19 @@ function PostPublicoModal({
   }
 
   return (
-    <div className="fixed inset-0 z-20 bg-ink/60 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-20 bg-ink/60 flex items-center justify-center sm:p-4" onClick={onClose}>
       <div
-        className="w-full max-w-6xl h-[88vh] rounded-2xl bg-white text-ink shadow-2xl flex flex-col overflow-hidden"
+        className="w-full h-[100dvh] sm:h-[88vh] sm:max-w-6xl rounded-none sm:rounded-2xl bg-white text-ink shadow-2xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-black/5 shrink-0">
-          <p className="text-xs font-bold uppercase tracking-widest text-ink/40">Aprovação de conteúdo</p>
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 px-4 sm:px-5 py-3 sm:py-3.5 border-b border-black/5 shrink-0">
+          <p className="hidden sm:block text-xs font-bold uppercase tracking-widest text-ink/40 shrink-0">Aprovação de conteúdo</p>
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto">
             {!jaAprovado && !jaConcluido && (
               <button
                 onClick={() => enviar("aprovar")}
                 disabled={enviando !== null}
-                className="rounded-full bg-forest text-white px-4 py-1.5 text-sm font-semibold hover:brightness-110 transition disabled:opacity-50"
+                className="rounded-full bg-forest text-white px-3.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold hover:brightness-110 active:brightness-110 transition disabled:opacity-50 shrink-0"
               >
                 ✓ Aprovar
               </button>
@@ -401,18 +451,18 @@ function PostPublicoModal({
                 setComentarioAberto(true);
               }}
               disabled={enviando !== null}
-              className="rounded-full border-2 border-ink/15 text-ink px-4 py-1.5 text-sm font-semibold hover:bg-surface transition disabled:opacity-50"
+              className="rounded-full border-2 border-ink/15 text-ink px-3.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold hover:bg-surface active:bg-surface transition disabled:opacity-50 shrink-0 whitespace-nowrap"
             >
-              ✏ Solicitar ajuste
+              ✏ Ajuste
             </button>
-            <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-surface flex items-center justify-center text-ink/40 ml-1">
+            <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-surface active:bg-surface flex items-center justify-center text-ink/40 ml-1 shrink-0">
               ✕
             </button>
           </div>
         </div>
 
-        <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 bg-surface flex items-center justify-center relative p-6 min-w-0">
+        <div className="flex-1 flex flex-col sm:flex-row overflow-y-auto sm:overflow-hidden">
+          <div className="shrink-0 sm:flex-1 bg-surface flex items-center justify-center relative p-4 sm:p-6 min-w-0">
             {post.formato === "video" ? (
               <div className="w-full max-w-md">
                 <div className="relative rounded-2xl overflow-hidden bg-black/5 w-full aspect-square flex flex-col items-center justify-center gap-3">
@@ -435,20 +485,20 @@ function PostPublicoModal({
               <div className="w-full max-w-md">
                 <div className="relative rounded-2xl overflow-hidden bg-black/5">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={midiaAtual.url} alt="Mídia do post" className="w-full max-h-[65vh] object-contain mx-auto" />
+                  <img src={midiaAtual.url} alt="Mídia do post" className="w-full max-h-[45vh] sm:max-h-[65vh] object-contain mx-auto" />
                   {midias.length > 1 && (
                     <>
                       <button
                         onClick={() => setMidiaIndex((i) => Math.max(i - 1, 0))}
                         disabled={midiaIndex === 0}
-                        className="absolute left-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white/90 shadow flex items-center justify-center disabled:opacity-30 text-ink"
+                        className="absolute left-2 top-1/2 -translate-y-1/2 h-10 w-10 sm:h-9 sm:w-9 rounded-full bg-white/90 shadow flex items-center justify-center disabled:opacity-30 text-ink"
                       >
                         ←
                       </button>
                       <button
                         onClick={() => setMidiaIndex((i) => Math.min(i + 1, midias.length - 1))}
                         disabled={midiaIndex === midias.length - 1}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-white/90 shadow flex items-center justify-center disabled:opacity-30 text-ink"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 h-10 w-10 sm:h-9 sm:w-9 rounded-full bg-white/90 shadow flex items-center justify-center disabled:opacity-30 text-ink"
                       >
                         →
                       </button>
@@ -468,8 +518,8 @@ function PostPublicoModal({
             )}
           </div>
 
-          <div className={`w-[320px] shrink-0 border-l border-black/5 overflow-y-auto p-5 ${comentarioAberto ? "" : "flex-1 max-w-none"}`}>
-            {post.titulo && <h3 className="text-xl font-extrabold text-ink mb-2 leading-snug">{post.titulo}</h3>}
+          <div className={`shrink-0 sm:w-[320px] border-t sm:border-t-0 sm:border-l border-black/5 sm:overflow-y-auto p-4 sm:p-5 ${comentarioAberto ? "" : "sm:flex-1 sm:max-w-none"}`}>
+            {post.titulo && <h3 className="text-lg sm:text-xl font-extrabold text-ink mb-2 leading-snug">{post.titulo}</h3>}
 
             <div className="flex flex-wrap items-center gap-1.5 mb-4">
               <span className="rounded-full bg-surface text-ink/60 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide">Post</span>
@@ -503,7 +553,7 @@ function PostPublicoModal({
           </div>
 
           {comentarioAberto && (
-            <div className="w-[300px] shrink-0 border-l border-black/5 flex flex-col">
+            <div className="shrink-0 sm:w-[300px] border-t sm:border-t-0 sm:border-l border-black/5 flex flex-col">
               <div className="px-4 py-3 border-b border-black/5 shrink-0 flex items-center justify-between">
                 <p className="text-sm font-bold text-ink">💬 Comentários</p>
                 <button
@@ -511,12 +561,12 @@ function PostPublicoModal({
                     setComentarioAberto(false);
                     setMostrarCampoAlteracao(false);
                   }}
-                  className="text-ink/30 hover:text-ink text-xs"
+                  className="text-ink/30 hover:text-ink text-xs h-6 w-6 flex items-center justify-center shrink-0"
                 >
                   ✕
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="sm:flex-1 sm:overflow-y-auto p-4 space-y-3">
                 {comentarios.length === 0 ? (
                   <p className="text-xs text-ink/30 text-center mt-6">Nenhuma mensagem ainda.</p>
                 ) : (
@@ -548,13 +598,13 @@ function PostPublicoModal({
                       onChange={(e) => setTexto(e.target.value)}
                       rows={3}
                       placeholder="Ex: pode trocar a foto de capa? Ou mudar o texto da legenda?"
-                      className="input resize-none text-sm"
+                      className="input resize-none text-base sm:text-sm"
                     />
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => enviar("solicitar_alteracao")}
                         disabled={enviando !== null || !texto.trim()}
-                        className="rounded-full bg-forest text-white px-4 py-2 text-xs font-semibold hover:brightness-110 transition disabled:opacity-50"
+                        className="rounded-full bg-forest text-white px-4 py-2.5 sm:py-2 text-xs font-semibold hover:brightness-110 active:brightness-110 transition disabled:opacity-50"
                       >
                         {enviando === "solicitar_alteracao" ? "Enviando..." : "Enviar alteração"}
                       </button>
@@ -565,7 +615,7 @@ function PostPublicoModal({
                           setTexto("");
                           setErro(null);
                         }}
-                        className="text-xs font-semibold text-ink/50 hover:text-ink"
+                        className="text-xs font-semibold text-ink/50 hover:text-ink py-2.5 sm:py-0"
                       >
                         Cancelar
                       </button>
@@ -578,11 +628,11 @@ function PostPublicoModal({
         </div>
 
         {totalNav > 0 && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-black/5 shrink-0 text-sm">
+          <div className="flex items-center justify-between px-4 sm:px-5 py-2.5 sm:py-3 border-t border-black/5 shrink-0 text-sm bg-white">
             <button
               onClick={() => irPara(-1)}
               disabled={idxAtual <= 0}
-              className="text-ink/50 hover:text-ink disabled:opacity-20 font-semibold"
+              className="text-ink/50 hover:text-ink disabled:opacity-20 font-semibold py-1.5"
             >
               ← Anterior
             </button>
@@ -592,7 +642,7 @@ function PostPublicoModal({
             <button
               onClick={() => irPara(1)}
               disabled={idxAtual < 0 || idxAtual >= totalNav - 1}
-              className="text-ink/50 hover:text-ink disabled:opacity-20 font-semibold"
+              className="text-ink/50 hover:text-ink disabled:opacity-20 font-semibold py-1.5"
             >
               Próximo →
             </button>
