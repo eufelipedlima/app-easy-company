@@ -13,6 +13,7 @@ import { RichTextEditor } from "@/components/rich-text-editor";
 import { Cronometro } from "@/components/cronometro";
 import { TempoPorPessoa, type SessaoPessoa } from "@/components/tempo-por-pessoa";
 import { Eye, Download, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { iconeHistorico, comValoresDestacados } from "@/lib/historico-visual";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -514,7 +515,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     };
   }, [id, carregarComentarios]);
 
-  async function registrarHistorico(descricaoEvento: string, notificar: boolean = false) {
+  async function registrarHistorico(descricaoEvento: string, notificar: boolean = false, categoria: string = "geral") {
     const supabase = createClient();
     await supabase.from("tarefas_historico").insert({ tarefa_id: id, autor_id: meuId, descricao: descricaoEvento });
     setHistorico((atual) => [
@@ -524,26 +525,41 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
     if (!notificar) return;
     const destinatarios = responsaveis.filter((r) => r.authUserId && r.authUserId !== meuId).map((r) => r.authUserId!);
-    if (destinatarios.length > 0) {
-      await supabase.from("notificacoes").insert(
-        destinatarios.map((destId) => ({
-          destinatario_id: destId,
-          tipo: "mudanca_tarefa",
-          titulo: `${meuNome} ${descricaoEvento} numa tarefa sua`,
-          descricao: tarefa?.titulo ?? null,
-          link: `/tarefas/${id}`,
-          autor_id: meuId,
-          autor_nome: meuNome,
-          autor_foto_url: meuFotoUrl,
-        }))
-      );
-    }
+    if (destinatarios.length === 0) return;
+
+    // Se já mandamos um aviso desse mesmo tipo de mudança (status, data,
+    // anexo...) pra essa tarefa há pouco tempo, não manda de novo — evita
+    // ficar avisando repetido quando alguém edita o mesmo campo várias vezes
+    // seguidas.
+    const tipo = `mudanca_tarefa_${categoria}`;
+    const desde = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const { data: recentes } = await supabase
+      .from("notificacoes")
+      .select("id")
+      .eq("link", `/tarefas/${id}`)
+      .eq("tipo", tipo)
+      .gte("created_at", desde)
+      .limit(1);
+    if (recentes && recentes.length > 0) return;
+
+    await supabase.from("notificacoes").insert(
+      destinatarios.map((destId) => ({
+        destinatario_id: destId,
+        tipo,
+        titulo: `${meuNome} ${descricaoEvento} numa tarefa sua`,
+        descricao: tarefa?.titulo ?? null,
+        link: `/tarefas/${id}`,
+        autor_id: meuId,
+        autor_nome: meuNome,
+        autor_foto_url: meuFotoUrl,
+      }))
+    );
   }
 
-  async function salvarCampo(campo: Record<string, string | null>, eventoHistorico?: string, notificar: boolean = false) {
+  async function salvarCampo(campo: Record<string, string | null>, eventoHistorico?: string, notificar: boolean = false, categoria: string = "geral") {
     const supabase = createClient();
     await supabase.from("tarefas").update(campo).eq("id", id);
-    if (eventoHistorico) registrarHistorico(eventoHistorico, notificar);
+    if (eventoHistorico) registrarHistorico(eventoHistorico, notificar, categoria);
   }
 
   async function adicionarAnexos(arquivos: FileList | null) {
@@ -564,7 +580,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
         });
       }
     }
-    registrarHistorico(`anexou ${arquivos.length > 1 ? `${arquivos.length} arquivos` : "um arquivo"}`, true);
+    registrarHistorico(`anexou ${arquivos.length > 1 ? `${arquivos.length} arquivos` : "um arquivo"}`, true, "anexo");
     carregarAnexos();
     setEnviandoAnexo(false);
   }
@@ -674,11 +690,11 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     if (jaTem) {
       setResponsaveis((atual) => atual.filter((r) => r.id !== funcionarioId));
       await supabase.from("tarefas_responsaveis").delete().eq("tarefa_id", id).eq("funcionario_id", funcionarioId);
-      if (pessoa) registrarHistorico(`removeu ${pessoa.nome} dos responsáveis`, true);
+      if (pessoa) registrarHistorico(`removeu ${pessoa.nome} dos responsáveis`, true, "responsavel");
     } else {
       if (pessoa) setResponsaveis((atual) => [...atual, pessoa]);
       await supabase.from("tarefas_responsaveis").insert({ tarefa_id: id, funcionario_id: funcionarioId });
-      if (pessoa) registrarHistorico(`atribuiu ${pessoa.nome} como responsável`, true);
+      if (pessoa) registrarHistorico(`atribuiu ${pessoa.nome} como responsável`, true, "responsavel");
       if (pessoa?.authUserId && pessoa.authUserId !== meuId) {
         await supabase.from("notificacoes").insert({
           destinatario_id: pessoa.authUserId,
@@ -1052,7 +1068,12 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                       <button
                         key={s.id}
                         onClick={() => {
-                          salvarCampo({ status_id: s.id }, `mudou o status para "${s.nome}"`, true);
+                          salvarCampo(
+                            { status_id: s.id },
+                            `mudou o status de "${statusAtual?.nome ?? "—"}" para "${s.nome}"`,
+                            true,
+                            "status"
+                          );
                           setTarefa((t) => (t ? { ...t, status_id: s.id } : t));
                           setStatusAberto(false);
                         }}
@@ -1142,7 +1163,12 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                 value={dataInicio}
                 onChange={(e) => {
                   setDataInicio(e.target.value);
-                  salvarCampo({ data_inicio: e.target.value || null }, "mudou a data de início", true);
+                  salvarCampo(
+                    { data_inicio: e.target.value || null },
+                    e.target.value ? `mudou a data de início para ${formatarDataCurta(e.target.value)}` : "removeu a data de início",
+                    true,
+                    "data_inicio"
+                  );
                 }}
                 className="input"
               />
@@ -1155,7 +1181,12 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                 value={prazo}
                 onChange={(e) => {
                   setPrazo(e.target.value);
-                  salvarCampo({ prazo: e.target.value || null }, "mudou o prazo", true);
+                  salvarCampo(
+                    { prazo: e.target.value || null },
+                    e.target.value ? `mudou o prazo para ${formatarDataCurta(e.target.value)}` : "removeu o prazo",
+                    true,
+                    "prazo"
+                  );
                 }}
                 className="input"
               />
@@ -1494,9 +1525,17 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                   <p className="text-sm text-ink/40">Nenhuma alteração registrada ainda.</p>
                 ) : (
                   historico.map((h) => (
-                    <div key={h.id} className="text-xs text-ink/60 border-l-2 border-black/10 pl-3 py-0.5">
-                      <span className="font-semibold text-ink">{h.autor_id ? nomeDoAutor(h.autor_id) : "Alguém"}</span> {h.descricao}
-                      <span className="block text-[10px] text-ink/40 mt-0.5">{formatarQuando(h.created_at)}</span>
+                    <div key={h.id} className="flex gap-2.5 text-xs text-ink/60 py-1.5">
+                      <span className="h-6 w-6 rounded-full bg-surface text-ink/40 flex items-center justify-center shrink-0 mt-0.5">
+                        {iconeHistorico(h.descricao)}
+                      </span>
+                      <div className="min-w-0">
+                        <p>
+                          <span className="font-semibold text-ink">{h.autor_id ? nomeDoAutor(h.autor_id) : "Alguém"}</span>{" "}
+                          {comValoresDestacados(h.descricao)}
+                        </p>
+                        <span className="block text-[10px] text-ink/40 mt-0.5">{formatarQuando(h.created_at)}</span>
+                      </div>
                     </div>
                   ))
                 )}

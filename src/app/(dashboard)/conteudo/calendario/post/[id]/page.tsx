@@ -15,6 +15,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Eye, Download, X, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { iconeHistorico, comValoresDestacados } from "@/lib/historico-visual";
 
 interface StatusItem {
   id: string;
@@ -546,7 +547,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     };
   }, [id, carregarComentarios]);
 
-  async function registrarHistorico(descricaoEvento: string, notificar: boolean = false) {
+  async function registrarHistorico(descricaoEvento: string, notificar: boolean = false, categoria: string = "geral") {
     const supabase = createClient();
     await supabase.from("posts_conteudo_historico").insert({ post_id: id, autor_id: meuId, descricao: descricaoEvento });
     setHistorico((atual) => [
@@ -556,26 +557,37 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
 
     if (!notificar) return;
     const destinatarios = responsaveis.filter((r) => r.authUserId && r.authUserId !== meuId).map((r) => r.authUserId!);
-    if (destinatarios.length > 0) {
-      await supabase.from("notificacoes").insert(
-        destinatarios.map((destId) => ({
-          destinatario_id: destId,
-          tipo: "mudanca_conteudo",
-          titulo: `${meuNome} ${descricaoEvento} num conteúdo seu`,
-          descricao: post?.titulo ?? null,
-          link: `/conteudo/calendario/post/${id}`,
-          autor_id: meuId,
-          autor_nome: meuNome,
-          autor_foto_url: meuFotoUrl,
-        }))
-      );
-    }
+    if (destinatarios.length === 0) return;
+
+    const tipo = `mudanca_conteudo_${categoria}`;
+    const desde = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const { data: recentes } = await supabase
+      .from("notificacoes")
+      .select("id")
+      .eq("link", `/conteudo/calendario/post/${id}`)
+      .eq("tipo", tipo)
+      .gte("created_at", desde)
+      .limit(1);
+    if (recentes && recentes.length > 0) return;
+
+    await supabase.from("notificacoes").insert(
+      destinatarios.map((destId) => ({
+        destinatario_id: destId,
+        tipo,
+        titulo: `${meuNome} ${descricaoEvento} num conteúdo seu`,
+        descricao: post?.titulo ?? null,
+        link: `/conteudo/calendario/post/${id}`,
+        autor_id: meuId,
+        autor_nome: meuNome,
+        autor_foto_url: meuFotoUrl,
+      }))
+    );
   }
 
-  async function salvarCampo(campo: Record<string, string | null>, eventoHistorico?: string, notificar: boolean = false) {
+  async function salvarCampo(campo: Record<string, string | null>, eventoHistorico?: string, notificar: boolean = false, categoria: string = "geral") {
     const supabase = createClient();
     await supabase.from("posts_conteudo").update(campo).eq("id", id);
-    if (eventoHistorico) registrarHistorico(eventoHistorico, notificar);
+    if (eventoHistorico) registrarHistorico(eventoHistorico, notificar, categoria);
   }
 
   const mencoesObservacoesRef = useRef<Set<string>>(new Set());
@@ -635,7 +647,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       alert(`Não foi possível subir ${erros.length === 1 ? "esse arquivo" : "esses arquivos"}:\n\n${erros.join("\n")}`);
     }
     if (arquivosParaEnviar.length > erros.length) {
-      registrarHistorico(`adicionou ${arquivosParaEnviar.length > 1 ? `${arquivosParaEnviar.length} artes` : "uma arte"}`, true);
+      registrarHistorico(`adicionou ${arquivosParaEnviar.length > 1 ? `${arquivosParaEnviar.length} artes` : "uma arte"}`, true, "midia");
     }
     setEnviandoMidia(false);
   }
@@ -740,11 +752,11 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     if (jaTem) {
       setResponsaveis((atual) => atual.filter((r) => r.id !== funcionarioId));
       await supabase.from("posts_conteudo_responsaveis").delete().eq("post_id", id).eq("funcionario_id", funcionarioId);
-      if (pessoa) registrarHistorico(`removeu ${pessoa.nome} dos responsáveis`, true);
+      if (pessoa) registrarHistorico(`removeu ${pessoa.nome} dos responsáveis`, true, "responsavel");
     } else {
       if (pessoa) setResponsaveis((atual) => [...atual, pessoa]);
       await supabase.from("posts_conteudo_responsaveis").insert({ post_id: id, funcionario_id: funcionarioId });
-      if (pessoa) registrarHistorico(`atribuiu ${pessoa.nome} como responsável`, true);
+      if (pessoa) registrarHistorico(`atribuiu ${pessoa.nome} como responsável`, true, "responsavel");
       if (pessoa?.authUserId && pessoa.authUserId !== meuId) {
         await supabase.from("notificacoes").insert({
           destinatario_id: pessoa.authUserId,
@@ -1069,7 +1081,12 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                       <button
                         key={s.id}
                         onClick={() => {
-                          salvarCampo({ status_id: s.id }, `mudou o status para "${s.nome}"`, true);
+                          salvarCampo(
+                            { status_id: s.id },
+                            `mudou o status de "${statusAtual?.nome ?? "—"}" para "${s.nome}"`,
+                            true,
+                            "status"
+                          );
                           setPost((p) => (p ? { ...p, status_id: s.id } : p));
                           setStatusAberto(false);
                         }}
@@ -1181,7 +1198,12 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                 value={dataInicio}
                 onChange={(e) => {
                   setDataInicio(e.target.value);
-                  salvarCampo({ data_inicio: e.target.value || null }, "mudou a data de início", true);
+                  salvarCampo(
+                    { data_inicio: e.target.value || null },
+                    e.target.value ? `mudou a data de início para ${formatarDataCurta(e.target.value)}` : "removeu a data de início",
+                    true,
+                    "data_inicio"
+                  );
                 }}
                 className="input"
               />
@@ -1195,7 +1217,12 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                   value={dataPublicacao}
                   onChange={(e) => {
                     setDataPublicacao(e.target.value);
-                    salvarCampo({ data_publicacao: e.target.value || null }, "mudou a data de publicação", true);
+                    salvarCampo(
+                      { data_publicacao: e.target.value || null },
+                      e.target.value ? `mudou a data de publicação para ${formatarDataCurta(e.target.value)}` : "removeu a data de publicação",
+                      true,
+                      "data_publicacao"
+                    );
                   }}
                   className="input"
                 />
@@ -1605,9 +1632,17 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                   <p className="text-sm text-ink/40">Nenhuma alteração registrada ainda.</p>
                 ) : (
                   historico.map((h) => (
-                    <div key={h.id} className="text-xs text-ink/60 border-l-2 border-black/10 pl-3 py-0.5">
-                      <span className="font-semibold text-ink">{h.autor_id ? nomeDoAutor(h.autor_id) : "Alguém"}</span> {h.descricao}
-                      <span className="block text-[10px] text-ink/40 mt-0.5">{formatarQuando(h.created_at)}</span>
+                    <div key={h.id} className="flex gap-2.5 text-xs text-ink/60 py-1.5">
+                      <span className="h-6 w-6 rounded-full bg-surface text-ink/40 flex items-center justify-center shrink-0 mt-0.5">
+                        {iconeHistorico(h.descricao)}
+                      </span>
+                      <div className="min-w-0">
+                        <p>
+                          <span className="font-semibold text-ink">{h.autor_id ? nomeDoAutor(h.autor_id) : "Alguém"}</span>{" "}
+                          {comValoresDestacados(h.descricao)}
+                        </p>
+                        <span className="block text-[10px] text-ink/40 mt-0.5">{formatarQuando(h.created_at)}</span>
+                      </div>
                     </div>
                   ))
                 )}
