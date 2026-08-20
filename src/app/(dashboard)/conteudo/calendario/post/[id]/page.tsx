@@ -10,6 +10,7 @@ import { corDoStatus } from "@/lib/status-conteudo";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { BuscaCliente } from "@/components/busca-cliente";
 import { Cronometro } from "@/components/cronometro";
+import { TempoPorPessoa } from "@/components/tempo-por-pessoa";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -192,6 +193,9 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     []
   );
   const [meuId, setMeuId] = useState<string | null>(null);
+  const [sessoesTempo, setSessoesTempo] = useState<
+    { funcionario_auth_id: string; iniciado_em: string | null; segundos_acumulados: number }[]
+  >([]);
   const [meuNome, setMeuNome] = useState("Você");
   const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
   const [responsaveis, setResponsaveis] = useState<Responsavel[]>([]);
@@ -308,6 +312,14 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       setObservacoes(p.observacoes_internas ?? "");
       mencoesObservacoesRef.current = extrairMencoes(p.observacoes_internas ?? "");
       setClienteSelecionado(listaClientes.find((c) => c.id === p.cliente_id) ?? null);
+      {
+        const supabase2 = createClient();
+        const { data: sessoes } = await supabase2
+          .from("posts_conteudo_tempo_sessoes")
+          .select("funcionario_auth_id, iniciado_em, segundos_acumulados")
+          .eq("post_id", id);
+        setSessoesTempo(sessoes ?? []);
+      }
       {
         const supabase2 = createClient();
         const [{ data: todasTarefas }, { data: todosPosts }] = await Promise.all([
@@ -685,20 +697,38 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   }
 
   async function iniciarCronometro() {
+    if (!meuId) return;
     const supabase = createClient();
     const agora = new Date().toISOString();
-    await supabase.from("posts_conteudo").update({ timer_iniciado_em: agora, timer_iniciado_por: meuId }).eq("id", id);
-    setPost((p) => (p ? { ...p, timer_iniciado_em: agora, timer_iniciado_por: meuId } : p));
-    registrarHistorico("iniciou o cronômetro");
+    await supabase
+      .from("posts_conteudo_tempo_sessoes")
+      .upsert({ post_id: id, funcionario_auth_id: meuId, iniciado_em: agora }, { onConflict: "post_id,funcionario_auth_id" });
+    setSessoesTempo((atual) => {
+      const semEu = atual.filter((s) => s.funcionario_auth_id !== meuId);
+      const minha = atual.find((s) => s.funcionario_auth_id === meuId);
+      return [...semEu, { funcionario_auth_id: meuId, iniciado_em: agora, segundos_acumulados: minha?.segundos_acumulados ?? 0 }];
+    });
   }
 
   async function pausarCronometro() {
-    if (!post?.timer_iniciado_em) return;
-    const segundosCorridos = Math.floor((Date.now() - new Date(post.timer_iniciado_em).getTime()) / 1000);
-    const novoTotal = post.tempo_total_segundos + segundosCorridos;
+    const minhaSessao = sessoesTempo.find((s) => s.funcionario_auth_id === meuId);
+    if (!meuId || !minhaSessao?.iniciado_em || !post) return;
+    const segundosCorridos = Math.floor((Date.now() - new Date(minhaSessao.iniciado_em).getTime()) / 1000);
+    const novoAcumuladoMeu = minhaSessao.segundos_acumulados + segundosCorridos;
+    const novoTotalGeral = post.tempo_total_segundos + segundosCorridos;
     const supabase = createClient();
-    await supabase.from("posts_conteudo").update({ tempo_total_segundos: novoTotal, timer_iniciado_em: null, timer_iniciado_por: null }).eq("id", id);
-    setPost((p) => (p ? { ...p, tempo_total_segundos: novoTotal, timer_iniciado_em: null, timer_iniciado_por: null } : p));
+    await Promise.all([
+      supabase
+        .from("posts_conteudo_tempo_sessoes")
+        .update({ iniciado_em: null, segundos_acumulados: novoAcumuladoMeu })
+        .eq("post_id", id)
+        .eq("funcionario_auth_id", meuId),
+      supabase.from("posts_conteudo").update({ tempo_total_segundos: novoTotalGeral }).eq("id", id),
+    ]);
+    setSessoesTempo((atual) =>
+      atual.map((s) => (s.funcionario_auth_id === meuId ? { ...s, iniciado_em: null, segundos_acumulados: novoAcumuladoMeu } : s))
+    );
+    setPost((p) => (p ? { ...p, tempo_total_segundos: novoTotalGeral } : p));
     const minutos = Math.round(segundosCorridos / 60);
     registrarHistorico(`passou ${minutos < 1 ? "menos de 1min" : `${minutos}min`} trabalhando nesse conteúdo`);
   }
@@ -790,7 +820,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   }
 
   function nomeDoAutor(authUserId: string) {
-    return authUserId === meuId ? meuNome : colegas.find((c) => c.id === authUserId)?.nome ?? "Alguém";
+    return authUserId === meuId ? meuNome : funcionariosComAcesso.find((f) => f.authUserId === authUserId)?.nome ?? "Alguém";
   }
 
   async function enviarComentario() {
@@ -903,11 +933,17 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
         <div className="flex items-center gap-3">
           <Cronometro
             tempoTotalSegundos={post.tempo_total_segundos}
-            timerIniciadoEm={post.timer_iniciado_em}
-            nomeQuemIniciou={post.timer_iniciado_por ? nomeDoAutor(post.timer_iniciado_por) : null}
-            souEuQuemIniciou={post.timer_iniciado_por === meuId}
+            minhaSessaoIniciadaEm={sessoesTempo.find((s) => s.funcionario_auth_id === meuId)?.iniciado_em ?? null}
+            outrosRodando={sessoesTempo.filter((s) => s.iniciado_em && s.funcionario_auth_id !== meuId).map((s) => nomeDoAutor(s.funcionario_auth_id))}
             onIniciar={iniciarCronometro}
             onPausar={pausarCronometro}
+          />
+          <TempoPorPessoa
+            sessoes={sessoesTempo.map((s) => ({
+              nome: nomeDoAutor(s.funcionario_auth_id),
+              segundosAcumulados: s.segundos_acumulados,
+              rodandoDesde: s.iniciado_em,
+            }))}
           />
           {!post.excluido_em && (
             <button onClick={excluirPost} className="text-sm font-semibold text-red-500 hover:text-red-700">

@@ -11,6 +11,7 @@ import { corDoStatus } from "@/lib/status-conteudo";
 import { BuscaCliente } from "@/components/busca-cliente";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { Cronometro } from "@/components/cronometro";
+import { TempoPorPessoa, type SessaoPessoa } from "@/components/tempo-por-pessoa";
 import { Eye, Download, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
@@ -225,6 +226,9 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     []
   );
   const [meuId, setMeuId] = useState<string | null>(null);
+  const [sessoesTempo, setSessoesTempo] = useState<
+    { funcionario_auth_id: string; iniciado_em: string | null; segundos_acumulados: number }[]
+  >([]);
   const [meuNome, setMeuNome] = useState("Você");
   const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
   const [subtarefas, setSubtarefas] = useState<Subtarefa[]>([]);
@@ -295,8 +299,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     if (user) {
       setMeuId(user.id);
       const eu = listaFunc.find((f) => f.authUserId === user.id);
-      setMeuNome(eu?.nome ?? "Você");
-      setMeuFotoUrl(eu?.fotoUrl ?? null);
+      setMeuNome(eu?.nome ?? "Você");      setMeuFotoUrl(eu?.fotoUrl ?? null);
     }
 
     if (t) {
@@ -305,6 +308,15 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       setDescricao(t.descricao ?? "");
       mencoesDescricaoRef.current = extrairMencoes(t.descricao ?? "");
       setClienteSelecionado(t.cliente_id ? listaClientes.find((c) => c.id === t.cliente_id) ?? null : null);
+
+      {
+        const supabase2 = createClient();
+        const { data: sessoes } = await supabase2
+          .from("tarefas_tempo_sessoes")
+          .select("funcionario_auth_id, iniciado_em, segundos_acumulados")
+          .eq("tarefa_id", id);
+        setSessoesTempo(sessoes ?? []);
+      }
       {
         const supabase2 = createClient();
         const [{ data: todasTarefas }, { data: todosPosts }] = await Promise.all([
@@ -619,20 +631,38 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   }
 
   async function iniciarCronometro() {
+    if (!meuId) return;
     const supabase = createClient();
     const agora = new Date().toISOString();
-    await supabase.from("tarefas").update({ timer_iniciado_em: agora, timer_iniciado_por: meuId }).eq("id", id);
-    setTarefa((t) => (t ? { ...t, timer_iniciado_em: agora, timer_iniciado_por: meuId } : t));
-    registrarHistorico("iniciou o cronômetro");
+    await supabase
+      .from("tarefas_tempo_sessoes")
+      .upsert({ tarefa_id: id, funcionario_auth_id: meuId, iniciado_em: agora }, { onConflict: "tarefa_id,funcionario_auth_id" });
+    setSessoesTempo((atual) => {
+      const semEu = atual.filter((s) => s.funcionario_auth_id !== meuId);
+      const minha = atual.find((s) => s.funcionario_auth_id === meuId);
+      return [...semEu, { funcionario_auth_id: meuId, iniciado_em: agora, segundos_acumulados: minha?.segundos_acumulados ?? 0 }];
+    });
   }
 
   async function pausarCronometro() {
-    if (!tarefa?.timer_iniciado_em) return;
-    const segundosCorridos = Math.floor((Date.now() - new Date(tarefa.timer_iniciado_em).getTime()) / 1000);
-    const novoTotal = tarefa.tempo_total_segundos + segundosCorridos;
+    const minhaSessao = sessoesTempo.find((s) => s.funcionario_auth_id === meuId);
+    if (!meuId || !minhaSessao?.iniciado_em || !tarefa) return;
+    const segundosCorridos = Math.floor((Date.now() - new Date(minhaSessao.iniciado_em).getTime()) / 1000);
+    const novoAcumuladoMeu = minhaSessao.segundos_acumulados + segundosCorridos;
+    const novoTotalGeral = tarefa.tempo_total_segundos + segundosCorridos;
     const supabase = createClient();
-    await supabase.from("tarefas").update({ tempo_total_segundos: novoTotal, timer_iniciado_em: null, timer_iniciado_por: null }).eq("id", id);
-    setTarefa((t) => (t ? { ...t, tempo_total_segundos: novoTotal, timer_iniciado_em: null, timer_iniciado_por: null } : t));
+    await Promise.all([
+      supabase
+        .from("tarefas_tempo_sessoes")
+        .update({ iniciado_em: null, segundos_acumulados: novoAcumuladoMeu })
+        .eq("tarefa_id", id)
+        .eq("funcionario_auth_id", meuId),
+      supabase.from("tarefas").update({ tempo_total_segundos: novoTotalGeral }).eq("id", id),
+    ]);
+    setSessoesTempo((atual) =>
+      atual.map((s) => (s.funcionario_auth_id === meuId ? { ...s, iniciado_em: null, segundos_acumulados: novoAcumuladoMeu } : s))
+    );
+    setTarefa((t) => (t ? { ...t, tempo_total_segundos: novoTotalGeral } : t));
     const minutos = Math.round(segundosCorridos / 60);
     registrarHistorico(`passou ${minutos < 1 ? "menos de 1min" : `${minutos}min`} trabalhando nessa tarefa`);
   }
@@ -665,7 +695,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   }
 
   function nomeDoAutor(authUserId: string) {
-    return authUserId === meuId ? meuNome : colegas.find((c) => c.id === authUserId)?.nome ?? "Alguém";
+    return authUserId === meuId ? meuNome : funcionariosComAcesso.find((f) => f.authUserId === authUserId)?.nome ?? "Alguém";
   }
 
   async function adicionarSubtarefa(paiId: string, tituloNovo?: string, ehPasta?: boolean) {
@@ -864,11 +894,17 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
         <div className="flex items-center gap-3">
           <Cronometro
             tempoTotalSegundos={tarefa.tempo_total_segundos}
-            timerIniciadoEm={tarefa.timer_iniciado_em}
-            nomeQuemIniciou={tarefa.timer_iniciado_por ? nomeDoAutor(tarefa.timer_iniciado_por) : null}
-            souEuQuemIniciou={tarefa.timer_iniciado_por === meuId}
+            minhaSessaoIniciadaEm={sessoesTempo.find((s) => s.funcionario_auth_id === meuId)?.iniciado_em ?? null}
+            outrosRodando={sessoesTempo.filter((s) => s.iniciado_em && s.funcionario_auth_id !== meuId).map((s) => nomeDoAutor(s.funcionario_auth_id))}
             onIniciar={iniciarCronometro}
             onPausar={pausarCronometro}
+          />
+          <TempoPorPessoa
+            sessoes={sessoesTempo.map((s) => ({
+              nome: nomeDoAutor(s.funcionario_auth_id),
+              segundosAcumulados: s.segundos_acumulados,
+              rodandoDesde: s.iniciado_em,
+            }))}
           />
           {!tarefa.excluido_em && (
             <button onClick={excluirTarefa} className="text-sm font-semibold text-red-500 hover:text-red-700">
