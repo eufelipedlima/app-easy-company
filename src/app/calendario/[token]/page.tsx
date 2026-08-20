@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, use } from "react";
+import { useEffect, useState, useCallback, useRef, use } from "react";
 import { corDoStatus } from "@/lib/status-conteudo";
 
 interface Comentario {
@@ -183,11 +183,15 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
           <h2 className="text-xl sm:text-2xl font-extrabold text-ink">Aprovação de Conteúdo</h2>
           <p className="text-sm text-ink/50 mt-0.5">
             Aqui você acompanha, aprova e pede ajustes nos conteúdos programados pra sua empresa.
-            {postsPendentes.length > 0 && (
-              <span className="block sm:inline font-semibold text-forest mt-1 sm:mt-0">
-                {" "}
-                {postsPendentes.length} {postsPendentes.length === 1 ? "conteúdo aguardando" : "conteúdos aguardando"} sua aprovação.
-              </span>
+            {loading ? (
+              <span className="block sm:inline text-ink/40 mt-1 sm:mt-0"> Carregando seus conteúdos...</span>
+            ) : (
+              postsPendentes.length > 0 && (
+                <span className="block sm:inline font-semibold text-forest mt-1 sm:mt-0">
+                  {" "}
+                  {postsPendentes.length} {postsPendentes.length === 1 ? "conteúdo aguardando" : "conteúdos aguardando"} sua aprovação.
+                </span>
+              )
             )}
           </p>
         </div>
@@ -229,6 +233,23 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
 
         {/* Grade mensal — só em telas maiores. Numa tela de celular, 7 colunas ficam pequenas
             demais pra serem clicáveis/legíveis, então usamos uma lista abaixo. */}
+        {loading ? (
+          <div className="hidden sm:block rounded-3xl bg-card border border-black/5 overflow-hidden animate-pulse">
+            <div className="grid grid-cols-7 bg-ink/10">
+              {DIAS_SEMANA.map((d) => (
+                <div key={d} className="px-3 py-2.5" />
+              ))}
+            </div>
+            <div className="grid grid-cols-7">
+              {Array.from({ length: 35 }).map((_, i) => (
+                <div key={i} className="min-h-[100px] border-b border-r border-black/5 p-2">
+                  <div className="h-4 w-4 rounded-full bg-black/5" />
+                  {(i === 9 || i === 16 || i === 22) && <div className="h-8 rounded-lg bg-black/5 mt-2" />}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
         <div className="hidden sm:block rounded-3xl bg-card border border-black/5 overflow-hidden">
           <div className="grid grid-cols-7 bg-ink text-xs font-bold text-white/90 uppercase tracking-wide">
             {DIAS_SEMANA.map((d) => (
@@ -279,10 +300,21 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
             })}
           </div>
         </div>
+        )}
 
         {/* Lista/agenda — só em celular. Mostra os dias do mês que têm algo
             marcado, um embaixo do outro, com os posts em cards grandes e
             fáceis de tocar. */}
+        {loading ? (
+          <div className="sm:hidden space-y-4 animate-pulse">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i}>
+                <div className="h-4 w-24 rounded bg-black/5 mb-2 ml-1" />
+                <div className="h-16 rounded-2xl bg-card border border-black/5" />
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="sm:hidden space-y-3">
           {dias.filter((d) => d.getMonth() === mes && (postsPorDia.get(toISODate(d))?.length ?? 0) > 0).length === 0 ? (
             <div className="rounded-2xl bg-card border border-black/5 p-6 text-center">
@@ -330,6 +362,7 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
               })
           )}
         </div>
+        )}
       </div>
 
       {postAberto && (
@@ -411,6 +444,16 @@ function PostPublicoModal({
   }
 
   const [comentarioAberto, setComentarioAberto] = useState(false);
+  const comentariosRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (comentarioAberto) {
+      // Pequeno atraso pra esperar a seção de comentários renderizar antes de
+      // rolar até ela — evita "pular" pra um lugar que ainda não existe.
+      const t = setTimeout(() => comentariosRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 80);
+      return () => clearTimeout(t);
+    }
+  }, [comentarioAberto]);
   const comentarios = post.posts_conteudo_comentarios ?? [];
   const idxAtual = listaPendentes.findIndex((p) => p.id === post.id);
   const totalNav = listaPendentes.length;
@@ -429,36 +472,10 @@ function PostPublicoModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-2 px-4 sm:px-5 py-3 sm:py-3.5 border-b border-black/5 shrink-0">
-          <p className="hidden sm:block text-xs font-bold uppercase tracking-widest text-ink/40 shrink-0">Aprovação de conteúdo</p>
-          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto">
-            {!jaAprovado && !jaConcluido && (
-              <button
-                onClick={() => enviar("aprovar")}
-                disabled={enviando !== null}
-                className="rounded-full bg-forest text-white px-3.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold hover:brightness-110 active:brightness-110 transition disabled:opacity-50 shrink-0"
-              >
-                ✓ Aprovar
-              </button>
-            )}
-            <button
-              onClick={() => {
-                if (jaConcluido) {
-                  setComentarioAberto(true);
-                  setMostrarCampoAlteracao(false);
-                  return;
-                }
-                setMostrarCampoAlteracao(true);
-                setComentarioAberto(true);
-              }}
-              disabled={enviando !== null}
-              className="rounded-full border-2 border-ink/15 text-ink px-3.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold hover:bg-surface active:bg-surface transition disabled:opacity-50 shrink-0 whitespace-nowrap"
-            >
-              ✏ Ajuste
-            </button>
-            <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-surface active:bg-surface flex items-center justify-center text-ink/40 ml-1 shrink-0">
-              ✕
-            </button>
-          </div>
+          <p className="text-xs font-bold uppercase tracking-widest text-ink/40 shrink-0">Aprovação de conteúdo</p>
+          <button onClick={onClose} className="h-8 w-8 rounded-full hover:bg-surface active:bg-surface flex items-center justify-center text-ink/40 shrink-0">
+            ✕
+          </button>
         </div>
 
         <div className="flex-1 flex flex-col sm:flex-row overflow-y-auto sm:overflow-hidden">
@@ -553,7 +570,7 @@ function PostPublicoModal({
           </div>
 
           {comentarioAberto && (
-            <div className="shrink-0 sm:w-[300px] border-t sm:border-t-0 sm:border-l border-black/5 flex flex-col">
+            <div ref={comentariosRef} className="shrink-0 sm:w-[300px] border-t sm:border-t-0 sm:border-l border-black/5 flex flex-col">
               <div className="px-4 py-3 border-b border-black/5 shrink-0 flex items-center justify-between">
                 <p className="text-sm font-bold text-ink">💬 Comentários</p>
                 <button
@@ -593,7 +610,6 @@ function PostPublicoModal({
                       Escreva o que precisa ajustar — ideia, arte, texto, edição, o que for
                     </span>
                     <textarea
-                      autoFocus
                       value={texto}
                       onChange={(e) => setTexto(e.target.value)}
                       rows={3}
@@ -627,8 +643,48 @@ function PostPublicoModal({
           )}
         </div>
 
+        {!jaConcluido && (
+          <div className="px-4 sm:px-5 py-3 border-t border-black/5 shrink-0 bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.04)]">
+            {jaAprovado ? (
+              <div className="flex items-center justify-center gap-2 rounded-full bg-mint text-forest text-sm font-bold py-3">
+                ✓ Você já aprovou esse conteúdo
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => enviar("aprovar")}
+                  disabled={enviando !== null}
+                  className="flex-1 rounded-full bg-forest text-white py-3.5 text-base font-bold hover:brightness-110 active:brightness-110 transition disabled:opacity-50 shadow-md"
+                >
+                  ✓ Aprovar
+                </button>
+                <button
+                  onClick={() => {
+                    setMostrarCampoAlteracao(true);
+                    setComentarioAberto(true);
+                  }}
+                  disabled={enviando !== null}
+                  className="flex-1 rounded-full border-2 border-ink/20 text-ink py-3.5 text-base font-bold hover:bg-surface active:bg-surface transition disabled:opacity-50"
+                >
+                  ✏ Solicitar ajuste
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {jaConcluido && !comentarioAberto && (
+          <div className="px-4 sm:px-5 py-3 border-t border-black/5 shrink-0 bg-white">
+            <button
+              onClick={() => setComentarioAberto(true)}
+              className="w-full rounded-full border-2 border-ink/20 text-ink py-3 text-sm font-bold hover:bg-surface active:bg-surface transition"
+            >
+              💬 Ver comentários
+            </button>
+          </div>
+        )}
+
         {totalNav > 0 && (
-          <div className="flex items-center justify-between px-4 sm:px-5 py-2.5 sm:py-3 border-t border-black/5 shrink-0 text-sm bg-white">
+          <div className="flex items-center justify-between px-4 sm:px-5 py-2 border-t border-black/5 shrink-0 text-xs bg-white">
             <button
               onClick={() => irPara(-1)}
               disabled={idxAtual <= 0}
