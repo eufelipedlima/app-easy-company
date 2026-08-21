@@ -10,8 +10,7 @@ import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { BuscaCliente } from "@/components/busca-cliente";
 import { RichTextEditor } from "@/components/rich-text-editor";
-import { Cronometro } from "@/components/cronometro";
-import { TempoPorPessoa, type SessaoPessoa } from "@/components/tempo-por-pessoa";
+import { Cronometro, formatarDuracao } from "@/components/cronometro";
 import { Eye, Download, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { iconeHistorico, comValoresDestacados } from "@/lib/historico-visual";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -245,7 +244,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusAberto, setStatusAberto] = useState(false);
-  const [abaLateral, setAbaLateral] = useState<"ajustes" | "comentarios" | "historico">("comentarios");
+  const [abaLateral, setAbaLateral] = useState<"ajustes" | "comentarios" | "historico" | "horas">("comentarios");
   const [painelRecolhido, setPainelRecolhido] = useState(false);
 
   const [titulo, setTitulo] = useState("");
@@ -915,13 +914,6 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             onIniciar={iniciarCronometro}
             onPausar={pausarCronometro}
           />
-          <TempoPorPessoa
-            sessoes={sessoesTempo.map((s) => ({
-              nome: nomeDoAutor(s.funcionario_auth_id),
-              segundosAcumulados: s.segundos_acumulados,
-              rodandoDesde: s.iniciado_em,
-            }))}
-          />
           {!tarefa.excluido_em && (
             <button onClick={excluirTarefa} className="text-sm font-semibold text-red-500 hover:text-red-700">
               Excluir tarefa
@@ -1406,6 +1398,12 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                 >
                   Histórico
                 </button>
+                <button
+                  onClick={() => setAbaLateral("horas")}
+                  className={`text-sm font-bold ${abaLateral === "horas" ? "text-ink" : "text-ink/40"}`}
+                >
+                  Horas
+                </button>
               </div>
               <button onClick={() => setPainelRecolhido(true)} className="text-ink/30 hover:text-ink text-sm" title="Recolher">
                 ▶
@@ -1519,7 +1517,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                   </button>
                 </div>
               </>
-            ) : (
+            ) : abaLateral === "historico" ? (
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
                 {historico.length === 0 ? (
                   <p className="text-sm text-ink/40">Nenhuma alteração registrada ainda.</p>
@@ -1538,6 +1536,38 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                       </div>
                     </div>
                   ))
+                )}
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto px-5 py-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-3">Tempo dedicado, por pessoa</p>
+                {sessoesTempo.filter((s) => s.segundos_acumulados > 0 || s.iniciado_em).length === 0 ? (
+                  <p className="text-sm text-ink/40">Ninguém registrou tempo nessa tarefa ainda.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {sessoesTempo
+                      .map((s) => ({ ...s, nome: nomeDoAutor(s.funcionario_auth_id) }))
+                      .filter((s) => s.segundos_acumulados > 0 || s.iniciado_em)
+                      .sort((a, b) => b.segundos_acumulados - a.segundos_acumulados)
+                      .map((s) => (
+                        <div key={s.funcionario_auth_id} className="flex items-center justify-between text-sm">
+                          <span className="flex items-center gap-1.5 text-ink/80 truncate">
+                            {s.iniciado_em && (
+                              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                              </span>
+                            )}
+                            {s.nome}
+                          </span>
+                          <span className="font-semibold text-ink shrink-0 ml-2">{formatarDuracao(s.segundos_acumulados)}</span>
+                        </div>
+                      ))}
+                    <div className="flex items-center justify-between text-sm pt-3 border-t border-black/5">
+                      <span className="font-bold text-ink">Total</span>
+                      <span className="font-bold text-ink">{formatarDuracao(tarefa.tempo_total_segundos)}</span>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
