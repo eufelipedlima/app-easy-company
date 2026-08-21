@@ -10,6 +10,17 @@ export function formatarDuracao(totalSegundos: number) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+/** Mesma duração, mas sempre no formato "2h 56min" / "22min" / "menos de
+ * 1min" — usado nas listas de resumo (não em contadores ao vivo por
+ * segundo), pra não misturar "22:00" (parece relógio) com "2h 56min". */
+export function formatarDuracaoLonga(totalSegundos: number) {
+  const h = Math.floor(totalSegundos / 3600);
+  const m = Math.floor((totalSegundos % 3600) / 60);
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}min`;
+  if (m > 0) return `${m}min`;
+  return "menos de 1min";
+}
+
 export function Cronometro({
   tempoTotalSegundos,
   minhaSessaoIniciadaEm,

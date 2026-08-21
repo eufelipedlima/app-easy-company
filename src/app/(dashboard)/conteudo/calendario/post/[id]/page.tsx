@@ -9,7 +9,7 @@ import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { BuscaCliente } from "@/components/busca-cliente";
-import { Cronometro, formatarDuracao } from "@/components/cronometro";
+import { Cronometro, formatarDuracaoLonga } from "@/components/cronometro";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -1661,6 +1661,8 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                   if (linhas.length === 0) {
                     return <p className="text-sm text-ink/40">Ninguém registrou tempo nesse conteúdo ainda.</p>;
                   }
+                  const somaIdentificada = linhas.reduce((s, l) => s + l.segundosAcumulados, 0);
+                  const naoIdentificado = post.tempo_total_segundos - somaIdentificada;
                   return (
                     <div className="space-y-3">
                       {linhas
@@ -1676,12 +1678,18 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                               )}
                               {s.nome}
                             </span>
-                            <span className="font-semibold text-ink shrink-0 ml-2">{formatarDuracao(s.segundosAcumulados)}</span>
+                            <span className="font-semibold text-ink shrink-0 ml-2">{formatarDuracaoLonga(s.segundosAcumulados)}</span>
                           </div>
                         ))}
+                      {naoIdentificado > 60 && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-ink/40 italic">Tempo não identificado</span>
+                          <span className="font-semibold text-ink/40 shrink-0 ml-2">{formatarDuracaoLonga(naoIdentificado)}</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between text-sm pt-3 border-t border-black/5">
                         <span className="font-bold text-ink">Total</span>
-                        <span className="font-bold text-ink">{formatarDuracao(post.tempo_total_segundos)}</span>
+                        <span className="font-bold text-ink">{formatarDuracaoLonga(post.tempo_total_segundos)}</span>
                       </div>
                     </div>
                   );

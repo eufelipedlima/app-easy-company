@@ -37,15 +37,19 @@ export function comValoresDestacados(descricao: string): ReactNode[] {
 /** Lê "Fulano passou Xmin trabalhando..." no histórico e soma por pessoa —
  * é a fonte mais completa que existe, porque toda sessão de cronômetro
  * concluída sempre gerou essa linha, mesmo antes de existir uma sessão
- * por pessoa dedicada. Assim ninguém fica de fora da contagem. */
+ * por pessoa dedicada. Assim ninguém fica de fora da contagem.
+ *
+ * Reconhece também o texto mais antigo ainda ("pausou o cronômetro
+ * (+Xmin)"), usado antes de deixarmos a frase mais direta — sem isso,
+ * sessões registradas há mais tempo ficavam de fora da soma. */
 export function segundosPorPessoaDoHistorico(
   historico: { autor_id: string | null; descricao: string }[]
 ): Map<string, number> {
   const mapa = new Map<string, number>();
-  const regex = /^passou (?:menos de 1min|(\d+)min) trabalhando/;
+  const regexes = [/^passou (?:menos de 1min|(\d+)min) trabalhando/, /^pausou o cronômetro \(\+(?:menos de 1|(\d+))min\)/];
   for (const h of historico) {
     if (!h.autor_id) continue;
-    const m = h.descricao.match(regex);
+    const m = regexes.map((r) => h.descricao.match(r)).find((r) => r);
     if (!m) continue;
     const segundos = m[1] ? Number(m[1]) * 60 : 30;
     mapa.set(h.autor_id, (mapa.get(h.autor_id) ?? 0) + segundos);
