@@ -260,7 +260,7 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
     }
     const ids = [id, ...descendentes(id)];
     await supabase.from("docs").update({ excluido_em: new Date().toISOString(), excluido_por: user?.id ?? null }).in("id", ids);
-    router.push("/docs");
+    router.back();
   }
 
   async function restaurarDoc() {
@@ -337,10 +337,10 @@ export default function DocDetalhePage({ params }: { params: Promise<{ id: strin
     <main className="h-screen flex flex-col bg-surface/30">
       <div className="px-8 py-4 flex items-center justify-between bg-white shrink-0">
         <button
-          onClick={() => router.push("/docs")}
+          onClick={() => router.back()}
           className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors"
         >
-          ← Docs
+          ← Voltar
         </button>
         <div className="flex items-center gap-3">
           <span className="text-xs text-ink/40 flex items-center gap-1">
