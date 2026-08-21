@@ -14,7 +14,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Eye, Download, X, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
-import { iconeHistorico, comValoresDestacados } from "@/lib/historico-visual";
+import { iconeHistorico, comValoresDestacados, segundosPorPessoaDoHistorico } from "@/lib/historico-visual";
 
 interface StatusItem {
   id: string;
@@ -1648,34 +1648,44 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
             ) : (
               <div className="flex-1 overflow-y-auto px-5 py-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-3">Tempo dedicado, por pessoa</p>
-                {sessoesTempo.filter((s) => s.segundos_acumulados > 0 || s.iniciado_em).length === 0 ? (
-                  <p className="text-sm text-ink/40">Ninguém registrou tempo nesse conteúdo ainda.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {sessoesTempo
-                      .map((s) => ({ ...s, nome: nomeDoAutor(s.funcionario_auth_id) }))
-                      .filter((s) => s.segundos_acumulados > 0 || s.iniciado_em)
-                      .sort((a, b) => b.segundos_acumulados - a.segundos_acumulados)
-                      .map((s) => (
-                        <div key={s.funcionario_auth_id} className="flex items-center justify-between text-sm">
-                          <span className="flex items-center gap-1.5 text-ink/80 truncate">
-                            {s.iniciado_em && (
-                              <span className="relative flex h-1.5 w-1.5 shrink-0">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
-                              </span>
-                            )}
-                            {s.nome}
-                          </span>
-                          <span className="font-semibold text-ink shrink-0 ml-2">{formatarDuracao(s.segundos_acumulados)}</span>
-                        </div>
-                      ))}
-                    <div className="flex items-center justify-between text-sm pt-3 border-t border-black/5">
-                      <span className="font-bold text-ink">Total</span>
-                      <span className="font-bold text-ink">{formatarDuracao(post.tempo_total_segundos)}</span>
+                {(() => {
+                  const porHistorico = segundosPorPessoaDoHistorico(historico);
+                  const idsComRodando = new Set(sessoesTempo.filter((s) => s.iniciado_em).map((s) => s.funcionario_auth_id));
+                  const todosOsIds = new Set([...porHistorico.keys(), ...idsComRodando]);
+                  const linhas = Array.from(todosOsIds).map((autorId) => ({
+                    autorId,
+                    nome: nomeDoAutor(autorId),
+                    segundosAcumulados: porHistorico.get(autorId) ?? 0,
+                    rodandoDesde: sessoesTempo.find((s) => s.funcionario_auth_id === autorId)?.iniciado_em ?? null,
+                  }));
+                  if (linhas.length === 0) {
+                    return <p className="text-sm text-ink/40">Ninguém registrou tempo nesse conteúdo ainda.</p>;
+                  }
+                  return (
+                    <div className="space-y-3">
+                      {linhas
+                        .sort((a, b) => b.segundosAcumulados - a.segundosAcumulados)
+                        .map((s) => (
+                          <div key={s.autorId} className="flex items-center justify-between text-sm">
+                            <span className="flex items-center gap-1.5 text-ink/80 truncate">
+                              {s.rodandoDesde && (
+                                <span className="relative flex h-1.5 w-1.5 shrink-0">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                                </span>
+                              )}
+                              {s.nome}
+                            </span>
+                            <span className="font-semibold text-ink shrink-0 ml-2">{formatarDuracao(s.segundosAcumulados)}</span>
+                          </div>
+                        ))}
+                      <div className="flex items-center justify-between text-sm pt-3 border-t border-black/5">
+                        <span className="font-bold text-ink">Total</span>
+                        <span className="font-bold text-ink">{formatarDuracao(post.tempo_total_segundos)}</span>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             )}
           </div>
