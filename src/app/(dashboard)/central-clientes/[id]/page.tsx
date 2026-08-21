@@ -627,8 +627,8 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
 
   const ABAS: { chave: Aba; label: string; contagem?: number; icone: React.ReactNode }[] = [
     { chave: "geral", label: "Visão geral", icone: <LayoutGrid size={14} /> },
-    { chave: "tarefas", label: "Tarefas", contagem: tarefas.length, icone: <CheckSquare size={14} /> },
-    { chave: "conteudo", label: "Conteúdo", contagem: posts.length, icone: <FileText size={14} /> },
+    { chave: "tarefas", label: "Tarefas", contagem: tarefas.filter((t) => t.statusCor !== "verde").length, icone: <CheckSquare size={14} /> },
+    { chave: "conteudo", label: "Conteúdo", contagem: posts.filter((p) => p.statusCor !== "verde").length, icone: <FileText size={14} /> },
     { chave: "chat", label: "Chat", icone: <MessageCircle size={14} /> },
     { chave: "docs", label: "Docs", contagem: docs.length, icone: <FolderOpen size={14} /> },
   ];
