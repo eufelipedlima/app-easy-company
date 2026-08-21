@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus, PALETA_CORES } from "@/lib/status-conteudo";
 import { BuscaCliente, type OpcaoCliente } from "@/components/busca-cliente";
+import { LayoutGrid, List as ListIcon } from "lucide-react";
 
 interface Categoria {
   id: string;
@@ -50,6 +51,7 @@ export default function DocsPage() {
   const [clienteFiltroId, setClienteFiltroId] = useState("");
   const [categoriaFiltroId, setCategoriaFiltroId] = useState("");
   const [novoAberto, setNovoAberto] = useState(false);
+  const [visualizacao, setVisualizacao] = useState<"lista" | "grade">("lista");
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -162,12 +164,67 @@ export default function DocsPage() {
             </option>
           ))}
         </select>
+        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 shrink-0">
+          <button
+            onClick={() => setVisualizacao("grade")}
+            title="Ver em grade"
+            className={`h-8 w-8 rounded-full flex items-center justify-center transition-all ${
+              visualizacao === "grade" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+            }`}
+          >
+            <LayoutGrid size={15} />
+          </button>
+          <button
+            onClick={() => setVisualizacao("lista")}
+            title="Ver em lista"
+            className={`h-8 w-8 rounded-full flex items-center justify-center transition-all ${
+              visualizacao === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+            }`}
+          >
+            <ListIcon size={15} />
+          </button>
+        </div>
       </div>
 
       {loading ? (
         <p className="text-sm text-ink/50">Carregando...</p>
       ) : docsFiltrados.length === 0 ? (
         <p className="text-sm text-ink/50">Nenhum doc encontrado.</p>
+      ) : visualizacao === "grade" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {docsFiltrados.map((d) => {
+            const categoria = categorias.find((c) => c.id === d.categoria_id);
+            const qtdSub = subdocsPorPai[d.id] ?? 0;
+            const resumo = resumoTexto(d.conteudo, 70);
+            return (
+              <button
+                key={d.id}
+                onClick={() => router.push(`/docs/${d.id}`)}
+                className="flex flex-col text-left rounded-2xl bg-card border border-black/5 p-4 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <span className="h-11 w-11 rounded-xl bg-surface flex items-center justify-center text-xl shrink-0">{d.emoji || "📄"}</span>
+                  {qtdSub > 0 && (
+                    <span className="text-[11px] font-semibold text-ink/40 shrink-0">{qtdSub} sub-doc{qtdSub > 1 ? "s" : ""}</span>
+                  )}
+                </div>
+                <p className="text-sm font-bold text-ink truncate">{d.titulo}</p>
+                <p className="text-xs text-ink/40 truncate mt-0.5">{resumo || (d.clientes?.papeis?.pessoas?.nome ?? "Interno")}</p>
+                {categoria && (
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold w-fit max-w-full truncate mt-3 ${corDoStatus(categoria.cor).cor}`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${corDoStatus(categoria.cor).dot}`} />
+                    {categoria.nome}
+                  </span>
+                )}
+                <div className="mt-auto pt-3 border-t border-black/5 text-[11px] text-ink/40 flex items-center justify-between">
+                  <span>Atualizado {formatarQuando(d.updated_at)}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       ) : (
         <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
           <div className="grid grid-cols-[1fr_140px_110px_110px_90px] gap-3 px-5 py-2.5 text-[11px] font-bold uppercase tracking-wide text-ink/40 bg-surface/60">

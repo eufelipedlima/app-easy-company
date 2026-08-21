@@ -42,25 +42,13 @@ export default function EquipePage() {
   const [membros, setMembros] = useState<Membro[]>([]);
   const [loading, setLoading] = useState(true);
   const [verArquivados, setVerArquivados] = useState(false);
-  const [souAdmin, setSouAdmin] = useState<boolean | null>(null);
+  const [temAcesso, setTemAcesso] = useState<boolean | null>(null);
 
   useEffect(() => {
     async function carregarPermissao() {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        setSouAdmin(false);
-        return;
-      }
-      const { data: perfilData } = await supabase
-        .from("funcionarios")
-        .select("perfis_acesso ( nome )")
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
-      const nomePerfil = (perfilData as unknown as { perfis_acesso: { nome: string } | null } | null)?.perfis_acesso?.nome;
-      setSouAdmin(nomePerfil === "Administrador");
+      const { data: nivel } = await supabase.rpc("meu_nivel_acesso", { area_slug: "equipe" });
+      setTemAcesso(nivel !== "nenhum");
     }
     carregarPermissao();
   }, []);
@@ -154,17 +142,17 @@ export default function EquipePage() {
 
   const membrosExibidos = membros.filter((m) => m.ocultoEquipe === verArquivados);
 
-  if (souAdmin === false) {
+  if (temAcesso === false) {
     return (
       <main className="w-full px-6 sm:px-8 lg:px-10 py-16 flex flex-col items-center justify-center text-center">
         <span className="text-4xl mb-3">🔒</span>
-        <h1 className="text-lg font-bold text-ink mb-1">Só administradores acessam essa página</h1>
+        <h1 className="text-lg font-bold text-ink mb-1">Você não tem acesso a essa página</h1>
         <p className="text-sm text-ink/50">Meu Time mostra a carga de trabalho e o tempo dedicado de toda a equipe.</p>
       </main>
     );
   }
 
-  if (souAdmin === null) {
+  if (temAcesso === null) {
     return (
       <main className="w-full px-6 sm:px-8 lg:px-10 py-10">
         <EsqueletoGrade itens={6} />

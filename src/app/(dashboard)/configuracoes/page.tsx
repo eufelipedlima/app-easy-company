@@ -14,6 +14,7 @@ import {
   Trash2,
   UserCog,
   Tags,
+  FileText,
 } from "lucide-react";
 
 const SECOES = [
@@ -60,6 +61,12 @@ const SECOES = [
     label: "Grupos de lançamento",
     desc: "Categorias de grupo usadas em Lançamentos e Despesas Fixas",
     icon: <Tags size={18} />,
+  },
+  {
+    href: "/configuracoes/doc-categorias",
+    label: "Categorias de Docs",
+    desc: "Tags coloridas usadas pra organizar os documentos",
+    icon: <FileText size={18} />,
   },
 ];
 
