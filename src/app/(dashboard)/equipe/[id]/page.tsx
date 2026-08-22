@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { NumeroAnimado } from "@/components/numero-animado";
+import { sessoesDoHistorico } from "@/lib/historico-visual";
 
 interface ItemTrabalho {
   id: string;
@@ -212,31 +213,50 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
     // qualquer tarefa/subtarefa/conteúdo/subconteúdo em que essa pessoa
     // tenha de fato trabalhado entra na conta, mesmo que ela não seja a
     // responsável "oficial" daquele item específico.
-    const [{ data: histTarefas }, { data: histPosts }] = await Promise.all([
+    //
+    // Importante: buscamos o histórico "cru" (sem tentar juntar o cliente
+    // na mesma consulta) e resolvemos o cliente numa segunda consulta
+    // separada, mais simples. Consultas com muitos relacionamentos
+    // encadeados numa só (histórico → tarefa → cliente → papel → pessoa)
+    // já se mostraram pouco confiáveis nesse projeto — algumas linhas
+    // vinham sem o relacionamento preenchido, mesmo com o dado existindo.
+    const [{ data: histTarefasCru }, { data: histPostsCru }] = await Promise.all([
       f?.auth_user_id
-        ? supabase
-            .from("tarefas_historico")
-            .select("descricao, created_at, tarefas ( cliente_id, clientes ( papeis ( pessoas ( nome ) ) ) )")
-            .eq("autor_id", f.auth_user_id)
-        : Promise.resolve({ data: [] as unknown[] }),
+        ? supabase.from("tarefas_historico").select("tarefa_id, descricao, created_at").eq("autor_id", f.auth_user_id)
+        : Promise.resolve({ data: [] as { tarefa_id: string; descricao: string; created_at: string }[] }),
       f?.auth_user_id
-        ? supabase
-            .from("posts_conteudo_historico")
-            .select("descricao, created_at, posts_conteudo ( cliente_id, clientes ( papeis ( pessoas ( nome ) ) ) )")
-            .eq("autor_id", f.auth_user_id)
-        : Promise.resolve({ data: [] as unknown[] }),
+        ? supabase.from("posts_conteudo_historico").select("post_id, descricao, created_at").eq("autor_id", f.auth_user_id)
+        : Promise.resolve({ data: [] as { post_id: string; descricao: string; created_at: string }[] }),
     ]);
 
-    type HistTarefaComCliente = {
-      descricao: string;
-      created_at: string;
-      tarefas: { cliente_id: string | null; clientes: { papeis: { pessoas: { nome: string } | null } | null } | null } | null;
-    };
-    type HistPostComCliente = {
-      descricao: string;
-      created_at: string;
-      posts_conteudo: { cliente_id: string | null; clientes: { papeis: { pessoas: { nome: string } | null } | null } | null } | null;
-    };
+    const idsTarefasHist = Array.from(new Set((histTarefasCru ?? []).map((h) => h.tarefa_id)));
+    const idsPostsHist = Array.from(new Set((histPostsCru ?? []).map((h) => h.post_id)));
+
+    const [{ data: tarefasComCliente }, { data: postsComCliente }] = await Promise.all([
+      idsTarefasHist.length > 0
+        ? supabase.from("tarefas").select("id, cliente_id").in("id", idsTarefasHist)
+        : Promise.resolve({ data: [] as { id: string; cliente_id: string | null }[] }),
+      idsPostsHist.length > 0
+        ? supabase.from("posts_conteudo").select("id, cliente_id").in("id", idsPostsHist)
+        : Promise.resolve({ data: [] as { id: string; cliente_id: string | null }[] }),
+    ]);
+
+    const clienteIdDaTarefa = new Map((tarefasComCliente ?? []).map((t) => [t.id, t.cliente_id]));
+    const clienteIdDoPost = new Map((postsComCliente ?? []).map((p) => [p.id, p.cliente_id]));
+
+    const idsClientes = Array.from(
+      new Set([...clienteIdDaTarefa.values(), ...clienteIdDoPost.values()].filter((v): v is string => !!v))
+    );
+    const { data: clientesComNome } =
+      idsClientes.length > 0
+        ? await supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )").in("id", idsClientes)
+        : { data: [] as { id: string; papeis: { pessoas: { nome: string } | null } | null }[] };
+    const nomeDoCliente = new Map(
+      ((clientesComNome ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[]).map((c) => [
+        c.id,
+        c.papeis?.pessoas?.nome ?? "Cliente",
+      ])
+    );
 
     // Comparamos como objetos Date (não como texto) pra não misturar
     // formato com fuso horário (UTC) e sem fuso — isso evitava um erro
@@ -248,31 +268,27 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
       const d = new Date(dataISO);
       return d >= inicioData && d <= fimData;
     };
-    const regexTempo = /^passou (?:menos de 1min|(\d+)min) trabalhando/;
-    function segundosDoTexto(descricao: string): number | null {
-      const m = descricao.match(regexTempo);
-      if (!m) return null;
-      return m[1] ? Number(m[1]) * 60 : 30;
-    }
 
     let tempoTotalReal = 0;
     const tempoMap = new Map<string, number>();
 
-    for (const h of (histTarefas ?? []) as unknown as HistTarefaComCliente[]) {
+    for (const h of histTarefasCru ?? []) {
       if (!dentroDoPeriodoData(h.created_at)) continue;
-      const segundos = segundosDoTexto(h.descricao);
-      if (!segundos) continue;
-      tempoTotalReal += segundos;
-      const cli = h.tarefas?.clientes?.papeis?.pessoas?.nome ?? (h.tarefas?.cliente_id ? "Cliente" : "Interno/sem cliente");
-      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + segundos);
+      const [sessao] = sessoesDoHistorico([{ autor_id: f?.auth_user_id ?? null, descricao: h.descricao, created_at: h.created_at }]);
+      if (!sessao) continue;
+      tempoTotalReal += sessao.segundos;
+      const clienteId = clienteIdDaTarefa.get(h.tarefa_id);
+      const cli = clienteId ? nomeDoCliente.get(clienteId) ?? "Cliente" : "Interno/sem cliente";
+      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + sessao.segundos);
     }
-    for (const h of (histPosts ?? []) as unknown as HistPostComCliente[]) {
+    for (const h of histPostsCru ?? []) {
       if (!dentroDoPeriodoData(h.created_at)) continue;
-      const segundos = segundosDoTexto(h.descricao);
-      if (!segundos) continue;
-      tempoTotalReal += segundos;
-      const cli = h.posts_conteudo?.clientes?.papeis?.pessoas?.nome ?? (h.posts_conteudo?.cliente_id ? "Cliente" : "Interno/sem cliente");
-      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + segundos);
+      const [sessao] = sessoesDoHistorico([{ autor_id: f?.auth_user_id ?? null, descricao: h.descricao, created_at: h.created_at }]);
+      if (!sessao) continue;
+      tempoTotalReal += sessao.segundos;
+      const clienteId = clienteIdDoPost.get(h.post_id);
+      const cli = clienteId ? nomeDoCliente.get(clienteId) ?? "Cliente" : "Interno/sem cliente";
+      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + sessao.segundos);
     }
 
     setTempoTotalGeral(tempoTotalReal);
