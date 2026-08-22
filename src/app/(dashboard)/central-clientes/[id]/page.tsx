@@ -9,6 +9,7 @@ import { normalizar } from "@/lib/normalizar";
 import { DndContext, useDraggable, useDroppable, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { CalendarioConteudoConteudo, type CalendarioConteudoHandle } from "@/app/(dashboard)/conteudo/calendario/page";
 import { Archive, LayoutGrid, CheckSquare, FileText, MessageCircle, FolderOpen, Link2 } from "lucide-react";
+import { ListaAgrupavel } from "@/components/lista-agrupavel";
 
 interface Responsavel {
   id: string;
@@ -34,6 +35,7 @@ interface TarefaResumo {
   prazo: string | null;
   descricao: string | null;
   eh_projeto: boolean;
+  prioridade: string | null;
   statusNome: string;
   statusCor: string;
 }
@@ -189,7 +191,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
         supabase.from("clientes").select("papeis ( pessoa_id, pessoas ( nome, foto_url ) )").eq("id", id).maybeSingle(),
         supabase
           .from("tarefas")
-          .select("id, titulo, status_id, prazo, descricao, eh_projeto, status_conteudo ( nome, cor )")
+          .select("id, titulo, status_id, prazo, descricao, eh_projeto, prioridade, status_conteudo ( nome, cor )")
           .eq("cliente_id", id)
           .is("tarefa_pai_id", null)
           .eq("arquivada", false)
@@ -249,6 +251,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       prazo: string | null;
       descricao: string | null;
       eh_projeto: boolean;
+      prioridade: string | null;
       status_conteudo: { nome: string; cor: string } | null;
     }[]).map((t) => ({
       id: t.id,
@@ -257,6 +260,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
       prazo: t.prazo,
       descricao: t.descricao,
       eh_projeto: t.eh_projeto,
+      prioridade: t.prioridade,
       statusNome: t.status_conteudo?.nome ?? "—",
       statusCor: t.status_conteudo?.cor ?? "cinza",
     }));
@@ -983,50 +987,108 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
               onMover={moverTarefaStatus}
               onAbrir={(itemId) => router.push(`/tarefas/${itemId}`)}
             />
-          ) : tarefasFiltradas.length === 0 ? (
-            <p className="text-sm text-ink/50">Nenhuma tarefa {filtroStatusAtivo ? "nesse status" : "ainda"}.</p>
           ) : (
-            <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
-              <div className="grid grid-cols-[1fr_90px_100px_110px_100px] gap-2 px-5 py-2 text-[11px] font-bold uppercase tracking-wide text-ink/40 bg-surface/60">
-                <span>Nome</span>
-                <span>☰</span>
-                <span>Vencimento</span>
-                <span>Responsáveis</span>
-                <span>Status</span>
-              </div>
-              {tarefasFiltradas.map((t) => {
-                const prog = progressoTarefas[t.id];
-                const pct = prog && prog.total > 0 ? Math.round((prog.completos / prog.total) * 100) : null;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => router.push(`/tarefas/${t.id}`)}
-                    className="w-full grid grid-cols-[1fr_90px_100px_110px_100px] items-center gap-2 px-5 py-3 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
-                  >
-                    <span className="min-w-0">
-                      <span className="text-sm text-ink truncate flex items-center gap-1.5">
-                        {t.eh_projeto && <IconeProjeto tamanho={13} />}
-                        <span className="truncate">{t.titulo}</span>
-                      </span>
-                      {pct !== null && (
-                        <span className="flex items-center gap-1.5 mt-1">
-                          <span className="h-1 flex-1 max-w-[120px] rounded-full bg-black/5 overflow-hidden">
-                            <span className={`block h-full rounded-full ${pct === 100 ? "bg-forest" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
-                          </span>
-                          <span className="text-[10px] text-ink/40 shrink-0">
-                            {prog!.completos}/{prog!.total}
-                          </span>
+            <ListaAgrupavel<TarefaResumo>
+              itens={tarefasFiltradas}
+              chaveId={(t) => t.id}
+              chaveArmazenamento="tarefas-cliente"
+              onAbrir={(t) => router.push(`/tarefas/${t.id}`)}
+              colunas={[
+                {
+                  chave: "nome",
+                  label: "Nome",
+                  larguraCss: "1fr",
+                  ehNome: true,
+                  render: (t) => {
+                    const prog = progressoTarefas[t.id];
+                    const pct = prog && prog.total > 0 ? Math.round((prog.completos / prog.total) * 100) : null;
+                    return (
+                      <span className="min-w-0">
+                        <span className="text-sm text-ink truncate flex items-center gap-1.5">
+                          {t.eh_projeto && <IconeProjeto tamanho={13} />}
+                          <span className="truncate">{t.titulo}</span>
+                          {t.descricao && <span className="text-ink/25 text-xs shrink-0">☰</span>}
                         </span>
-                      )}
-                    </span>
-                    <span className="text-ink/30">{t.descricao ? "☰" : ""}</span>
-                    <span className="text-xs text-ink/40">{t.prazo ? formatarData(t.prazo) : "—"}</span>
-                    <AvatarStack pessoas={responsaveisPorTarefa[t.id] ?? []} />
+                        {pct !== null && (
+                          <span className="flex items-center gap-1.5 mt-1">
+                            <span className="h-1 flex-1 max-w-[120px] rounded-full bg-black/5 overflow-hidden">
+                              <span className={`block h-full rounded-full ${pct === 100 ? "bg-forest" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
+                            </span>
+                            <span className="text-[10px] text-ink/40 shrink-0">
+                              {prog!.completos}/{prog!.total}
+                            </span>
+                          </span>
+                        )}
+                      </span>
+                    );
+                  },
+                },
+                {
+                  chave: "status",
+                  label: "Status",
+                  larguraCss: "110px",
+                  render: (t) => (
                     <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(t.statusCor).cor}`}>{t.statusNome}</span>
-                  </button>
-                );
-              })}
-            </div>
+                  ),
+                },
+                {
+                  chave: "responsavel",
+                  label: "Responsável",
+                  larguraCss: "110px",
+                  render: (t) => <AvatarStack pessoas={responsaveisPorTarefa[t.id] ?? []} />,
+                },
+                {
+                  chave: "vencimento",
+                  label: "Vencimento",
+                  larguraCss: "100px",
+                  render: (t) => <span className="text-xs text-ink/40">{t.prazo ? formatarData(t.prazo) : "—"}</span>,
+                },
+                {
+                  chave: "prioridade",
+                  label: "Prioridade",
+                  larguraCss: "90px",
+                  render: (t) => (
+                    <span className="text-xs text-ink/40">
+                      {t.prioridade === "alta" ? "🔴 Alta" : t.prioridade === "media" ? "🟡 Média" : t.prioridade === "baixa" ? "🟢 Baixa" : "—"}
+                    </span>
+                  ),
+                },
+              ]}
+              opcoesAgrupamento={[
+                {
+                  chave: "status",
+                  label: "Status",
+                  grupoDe: (t) => ({ chave: t.status_id, label: t.statusNome, cor: corDoStatus(t.statusCor).cor }),
+                },
+                {
+                  chave: "responsavel",
+                  label: "Responsável",
+                  grupoDe: (t) => {
+                    const resp = responsaveisPorTarefa[t.id] ?? [];
+                    return resp.length > 0
+                      ? { chave: resp[0].id, label: resp[0].nome }
+                      : { chave: "sem-responsavel", label: "Sem responsável" };
+                  },
+                },
+                {
+                  chave: "prioridade",
+                  label: "Prioridade",
+                  grupoDe: (t) => ({
+                    chave: t.prioridade ?? "nenhuma",
+                    label: t.prioridade === "alta" ? "🔴 Alta" : t.prioridade === "media" ? "🟡 Média" : t.prioridade === "baixa" ? "🟢 Baixa" : "Sem prioridade",
+                  }),
+                  ordemGrupos: (a, b) => {
+                    const ordem = { alta: 0, media: 1, baixa: 2, nenhuma: 3 };
+                    return (ordem[a as keyof typeof ordem] ?? 9) - (ordem[b as keyof typeof ordem] ?? 9);
+                  },
+                },
+                {
+                  chave: "vencimento",
+                  label: "Data de vencimento",
+                  grupoDe: (t) => ({ chave: t.prazo ?? "sem-data", label: t.prazo ? formatarData(t.prazo) : "Sem data" }),
+                },
+              ]}
+            />
             );
           })()}
         </div>
@@ -1059,50 +1121,86 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
               onMover={moverPostStatus}
               onAbrir={(itemId) => router.push(`/conteudo/calendario/post/${itemId}`)}
             />
-          ) : postsVisiveis.length === 0 ? (
-            <p className="text-sm text-ink/50">Nenhum conteúdo ainda.</p>
           ) : (
-            <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
-              <div className="grid grid-cols-[1fr_90px_100px_110px_100px] gap-2 px-5 py-2 text-[11px] font-bold uppercase tracking-wide text-ink/40 bg-surface/60">
-                <span>Nome</span>
-                <span>☰</span>
-                <span>Data</span>
-                <span>Responsáveis</span>
-                <span>Status</span>
-              </div>
-              {postsVisiveis.map((p) => {
-                const prog = progressoPosts[p.id];
-                const pct = prog && prog.total > 0 ? Math.round((prog.completos / prog.total) * 100) : null;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => router.push(`/conteudo/calendario/post/${p.id}`)}
-                    className="w-full grid grid-cols-[1fr_90px_100px_110px_100px] items-center gap-2 px-5 py-3 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
-                  >
-                    <span className="min-w-0">
-                      <span className="text-sm text-ink truncate flex items-center gap-1.5">
-                        {p.post_pai_id && <span className="text-forest text-xs">↳</span>}
-                        <span className="truncate">{p.titulo || "Sem título"}</span>
-                      </span>
-                      {pct !== null && (
-                        <span className="flex items-center gap-1.5 mt-1">
-                          <span className="h-1 flex-1 max-w-[120px] rounded-full bg-black/5 overflow-hidden">
-                            <span className={`block h-full rounded-full ${pct === 100 ? "bg-forest" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
-                          </span>
-                          <span className="text-[10px] text-ink/40 shrink-0">
-                            {prog!.completos}/{prog!.total}
-                          </span>
+            <ListaAgrupavel<PostResumo>
+              itens={postsVisiveis}
+              chaveId={(p) => p.id}
+              chaveArmazenamento="conteudo-cliente"
+              onAbrir={(p) => router.push(`/conteudo/calendario/post/${p.id}`)}
+              colunas={[
+                {
+                  chave: "nome",
+                  label: "Nome",
+                  larguraCss: "1fr",
+                  ehNome: true,
+                  render: (p) => {
+                    const prog = progressoPosts[p.id];
+                    const pct = prog && prog.total > 0 ? Math.round((prog.completos / prog.total) * 100) : null;
+                    return (
+                      <span className="min-w-0">
+                        <span className="text-sm text-ink truncate flex items-center gap-1.5">
+                          {p.post_pai_id && <span className="text-forest text-xs">↳</span>}
+                          <span className="truncate">{p.titulo || "Sem título"}</span>
+                          {p.observacoes_internas && <span className="text-ink/25 text-xs shrink-0">☰</span>}
                         </span>
-                      )}
-                    </span>
-                    <span className="text-ink/30">{p.observacoes_internas ? "☰" : ""}</span>
-                    <span className="text-xs text-ink/40">{formatarData(p.data_publicacao)}</span>
-                    <AvatarStack pessoas={responsaveisPorPost[p.id] ?? []} />
+                        {pct !== null && (
+                          <span className="flex items-center gap-1.5 mt-1">
+                            <span className="h-1 flex-1 max-w-[120px] rounded-full bg-black/5 overflow-hidden">
+                              <span className={`block h-full rounded-full ${pct === 100 ? "bg-forest" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
+                            </span>
+                            <span className="text-[10px] text-ink/40 shrink-0">
+                              {prog!.completos}/{prog!.total}
+                            </span>
+                          </span>
+                        )}
+                      </span>
+                    );
+                  },
+                },
+                {
+                  chave: "status",
+                  label: "Status",
+                  larguraCss: "110px",
+                  render: (p) => (
                     <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(p.statusCor).cor}`}>{p.statusNome}</span>
-                  </button>
-                );
-              })}
-            </div>
+                  ),
+                },
+                {
+                  chave: "responsavel",
+                  label: "Responsável",
+                  larguraCss: "110px",
+                  render: (p) => <AvatarStack pessoas={responsaveisPorPost[p.id] ?? []} />,
+                },
+                {
+                  chave: "data",
+                  label: "Data",
+                  larguraCss: "100px",
+                  render: (p) => <span className="text-xs text-ink/40">{formatarData(p.data_publicacao)}</span>,
+                },
+              ]}
+              opcoesAgrupamento={[
+                {
+                  chave: "status",
+                  label: "Status",
+                  grupoDe: (p) => ({ chave: p.status_id, label: p.statusNome, cor: corDoStatus(p.statusCor).cor }),
+                },
+                {
+                  chave: "responsavel",
+                  label: "Responsável",
+                  grupoDe: (p) => {
+                    const resp = responsaveisPorPost[p.id] ?? [];
+                    return resp.length > 0
+                      ? { chave: resp[0].id, label: resp[0].nome }
+                      : { chave: "sem-responsavel", label: "Sem responsável" };
+                  },
+                },
+                {
+                  chave: "data",
+                  label: "Data de publicação",
+                  grupoDe: (p) => ({ chave: p.data_publicacao, label: formatarData(p.data_publicacao) }),
+                },
+              ]}
+            />
           )}
         </div>
       )}
