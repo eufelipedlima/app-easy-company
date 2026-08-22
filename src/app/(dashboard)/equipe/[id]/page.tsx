@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { NumeroAnimado } from "@/components/numero-animado";
-import { sessoesDoHistorico } from "@/lib/historico-visual";
 
 interface ItemTrabalho {
   id: string;
@@ -206,29 +205,38 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
     ];
     setItens(listaItens);
 
-    // Total geral de horas e o detalhamento "por cliente" vêm do histórico
-    // das tarefas/conteúdos — cada sessão de cronômetro concluída sempre
-    // gera uma linha ali, com a data exata de quando o trabalho aconteceu
-    // de verdade. Antes, isso era calculado errado de duas formas ao mesmo
-    // tempo: 1) filtrava a tarefa pelo PRAZO dela cair no período, em vez de
-    // quando o trabalho foi feito — uma tarefa que vence essa semana mas
-    // vem sendo trabalhada há meses jogava TODO o tempo acumulado pra
-    // "essa semana"; 2) somava o tempo_total_segundos da tarefa inteira,
-    // que é a soma de TODAS as pessoas que trabalharam nela, não só dessa
-    // pessoa. Os dois problemas juntos inflavam bastante o número.
-    const idsTodasTarefas = minhasTarefas.map((t) => t.id);
-    const idsTodosPosts = meusPosts.map((p) => p.id);
+    // Total geral de horas e o detalhamento "por cliente" vêm direto do
+    // histórico, filtrado por quem realmente registrou o trabalho — sem
+    // passar pela lista de "responsáveis formais" da tarefa. Isso importa
+    // porque rodar o cronômetro não exige estar marcado como responsável:
+    // qualquer tarefa/subtarefa/conteúdo/subconteúdo em que essa pessoa
+    // tenha de fato trabalhado entra na conta, mesmo que ela não seja a
+    // responsável "oficial" daquele item específico.
     const [{ data: histTarefas }, { data: histPosts }] = await Promise.all([
-      idsTodasTarefas.length > 0
-        ? supabase.from("tarefas_historico").select("tarefa_id, autor_id, descricao, created_at").in("tarefa_id", idsTodasTarefas)
-        : Promise.resolve({ data: [] }),
-      idsTodosPosts.length > 0
-        ? supabase.from("posts_conteudo_historico").select("post_id, autor_id, descricao, created_at").in("post_id", idsTodosPosts)
-        : Promise.resolve({ data: [] }),
+      f?.auth_user_id
+        ? supabase
+            .from("tarefas_historico")
+            .select("descricao, created_at, tarefas ( cliente_id, clientes ( papeis ( pessoas ( nome ) ) ) )")
+            .eq("autor_id", f.auth_user_id)
+        : Promise.resolve({ data: [] as unknown[] }),
+      f?.auth_user_id
+        ? supabase
+            .from("posts_conteudo_historico")
+            .select("descricao, created_at, posts_conteudo ( cliente_id, clientes ( papeis ( pessoas ( nome ) ) ) )")
+            .eq("autor_id", f.auth_user_id)
+        : Promise.resolve({ data: [] as unknown[] }),
     ]);
 
-    const clienteDaTarefa = new Map(minhasTarefas.map((t) => [t.id, t.clientes?.papeis?.pessoas?.nome ?? "Sem cliente"]));
-    const clienteDoPost = new Map(meusPosts.map((p) => [p.id, p.clientes?.papeis?.pessoas?.nome ?? "Sem cliente"]));
+    type HistTarefaComCliente = {
+      descricao: string;
+      created_at: string;
+      tarefas: { cliente_id: string | null; clientes: { papeis: { pessoas: { nome: string } | null } | null } | null } | null;
+    };
+    type HistPostComCliente = {
+      descricao: string;
+      created_at: string;
+      posts_conteudo: { cliente_id: string | null; clientes: { papeis: { pessoas: { nome: string } | null } | null } | null } | null;
+    };
 
     const inicioISO = inicio ? `${inicio}T00:00:00` : null;
     const fimISO = fim ? `${fim}T23:59:59` : null;
@@ -236,27 +244,31 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
       if (!inicioISO || !fimISO) return true;
       return dataISO >= inicioISO && dataISO <= fimISO;
     };
+    const regexTempo = /^passou (?:menos de 1min|(\d+)min) trabalhando/;
+    function segundosDoTexto(descricao: string): number | null {
+      const m = descricao.match(regexTempo);
+      if (!m) return null;
+      return m[1] ? Number(m[1]) * 60 : 30;
+    }
 
     let tempoTotalReal = 0;
     const tempoMap = new Map<string, number>();
 
-    for (const h of histTarefas ?? []) {
-      if (h.autor_id !== f?.auth_user_id) continue;
+    for (const h of (histTarefas ?? []) as unknown as HistTarefaComCliente[]) {
       if (!dentroDoPeriodoData(h.created_at)) continue;
-      const [sessao] = sessoesDoHistorico([h]);
-      if (!sessao) continue;
-      tempoTotalReal += sessao.segundos;
-      const cli = clienteDaTarefa.get(h.tarefa_id) ?? "Sem cliente";
-      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + sessao.segundos);
+      const segundos = segundosDoTexto(h.descricao);
+      if (!segundos) continue;
+      tempoTotalReal += segundos;
+      const cli = h.tarefas?.clientes?.papeis?.pessoas?.nome ?? (h.tarefas?.cliente_id ? "Cliente" : "Interno/sem cliente");
+      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + segundos);
     }
-    for (const h of histPosts ?? []) {
-      if (h.autor_id !== f?.auth_user_id) continue;
+    for (const h of (histPosts ?? []) as unknown as HistPostComCliente[]) {
       if (!dentroDoPeriodoData(h.created_at)) continue;
-      const [sessao] = sessoesDoHistorico([h]);
-      if (!sessao) continue;
-      tempoTotalReal += sessao.segundos;
-      const cli = clienteDoPost.get(h.post_id) ?? "Sem cliente";
-      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + sessao.segundos);
+      const segundos = segundosDoTexto(h.descricao);
+      if (!segundos) continue;
+      tempoTotalReal += segundos;
+      const cli = h.posts_conteudo?.clientes?.papeis?.pessoas?.nome ?? (h.posts_conteudo?.cliente_id ? "Cliente" : "Interno/sem cliente");
+      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + segundos);
     }
 
     setTempoTotalGeral(tempoTotalReal);

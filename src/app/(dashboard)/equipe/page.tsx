@@ -108,24 +108,19 @@ export default function EquipePage() {
     type LinhaT = { funcionario_id: string; tarefas: { id: string; status_id: string; prazo: string | null; tempo_total_segundos: number; arquivada: boolean; excluido_em: string | null } | null };
     type LinhaP = { funcionario_id: string; posts_conteudo: { id: string; status_id: string; data_publicacao: string; tempo_total_segundos: number; arquivado: boolean; excluido_em: string | null } | null };
 
-    // O tempo "deste mês" vem do histórico de cada tarefa/conteúdo, filtrado
-    // pela data real de cada sessão de cronômetro (não pelo prazo da
-    // tarefa) e só contando o que a própria pessoa registrou — evita o
-    // problema de uma tarefa de longa duração, com o prazo caindo esse
-    // mês, jogar o tempo acumulado de TODO MUNDO que já trabalhou nela
-    // pra essa única pessoa.
-    const todosOsIdsTarefas = Array.from(
-      new Set(((respTarefas ?? []) as unknown as LinhaT[]).map((r) => r.tarefas?.id).filter((v): v is string => !!v))
-    );
-    const todosOsIdsPosts = Array.from(
-      new Set(((respPosts ?? []) as unknown as LinhaP[]).map((r) => r.posts_conteudo?.id).filter((v): v is string => !!v))
-    );
+    // O tempo "deste mês" vem direto do histórico, filtrado por quem
+    // realmente registrou o trabalho — sem passar pela lista de
+    // "responsáveis formais". Rodar o cronômetro não exige estar marcado
+    // como responsável, então essa é a única forma de capturar certinho
+    // tarefas, subtarefas, conteúdos e subconteúdos em que a pessoa
+    // trabalhou de verdade, mesmo sem ser a responsável oficial deles.
+    const idsAuth = listaFunc.map((f) => f.authUserId).filter((v): v is string => !!v);
     const [{ data: histTarefas }, { data: histPosts }] = await Promise.all([
-      todosOsIdsTarefas.length > 0
-        ? supabase.from("tarefas_historico").select("autor_id, descricao, created_at").in("tarefa_id", todosOsIdsTarefas)
+      idsAuth.length > 0
+        ? supabase.from("tarefas_historico").select("autor_id, descricao, created_at").in("autor_id", idsAuth)
         : Promise.resolve({ data: [] }),
-      todosOsIdsPosts.length > 0
-        ? supabase.from("posts_conteudo_historico").select("autor_id, descricao, created_at").in("post_id", todosOsIdsPosts)
+      idsAuth.length > 0
+        ? supabase.from("posts_conteudo_historico").select("autor_id, descricao, created_at").in("autor_id", idsAuth)
         : Promise.resolve({ data: [] }),
     ]);
     const segundosPorAutorNoMes = new Map<string, number>();
