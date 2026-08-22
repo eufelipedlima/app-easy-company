@@ -199,6 +199,11 @@ export default function TarefasPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollWheelCleanupRef = useRef<(() => void) | null>(null);
 
+  const visualizacaoRef = useRef(visualizacao);
+  useEffect(() => {
+    visualizacaoRef.current = visualizacao;
+  }, [visualizacao]);
+
   const anexarScrollKanban = useCallback((el: HTMLDivElement | null) => {
     scrollWheelCleanupRef.current?.();
     scrollWheelCleanupRef.current = null;
@@ -206,6 +211,11 @@ export default function TarefasPage() {
     if (!el) return;
     const container = el;
     function onWheel(e: WheelEvent) {
+      // Esse "sequestro" de rolagem (vertical vira horizontal) só faz
+      // sentido no Kanban, pra rolar entre colunas com a rodinha do
+      // mouse. Nas outras visões (Lista, Semana, Mês), a pessoa precisa
+      // conseguir rolar a página normalmente pra baixo.
+      if (visualizacaoRef.current !== "kanban") return;
       const alvo = (e.target as HTMLElement).closest("[data-coluna-scroll]") as HTMLElement | null;
       if (alvo && alvo.scrollHeight > alvo.clientHeight) return;
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {

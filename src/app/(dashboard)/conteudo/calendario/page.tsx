@@ -16,6 +16,7 @@ import {
   type OpcaoAgrupamento,
 } from "@/components/lista-agrupavel";
 import { sanearNomeArquivo } from "@/lib/nome-arquivo";
+import { CalendarDays } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -245,7 +246,7 @@ export const CalendarioConteudoConteudo = forwardRef<
   const [filtroStatusId, setFiltroStatusId] = useState("");
   const [filtroFormato, setFiltroFormato] = useState("");
   const [filtroResponsavelId, setFiltroResponsavelId] = useState("");
-  const [filtroDropdownAberto, setFiltroDropdownAberto] = useState<null | "status" | "formato" | "pessoa" | "vinculacao">(null);
+  const [filtroDropdownAberto, setFiltroDropdownAberto] = useState<null | "status" | "formato" | "pessoa" | "vinculacao" | "periodo">(null);
   const [mostrarSubconteudosKanban, setMostrarSubconteudosKanban] = useState(false);
   const [mostrarSubconteudosCalendario, setMostrarSubconteudosCalendario] = useState(true);
   const [responsaveisPorPost, setResponsaveisPorPost] = useState<Record<string, Responsavel[]>>({});
@@ -771,6 +772,73 @@ export const CalendarioConteudoConteudo = forwardRef<
       )}
 
       <div className="flex flex-wrap items-center gap-2 mb-6 pb-3 border-b border-black/5">
+        {visualizacao === "kanban" && (
+          <div className="relative">
+            <button
+              onClick={() => setFiltroDropdownAberto(filtroDropdownAberto === "periodo" ? null : "periodo")}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors flex items-center gap-1 ${
+                !todosOsMesesKanban ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/60 hover:bg-surface"
+              }`}
+            >
+              <CalendarDays size={13} />
+              {todosOsMesesKanban ? "Todos os meses" : `${MESES[mesKanban]} ${anoKanban}`}
+            </button>
+            {filtroDropdownAberto === "periodo" && (
+              <div
+                className="absolute z-20 top-full left-0 mt-1 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+                onMouseLeave={() => setFiltroDropdownAberto(null)}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <button
+                    onClick={() => {
+                      const d = new Date(anoKanban, mesKanban - 1, 1);
+                      setMesKanban(d.getMonth());
+                      setAnoKanban(d.getFullYear());
+                      setTodosOsMesesKanban(false);
+                    }}
+                    className="rounded-full h-8 w-8 flex items-center justify-center hover:bg-surface text-ink/50"
+                  >
+                    ←
+                  </button>
+                  <span className="text-sm font-bold text-ink">
+                    {MESES[mesKanban]} {anoKanban}
+                  </span>
+                  <button
+                    onClick={() => {
+                      const d = new Date(anoKanban, mesKanban + 1, 1);
+                      setMesKanban(d.getMonth());
+                      setAnoKanban(d.getFullYear());
+                      setTodosOsMesesKanban(false);
+                    }}
+                    className="rounded-full h-8 w-8 flex items-center justify-center hover:bg-surface text-ink/50"
+                  >
+                    →
+                  </button>
+                </div>
+                <button
+                  onClick={() => {
+                    setMesKanban(hoje.getMonth());
+                    setAnoKanban(hoje.getFullYear());
+                    setTodosOsMesesKanban(false);
+                    setFiltroDropdownAberto(null);
+                  }}
+                  className="w-full rounded-xl bg-surface hover:bg-surface/70 text-sm font-semibold text-ink py-2 mb-1.5 transition-colors"
+                >
+                  Este mês
+                </button>
+                <label className="flex items-center gap-2 text-sm text-ink/60 cursor-pointer px-1 py-1.5">
+                  <input
+                    type="checkbox"
+                    checked={todosOsMesesKanban}
+                    onChange={(e) => setTodosOsMesesKanban(e.target.checked)}
+                    className="h-4 w-4 rounded accent-forest"
+                  />
+                  Ver todos os meses
+                </label>
+              </div>
+            )}
+          </div>
+        )}
         <div className="relative">
           <button
             onClick={() => setFiltroDropdownAberto(filtroDropdownAberto === "status" ? null : "status")}
@@ -1176,42 +1244,6 @@ export const CalendarioConteudoConteudo = forwardRef<
 
       {visualizacao === "kanban" && (
         <>
-          <div className="flex flex-wrap items-center gap-3 mb-4">
-            <select
-              value={mesKanban}
-              onChange={(e) => setMesKanban(Number(e.target.value))}
-              disabled={todosOsMesesKanban}
-              className="input py-1.5 !w-auto disabled:opacity-40"
-            >
-              {MESES.map((m, i) => (
-                <option key={m} value={i}>
-                  {m}
-                </option>
-              ))}
-            </select>
-            <select
-              value={anoKanban}
-              onChange={(e) => setAnoKanban(Number(e.target.value))}
-              disabled={todosOsMesesKanban}
-              className="input py-1.5 !w-auto disabled:opacity-40"
-            >
-              {Array.from({ length: 4 }, (_, i) => hoje.getFullYear() - 1 + i).map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-            <label className="flex items-center gap-2 text-sm text-ink/60 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={todosOsMesesKanban}
-                onChange={(e) => setTodosOsMesesKanban(e.target.checked)}
-                className="h-4 w-4 rounded accent-forest"
-              />
-              Todos os meses
-            </label>
-          </div>
-
           <div ref={anexarScrollKanban} className="overflow-x-auto pb-4 min-h-[65vh]">
             {loadingKanban ? (
               <div className="flex gap-4">
