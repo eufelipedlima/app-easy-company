@@ -9,7 +9,14 @@ import { IconeTarefa, IconeProjeto } from "@/components/icones-tarefa";
 import { EsqueletoLinha } from "@/components/esqueleto";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { BuscaCliente } from "@/components/busca-cliente";
-import { ListaAgrupavel } from "@/components/lista-agrupavel";
+import {
+  useListaAgrupavel,
+  BotaoExibirLista,
+  CorpoListaAgrupavel,
+  type ColunaLista,
+  type OpcaoAgrupamento,
+} from "@/components/lista-agrupavel";
+import { Filter } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -184,6 +191,7 @@ export default function TarefasPage() {
   const [painelCamposAberto, setPainelCamposAberto] = useState(false);
   const [painelFiltroAberto, setPainelFiltroAberto] = useState(false);
   const [visualizacao, setVisualizacao] = useState<"kanban" | "lista" | "semana" | "mes">("kanban");
+  const estadoListaTarefas = useListaAgrupavel("tarefas-geral", ["status", "responsavel", "vencimento", "cliente", "prioridade"]);
   const [filtroStatusIds, setFiltroStatusIds] = useState<string[]>([]);
   const [filtroResponsavelId, setFiltroResponsavelId] = useState<string | null>(null);
   const [filtroPrioridade, setFiltroPrioridade] = useState("");
@@ -541,6 +549,100 @@ export default function TarefasPage() {
     onCopiarLink: copiarLinkTarefa,
   };
 
+  const colunasListaTarefas: ColunaLista<Tarefa>[] = [
+    {
+      chave: "nome",
+      label: "Nome",
+      larguraCss: "1fr",
+      ehNome: true,
+      render: (t) => (
+        <span className="text-sm text-ink truncate flex items-center gap-1.5">
+          {t.eh_projeto && <IconeProjeto tamanho={13} />}
+          <span className="truncate">{t.titulo}</span>
+          {t.descricao && <span className="text-ink/25 text-xs shrink-0">☰</span>}
+        </span>
+      ),
+    },
+    {
+      chave: "status",
+      label: "Status",
+      larguraCss: "110px",
+      render: (t) => {
+        const s = statusList.find((s) => s.id === t.status_id);
+        return <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(s?.cor ?? "cinza").cor}`}>{s?.nome ?? "—"}</span>;
+      },
+    },
+    {
+      chave: "responsavel",
+      label: "Responsável",
+      larguraCss: "110px",
+      render: (t) => <AvatarStack pessoas={responsaveisPorTarefa[t.id] ?? []} />,
+    },
+    {
+      chave: "vencimento",
+      label: "Vencimento",
+      larguraCss: "100px",
+      render: (t) => <span className="text-xs text-ink/40">{t.prazo ? formatarPrazo(t.prazo) : "—"}</span>,
+    },
+    {
+      chave: "cliente",
+      label: "Cliente",
+      larguraCss: "140px",
+      render: (t) => <span className="text-xs text-ink/50 truncate">{t.clientes?.papeis?.pessoas?.nome ?? "Interna"}</span>,
+    },
+    {
+      chave: "prioridade",
+      label: "Prioridade",
+      larguraCss: "90px",
+      render: (t) => (
+        <span className="text-xs text-ink/40">
+          {t.prioridade === "alta" ? "🔴 Alta" : t.prioridade === "media" ? "🟡 Média" : t.prioridade === "baixa" ? "🟢 Baixa" : "—"}
+        </span>
+      ),
+    },
+  ];
+
+  const opcoesAgrupamentoTarefas: OpcaoAgrupamento<Tarefa>[] = [
+    {
+      chave: "status",
+      label: "Status",
+      grupoDe: (t) => {
+        const s = statusList.find((s) => s.id === t.status_id);
+        return { chave: t.status_id, label: s?.nome ?? "—", cor: corDoStatus(s?.cor ?? "cinza").cor };
+      },
+    },
+    {
+      chave: "cliente",
+      label: "Cliente",
+      grupoDe: (t) => ({ chave: t.cliente_id ?? "interna", label: t.clientes?.papeis?.pessoas?.nome ?? "Interna" }),
+    },
+    {
+      chave: "responsavel",
+      label: "Responsável",
+      grupoDe: (t) => {
+        const resp = responsaveisPorTarefa[t.id] ?? [];
+        return resp.length > 0 ? { chave: resp[0].id, label: resp[0].nome } : { chave: "sem-responsavel", label: "Sem responsável" };
+      },
+    },
+    {
+      chave: "prioridade",
+      label: "Prioridade",
+      grupoDe: (t) => ({
+        chave: t.prioridade ?? "nenhuma",
+        label: t.prioridade === "alta" ? "🔴 Alta" : t.prioridade === "media" ? "🟡 Média" : t.prioridade === "baixa" ? "🟢 Baixa" : "Sem prioridade",
+      }),
+      ordemGrupos: (a, b) => {
+        const ordem = { alta: 0, media: 1, baixa: 2, nenhuma: 3 };
+        return (ordem[a as keyof typeof ordem] ?? 9) - (ordem[b as keyof typeof ordem] ?? 9);
+      },
+    },
+    {
+      chave: "vencimento",
+      label: "Data de vencimento",
+      grupoDe: (t) => ({ chave: t.prazo ?? "sem-data", label: t.prazo ? formatarPrazo(t.prazo) : "Sem data" }),
+    },
+  ];
+
   return (
     <main className="mx-auto max-w-[2000px] px-6 py-6">
       <div className="flex items-start justify-between gap-4 mb-6">
@@ -556,7 +658,7 @@ export default function TarefasPage() {
                 filtrosAtivos ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/50 hover:text-ink hover:bg-surface"
               }`}
             >
-              🔍 Filtro
+              <Filter size={15} /> Filtro
             </button>
             {painelFiltroAberto && (
               <div
@@ -627,6 +729,10 @@ export default function TarefasPage() {
             )}
           </div>
 
+          {visualizacao === "lista" && (
+            <BotaoExibirLista estado={estadoListaTarefas} colunas={colunasListaTarefas} opcoesAgrupamento={opcoesAgrupamentoTarefas} />
+          )}
+
           <div className="relative">
             <button
               onClick={() => setPainelCamposAberto((v) => !v)}
@@ -696,6 +802,11 @@ export default function TarefasPage() {
               Mês
             </button>
           </div>
+          {filtroResponsavelId === meuFuncionarioId && meuFuncionarioId && (
+            <span className="text-xs text-ink/40">Mostrando suas tarefas</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
           <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
             <button
               onClick={() => setFiltroTipo("tudo")}
@@ -722,11 +833,6 @@ export default function TarefasPage() {
               📋 Projetos
             </button>
           </div>
-          {filtroResponsavelId === meuFuncionarioId && meuFuncionarioId && (
-            <span className="text-xs text-ink/40">Mostrando suas tarefas</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
           {souAdmin && (
             <button
               onClick={() => setNovoProjetoAberto(true)}
@@ -768,106 +874,13 @@ export default function TarefasPage() {
             onAbrirTarefa={(t) => router.push(`/tarefas/${t.id}`)}
           />
         ) : visualizacao === "lista" ? (
-          <ListaAgrupavel<Tarefa>
+          <CorpoListaAgrupavel<Tarefa>
             itens={tarefasFiltradas}
             chaveId={(t) => t.id}
-            chaveArmazenamento="tarefas-geral"
+            estado={estadoListaTarefas}
             onAbrir={(t) => router.push(`/tarefas/${t.id}`)}
-            colunas={[
-              {
-                chave: "nome",
-                label: "Nome",
-                larguraCss: "1fr",
-                ehNome: true,
-                render: (t) => (
-                  <span className="text-sm text-ink truncate flex items-center gap-1.5">
-                    {t.eh_projeto && <IconeProjeto tamanho={13} />}
-                    <span className="truncate">{t.titulo}</span>
-                    {t.descricao && <span className="text-ink/25 text-xs shrink-0">☰</span>}
-                  </span>
-                ),
-              },
-              {
-                chave: "status",
-                label: "Status",
-                larguraCss: "110px",
-                render: (t) => {
-                  const s = statusList.find((s) => s.id === t.status_id);
-                  return <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(s?.cor ?? "cinza").cor}`}>{s?.nome ?? "—"}</span>;
-                },
-              },
-              {
-                chave: "responsavel",
-                label: "Responsável",
-                larguraCss: "110px",
-                render: (t) => <AvatarStack pessoas={responsaveisPorTarefa[t.id] ?? []} />,
-              },
-              {
-                chave: "vencimento",
-                label: "Vencimento",
-                larguraCss: "100px",
-                render: (t) => <span className="text-xs text-ink/40">{t.prazo ? formatarPrazo(t.prazo) : "—"}</span>,
-              },
-              {
-                chave: "cliente",
-                label: "Cliente",
-                larguraCss: "140px",
-                render: (t) => <span className="text-xs text-ink/50 truncate">{t.clientes?.papeis?.pessoas?.nome ?? "Interna"}</span>,
-              },
-              {
-                chave: "prioridade",
-                label: "Prioridade",
-                larguraCss: "90px",
-                render: (t) => (
-                  <span className="text-xs text-ink/40">
-                    {t.prioridade === "alta" ? "🔴 Alta" : t.prioridade === "media" ? "🟡 Média" : t.prioridade === "baixa" ? "🟢 Baixa" : "—"}
-                  </span>
-                ),
-              },
-            ]}
-            opcoesAgrupamento={[
-              {
-                chave: "status",
-                label: "Status",
-                grupoDe: (t) => {
-                  const s = statusList.find((s) => s.id === t.status_id);
-                  return { chave: t.status_id, label: s?.nome ?? "—", cor: corDoStatus(s?.cor ?? "cinza").cor };
-                },
-              },
-              {
-                chave: "cliente",
-                label: "Cliente",
-                grupoDe: (t) => ({
-                  chave: t.cliente_id ?? "interna",
-                  label: t.clientes?.papeis?.pessoas?.nome ?? "Interna",
-                }),
-              },
-              {
-                chave: "responsavel",
-                label: "Responsável",
-                grupoDe: (t) => {
-                  const resp = responsaveisPorTarefa[t.id] ?? [];
-                  return resp.length > 0 ? { chave: resp[0].id, label: resp[0].nome } : { chave: "sem-responsavel", label: "Sem responsável" };
-                },
-              },
-              {
-                chave: "prioridade",
-                label: "Prioridade",
-                grupoDe: (t) => ({
-                  chave: t.prioridade ?? "nenhuma",
-                  label: t.prioridade === "alta" ? "🔴 Alta" : t.prioridade === "media" ? "🟡 Média" : t.prioridade === "baixa" ? "🟢 Baixa" : "Sem prioridade",
-                }),
-                ordemGrupos: (a, b) => {
-                  const ordem = { alta: 0, media: 1, baixa: 2, nenhuma: 3 };
-                  return (ordem[a as keyof typeof ordem] ?? 9) - (ordem[b as keyof typeof ordem] ?? 9);
-                },
-              },
-              {
-                chave: "vencimento",
-                label: "Data de vencimento",
-                grupoDe: (t) => ({ chave: t.prazo ?? "sem-data", label: t.prazo ? formatarPrazo(t.prazo) : "Sem data" }),
-              },
-            ]}
+            colunas={colunasListaTarefas}
+            opcoesAgrupamento={opcoesAgrupamentoTarefas}
           />
         ) : visualizacao === "semana" ? (
           <TarefasSemana
@@ -885,6 +898,7 @@ export default function TarefasPage() {
             contagemComentarios={contagemComentarios}
             camposVisiveis={camposVisiveis}
             acoes={acoesCard}
+            statusList={statusList}
             onAbrirTarefa={(t) => router.push(`/tarefas/${t.id}`)}
           />
         )}
@@ -1538,6 +1552,7 @@ const MESES = [
 
 function TarefasMes({
   tarefas,
+  statusList,
   onAbrirTarefa,
 }: {
   tarefas: Tarefa[];
@@ -1545,6 +1560,7 @@ function TarefasMes({
   contagemComentarios: Record<string, number>;
   camposVisiveis: CamposVisiveisTarefa;
   acoes: AcoesCard;
+  statusList: StatusItem[];
   onAbrirTarefa: (t: Tarefa) => void;
 }) {
   const hoje = new Date();
@@ -1674,21 +1690,24 @@ function TarefasMes({
               })}
 
               {qtdLanes > 0 &&
-                faixas.map((fx) => (
-                  <button
-                    key={fx.tarefa.id}
-                    onClick={() => onAbrirTarefa(fx.tarefa)}
-                    style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 2 }}
-                    className="mx-1 mb-1 rounded-lg px-1.5 py-1 text-left text-[11px] font-medium truncate bg-surface hover:bg-surface/70"
-                  >
-                    {fx.tarefa.eh_projeto ? (
-                      <IconeProjeto tamanho={11} className="inline-block align-[-1px]" />
-                    ) : (
-                      <IconeTarefa tamanho={11} className="inline-block align-[-1px]" />
-                    )}{" "}
-                    {fx.tarefa.titulo}
-                  </button>
-                ))}
+                faixas.map((fx) => {
+                  const status = statusList.find((s) => s.id === fx.tarefa.status_id);
+                  return (
+                    <button
+                      key={fx.tarefa.id}
+                      onClick={() => onAbrirTarefa(fx.tarefa)}
+                      style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 2 }}
+                      className={`mx-1 mb-1 rounded-lg px-1.5 py-1 text-left text-[11px] font-medium truncate transition-colors ${corDoStatus(status?.cor ?? "cinza").cor}`}
+                    >
+                      {fx.tarefa.eh_projeto ? (
+                        <IconeProjeto tamanho={11} className="inline-block align-[-1px]" />
+                      ) : (
+                        <IconeTarefa tamanho={11} className="inline-block align-[-1px]" />
+                      )}{" "}
+                      {fx.tarefa.titulo}
+                    </button>
+                  );
+                })}
 
               {diasDaSemana.map((dia, i) => {
                 const iso = toISODateLocal(dia);
@@ -1703,20 +1722,23 @@ function TarefasMes({
                     }`}
                   >
                     <div className="space-y-1">
-                      {tarefasDoDia.slice(0, 3).map((t) => (
-                        <button
-                          key={t.id}
-                          onClick={() => onAbrirTarefa(t)}
-                          className="w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate bg-surface hover:bg-surface/70"
-                        >
-                          {t.eh_projeto ? (
-                            <IconeProjeto tamanho={11} className="inline-block align-[-1px]" />
-                          ) : (
-                            <IconeTarefa tamanho={11} className="inline-block align-[-1px]" />
-                          )}{" "}
-                          {t.titulo}
-                        </button>
-                      ))}
+                      {tarefasDoDia.slice(0, 3).map((t) => {
+                        const status = statusList.find((s) => s.id === t.status_id);
+                        return (
+                          <button
+                            key={t.id}
+                            onClick={() => onAbrirTarefa(t)}
+                            className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate transition-colors ${corDoStatus(status?.cor ?? "cinza").cor}`}
+                          >
+                            {t.eh_projeto ? (
+                              <IconeProjeto tamanho={11} className="inline-block align-[-1px]" />
+                            ) : (
+                              <IconeTarefa tamanho={11} className="inline-block align-[-1px]" />
+                            )}{" "}
+                            {t.titulo}
+                          </button>
+                        );
+                      })}
                       {tarefasDoDia.length > 3 && <p className="text-[10px] text-ink/40 px-1.5">+{tarefasDoDia.length - 3} mais</p>}
                     </div>
                   </div>

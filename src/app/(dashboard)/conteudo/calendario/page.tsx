@@ -8,7 +8,13 @@ import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { EstadoVazio } from "@/components/estado-vazio";
 import { EsqueletoLinha, EsqueletoLista } from "@/components/esqueleto";
-import { ListaAgrupavel } from "@/components/lista-agrupavel";
+import {
+  useListaAgrupavel,
+  BotaoExibirLista,
+  CorpoListaAgrupavel,
+  type ColunaLista,
+  type OpcaoAgrupamento,
+} from "@/components/lista-agrupavel";
 import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import {
   DndContext,
@@ -232,6 +238,7 @@ export const CalendarioConteudoConteudo = forwardRef<
   }
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
   const [visualizacaoInterna, setVisualizacaoInterna] = useState<"calendario" | "kanban" | "lista">(viewInicial);
+  const estadoListaConteudo = useListaAgrupavel("conteudo-geral", ["status", "responsavel", "data", "cliente", "formato"]);
   const visualizacao = visualizacaoExterna ?? visualizacaoInterna;
   const setVisualizacao = onMudarVisualizacao ?? setVisualizacaoInterna;
   const [postsKanban, setPostsKanban] = useState<Post[]>([]);
@@ -584,6 +591,93 @@ export const CalendarioConteudoConteudo = forwardRef<
     });
   }
 
+  const colunasListaConteudo: ColunaLista<Post>[] = [
+    {
+      chave: "nome",
+      label: "Título",
+      larguraCss: "1fr",
+      ehNome: true,
+      render: (p) => (
+        <span className="text-sm text-ink truncate flex items-center gap-1.5">
+          {p.post_pai_id && <span className="text-forest text-xs">↳</span>}
+          {p.titulo || "Sem título"}
+        </span>
+      ),
+    },
+    {
+      chave: "status",
+      label: "Status",
+      larguraCss: "110px",
+      render: (p) => (
+        <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}>
+          {p.status_conteudo?.nome ?? "—"}
+        </span>
+      ),
+    },
+    {
+      chave: "responsavel",
+      label: "Responsáveis",
+      larguraCss: "120px",
+      render: (p) => <AvatarStackPost pessoas={responsaveisPorPost[p.id] ?? []} tamanho={20} />,
+    },
+    {
+      chave: "data",
+      label: "Data",
+      larguraCss: "90px",
+      render: (p) => <span className="text-xs text-ink/40">{formatarDataChip(p.data_publicacao)}</span>,
+    },
+    {
+      chave: "cliente",
+      label: "Cliente",
+      larguraCss: "140px",
+      render: (p) => <span className="text-xs text-ink/50 truncate">{p.clientes?.papeis?.pessoas?.nome ?? "Interno"}</span>,
+    },
+    {
+      chave: "formato",
+      label: "Formato",
+      larguraCss: "110px",
+      render: (p) => <span className="text-xs text-ink/50">{p.formato ? FORMATO_CONFIG[p.formato]?.label : "—"}</span>,
+    },
+  ];
+
+  const opcoesAgrupamentoConteudo: OpcaoAgrupamento<Post>[] = [
+    {
+      chave: "status",
+      label: "Status",
+      grupoDe: (p) => ({
+        chave: p.status_id,
+        label: p.status_conteudo?.nome ?? "—",
+        cor: corDoStatus(p.status_conteudo?.cor ?? "cinza").cor,
+      }),
+    },
+    {
+      chave: "cliente",
+      label: "Cliente",
+      grupoDe: (p) => ({ chave: p.cliente_id ?? "interno", label: p.clientes?.papeis?.pessoas?.nome ?? "Interno" }),
+    },
+    {
+      chave: "responsavel",
+      label: "Responsável",
+      grupoDe: (p) => {
+        const resp = responsaveisPorPost[p.id] ?? [];
+        return resp.length > 0 ? { chave: resp[0].id, label: resp[0].nome } : { chave: "sem-responsavel", label: "Sem responsável" };
+      },
+    },
+    {
+      chave: "formato",
+      label: "Formato",
+      grupoDe: (p) => ({
+        chave: p.formato ?? "sem-formato",
+        label: p.formato ? FORMATO_CONFIG[p.formato]?.label ?? p.formato : "Sem formato",
+      }),
+    },
+    {
+      chave: "data",
+      label: "Data de publicação",
+      grupoDe: (p) => ({ chave: p.data_publicacao, label: formatarDataChip(p.data_publicacao) }),
+    },
+  ];
+
   return (
     <main className={compacto ? "w-full" : "mx-auto max-w-[2000px] px-6 py-6"}>
       {!compacto && (
@@ -630,6 +724,9 @@ export const CalendarioConteudoConteudo = forwardRef<
         </div>
 
         <div className="flex items-center gap-2">
+          {visualizacao === "lista" && (
+            <BotaoExibirLista estado={estadoListaConteudo} colunas={colunasListaConteudo} opcoesAgrupamento={opcoesAgrupamentoConteudo} />
+          )}
           <button
             onClick={() => setLinkPublicoAberto(true)}
             className="rounded-full border-2 border-ink/15 text-ink px-3.5 py-1.5 text-xs font-semibold hover:bg-surface transition-colors"
@@ -1173,99 +1270,13 @@ export const CalendarioConteudoConteudo = forwardRef<
               <EstadoVazio emoji="🗂️" titulo="Nenhum conteúdo encontrado" descricao="Tenta ajustar os filtros ou cria um novo post." />
             </div>
           ) : (
-            <ListaAgrupavel<Post>
+            <CorpoListaAgrupavel<Post>
               itens={aplicarFiltros(postsKanban).sort((a, b) => (a.data_publicacao < b.data_publicacao ? 1 : -1))}
               chaveId={(p) => p.id}
-              chaveArmazenamento="conteudo-geral"
+              estado={estadoListaConteudo}
               onAbrir={(p) => router.push(`/conteudo/calendario/post/${p.id}`)}
-              colunas={[
-                {
-                  chave: "nome",
-                  label: "Título",
-                  larguraCss: "1fr",
-                  ehNome: true,
-                  render: (p) => (
-                    <span className="text-sm text-ink truncate flex items-center gap-1.5">
-                      {p.post_pai_id && <span className="text-forest text-xs">↳</span>}
-                      {p.titulo || "Sem título"}
-                    </span>
-                  ),
-                },
-                {
-                  chave: "status",
-                  label: "Status",
-                  larguraCss: "110px",
-                  render: (p) => (
-                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}>
-                      {p.status_conteudo?.nome ?? "—"}
-                    </span>
-                  ),
-                },
-                {
-                  chave: "responsavel",
-                  label: "Responsáveis",
-                  larguraCss: "120px",
-                  render: (p) => <AvatarStackPost pessoas={responsaveisPorPost[p.id] ?? []} tamanho={20} />,
-                },
-                {
-                  chave: "data",
-                  label: "Data",
-                  larguraCss: "90px",
-                  render: (p) => <span className="text-xs text-ink/40">{formatarDataChip(p.data_publicacao)}</span>,
-                },
-                {
-                  chave: "cliente",
-                  label: "Cliente",
-                  larguraCss: "140px",
-                  render: (p) => <span className="text-xs text-ink/50 truncate">{p.clientes?.papeis?.pessoas?.nome ?? "Interno"}</span>,
-                },
-                {
-                  chave: "formato",
-                  label: "Formato",
-                  larguraCss: "110px",
-                  render: (p) => <span className="text-xs text-ink/50">{p.formato ? FORMATO_CONFIG[p.formato]?.label : "—"}</span>,
-                },
-              ]}
-              opcoesAgrupamento={[
-                {
-                  chave: "status",
-                  label: "Status",
-                  grupoDe: (p) => ({
-                    chave: p.status_id,
-                    label: p.status_conteudo?.nome ?? "—",
-                    cor: corDoStatus(p.status_conteudo?.cor ?? "cinza").cor,
-                  }),
-                },
-                {
-                  chave: "cliente",
-                  label: "Cliente",
-                  grupoDe: (p) => ({
-                    chave: p.cliente_id ?? "interno",
-                    label: p.clientes?.papeis?.pessoas?.nome ?? "Interno",
-                  }),
-                },
-                {
-                  chave: "responsavel",
-                  label: "Responsável",
-                  grupoDe: (p) => {
-                    const resp = responsaveisPorPost[p.id] ?? [];
-                    return resp.length > 0 ? { chave: resp[0].id, label: resp[0].nome } : { chave: "sem-responsavel", label: "Sem responsável" };
-                  },
-                },
-                {
-                  chave: "formato",
-                  label: "Formato",
-                  grupoDe: (p) => ({
-                    chave: p.formato ?? "sem-formato",
-                    label: p.formato ? FORMATO_CONFIG[p.formato]?.label ?? p.formato : "Sem formato",
-                  }),
-                },
-                {
-                  chave: "data",
-                  label: "Data de publicação",
-                  grupoDe: (p) => ({ chave: p.data_publicacao, label: formatarDataChip(p.data_publicacao) }),
-                },
-              ]}
+              colunas={colunasListaConteudo}
+              opcoesAgrupamento={opcoesAgrupamentoConteudo}
             />
           )}
         </div>
