@@ -49,36 +49,56 @@ export function Cronometro({
 
   const meusSegundosCorrendo = euRodando ? Math.floor((agora - new Date(minhaSessaoIniciadaEm!).getTime()) / 1000) : 0;
   const totalExibido = tempoTotalSegundos + meusSegundosCorrendo;
+  // Se ficar rodando tempo demais sem pausar (provavelmente esqueceram),
+  // avisa bem visualmente — esse tempo só é salvo de verdade quando
+  // alguém aperta pausar, então deixar rodando dias empilha um número que
+  // nunca chega a contar em lugar nenhum.
+  const rodandoHaMuitoTempo = euRodando && meusSegundosCorrendo > 4 * 3600;
 
   return (
-    <div className={`flex items-center gap-2.5 rounded-full px-2 py-1.5 transition-colors ${euRodando ? "bg-red-50" : "bg-surface"}`}>
-      {euRodando ? (
-        <button
-          onClick={onPausar}
-          title="Pausar meu cronômetro"
-          className="h-7 w-7 rounded-full bg-red-500 text-white flex items-center justify-center shrink-0 hover:brightness-110"
-        >
-          ❚❚
-        </button>
-      ) : (
-        <button
-          onClick={onIniciar}
-          title="Iniciar meu cronômetro"
-          className="h-7 w-7 rounded-full bg-forest text-white flex items-center justify-center shrink-0 hover:brightness-110"
-        >
-          ▶
-        </button>
-      )}
-      {algueRodando && (
-        <span className="relative flex h-1.5 w-1.5 shrink-0">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+    <div className="flex flex-col gap-1">
+      <div
+        className={`flex items-center gap-2.5 rounded-full px-2 py-1.5 transition-colors ${
+          rodandoHaMuitoTempo ? "bg-amber-50" : euRodando ? "bg-red-50" : "bg-surface"
+        }`}
+      >
+        {euRodando ? (
+          <button
+            onClick={onPausar}
+            title="Pausar meu cronômetro"
+            className={`h-7 w-7 rounded-full text-white flex items-center justify-center shrink-0 hover:brightness-110 ${
+              rodandoHaMuitoTempo ? "bg-amber-500" : "bg-red-500"
+            }`}
+          >
+            ❚❚
+          </button>
+        ) : (
+          <button
+            onClick={onIniciar}
+            title="Iniciar meu cronômetro"
+            className="h-7 w-7 rounded-full bg-forest text-white flex items-center justify-center shrink-0 hover:brightness-110"
+          >
+            ▶
+          </button>
+        )}
+        {algueRodando && (
+          <span className="relative flex h-1.5 w-1.5 shrink-0">
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${rodandoHaMuitoTempo ? "bg-amber-400" : "bg-red-400"}`} />
+            <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${rodandoHaMuitoTempo ? "bg-amber-500" : "bg-red-500"}`} />
+          </span>
+        )}
+        <span className={`text-xs font-bold tabular-nums ${rodandoHaMuitoTempo ? "text-amber-700" : euRodando ? "text-red-600" : "text-ink"}`}>
+          {formatarDuracao(totalExibido)}
         </span>
-      )}
-      <span className={`text-xs font-bold tabular-nums ${euRodando ? "text-red-600" : "text-ink"}`}>{formatarDuracao(totalExibido)}</span>
-      {outrosRodando.length > 0 && (
-        <span className="text-[10px] text-ink/40 truncate max-w-[140px]" title={outrosRodando.join(", ")}>
-          (+ {outrosRodando.join(", ")} agora)
+        {outrosRodando.length > 0 && (
+          <span className="text-[10px] text-ink/40 truncate max-w-[140px]" title={outrosRodando.join(", ")}>
+            (+ {outrosRodando.join(", ")} agora)
+          </span>
+        )}
+      </div>
+      {rodandoHaMuitoTempo && (
+        <span className="text-[10px] text-amber-700 font-semibold pl-2">
+          ⚠ Rodando há {formatarDuracaoLonga(meusSegundosCorrendo)} sem pausar — esse tempo só salva quando você pausar.
         </span>
       )}
     </div>
