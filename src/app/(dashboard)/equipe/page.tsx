@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/client";
 import { EstadoVazio } from "@/components/estado-vazio";
 import { EsqueletoGrade } from "@/components/esqueleto";
 import { Archive, ArchiveRestore } from "lucide-react";
-import { sessoesDoHistorico } from "@/lib/historico-visual";
 
 interface Membro {
   id: string;
@@ -116,27 +115,6 @@ export default function EquipePage() {
     type LinhaT = { funcionario_id: string; tarefas: { id: string; status_id: string; prazo: string | null; tempo_total_segundos: number; arquivada: boolean; excluido_em: string | null } | null };
     type LinhaP = { funcionario_id: string; posts_conteudo: { id: string; status_id: string; data_publicacao: string; tempo_total_segundos: number; arquivado: boolean; excluido_em: string | null } | null };
 
-    // O tempo "deste mês" vem direto do histórico, filtrado por quem
-    // realmente registrou o trabalho — sem passar pela lista de
-    // "responsáveis formais". Rodar o cronômetro não exige estar marcado
-    // como responsável, então essa é a única forma de capturar certinho
-    // tarefas, subtarefas, conteúdos e subconteúdos em que a pessoa
-    // trabalhou de verdade, mesmo sem ser a responsável oficial deles.
-    const idsAuth = listaFunc.map((f) => f.authUserId).filter((v): v is string => !!v);
-    const [{ data: histTarefas }, { data: histPosts }] = await Promise.all([
-      idsAuth.length > 0
-        ? supabase.from("tarefas_historico").select("autor_id, descricao, created_at").in("autor_id", idsAuth)
-        : Promise.resolve({ data: [] }),
-      idsAuth.length > 0
-        ? supabase.from("posts_conteudo_historico").select("autor_id, descricao, created_at").in("autor_id", idsAuth)
-        : Promise.resolve({ data: [] }),
-    ]);
-    const segundosPorAutorNoMes = new Map<string, number>();
-    for (const s of [...sessoesDoHistorico(histTarefas ?? []), ...sessoesDoHistorico(histPosts ?? [])]) {
-      if (!noMes(s.dataISO)) continue;
-      segundosPorAutorNoMes.set(s.autorId, (segundosPorAutorNoMes.get(s.autorId) ?? 0) + s.segundos);
-    }
-
     const membrosComDados: Membro[] = listaFunc.map((f) => {
       const minhasTarefas = ((respTarefas ?? []) as unknown as LinhaT[])
         .filter((r) => r.funcionario_id === f.id && r.tarefas && !r.tarefas.arquivada && !r.tarefas.excluido_em)
@@ -150,7 +128,11 @@ export default function EquipePage() {
       const atrasadas =
         minhasTarefas.filter((t) => !idsConcluido.has(t.status_id) && t.prazo && t.prazo < hojeISO).length +
         meusPosts.filter((p) => !idsConcluido.has(p.status_id) && p.data_publicacao < hojeISO).length;
-      const tempoTotalSegundos = segundosPorAutorNoMes.get(f.authUserId) ?? 0;
+      // Tempo "deste mês": soma direta do tempo_total_segundos de cada
+      // tarefa/conteúdo dessa pessoa, cuja data cai dentro do mês.
+      const tempoTotalSegundos =
+        minhasTarefas.filter((t) => noMes(t.prazo)).reduce((s, t) => s + (t.tempo_total_segundos ?? 0), 0) +
+        meusPosts.filter((p) => noMes(p.data_publicacao)).reduce((s, p) => s + (p.tempo_total_segundos ?? 0), 0);
 
       return { ...f, abertas, concluidas, atrasadas, tempoTotalSegundos };
     });

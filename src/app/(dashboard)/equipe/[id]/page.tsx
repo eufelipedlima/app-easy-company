@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { NumeroAnimado } from "@/components/numero-animado";
-import { sessoesDoHistorico } from "@/lib/historico-visual";
 
 interface ItemTrabalho {
   id: string;
@@ -206,92 +205,24 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
     ];
     setItens(listaItens);
 
-    // Total geral de horas e o detalhamento "por cliente" vêm direto do
-    // histórico, filtrado por quem realmente registrou o trabalho — sem
-    // passar pela lista de "responsáveis formais" da tarefa. Isso importa
-    // porque rodar o cronômetro não exige estar marcado como responsável:
-    // qualquer tarefa/subtarefa/conteúdo/subconteúdo em que essa pessoa
-    // tenha de fato trabalhado entra na conta, mesmo que ela não seja a
-    // responsável "oficial" daquele item específico.
-    //
-    // Importante: buscamos o histórico "cru" (sem tentar juntar o cliente
-    // na mesma consulta) e resolvemos o cliente numa segunda consulta
-    // separada, mais simples. Consultas com muitos relacionamentos
-    // encadeados numa só (histórico → tarefa → cliente → papel → pessoa)
-    // já se mostraram pouco confiáveis nesse projeto — algumas linhas
-    // vinham sem o relacionamento preenchido, mesmo com o dado existindo.
-    const [{ data: histTarefasCru }, { data: histPostsCru }] = await Promise.all([
-      f?.auth_user_id
-        ? supabase.from("tarefas_historico").select("tarefa_id, descricao, created_at").eq("autor_id", f.auth_user_id)
-        : Promise.resolve({ data: [] as { tarefa_id: string; descricao: string; created_at: string }[] }),
-      f?.auth_user_id
-        ? supabase.from("posts_conteudo_historico").select("post_id, descricao, created_at").eq("autor_id", f.auth_user_id)
-        : Promise.resolve({ data: [] as { post_id: string; descricao: string; created_at: string }[] }),
-    ]);
-
-    const idsTarefasHist = Array.from(new Set((histTarefasCru ?? []).map((h) => h.tarefa_id)));
-    const idsPostsHist = Array.from(new Set((histPostsCru ?? []).map((h) => h.post_id)));
-
-    const [{ data: tarefasComCliente }, { data: postsComCliente }] = await Promise.all([
-      idsTarefasHist.length > 0
-        ? supabase.from("tarefas").select("id, cliente_id").in("id", idsTarefasHist)
-        : Promise.resolve({ data: [] as { id: string; cliente_id: string | null }[] }),
-      idsPostsHist.length > 0
-        ? supabase.from("posts_conteudo").select("id, cliente_id").in("id", idsPostsHist)
-        : Promise.resolve({ data: [] as { id: string; cliente_id: string | null }[] }),
-    ]);
-
-    const clienteIdDaTarefa = new Map((tarefasComCliente ?? []).map((t) => [t.id, t.cliente_id]));
-    const clienteIdDoPost = new Map((postsComCliente ?? []).map((p) => [p.id, p.cliente_id]));
-
-    const idsClientes = Array.from(
-      new Set([...clienteIdDaTarefa.values(), ...clienteIdDoPost.values()].filter((v): v is string => !!v))
-    );
-    const { data: clientesComNome } =
-      idsClientes.length > 0
-        ? await supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )").in("id", idsClientes)
-        : { data: [] as { id: string; papeis: { pessoas: { nome: string } | null } | null }[] };
-    const nomeDoCliente = new Map(
-      ((clientesComNome ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[]).map((c) => [
-        c.id,
-        c.papeis?.pessoas?.nome ?? "Cliente",
-      ])
-    );
-
-    // Comparamos como objetos Date (não como texto) pra não misturar
-    // formato com fuso horário (UTC) e sem fuso — isso evitava um erro
-    // sutil de até 3h no limite do dia/semana.
-    const inicioData = inicio ? new Date(`${inicio}T00:00:00`) : null;
-    const fimData = fim ? new Date(`${fim}T23:59:59`) : null;
-    const dentroDoPeriodoData = (dataISO: string) => {
-      if (!inicioData || !fimData) return true;
-      const d = new Date(dataISO);
-      return d >= inicioData && d <= fimData;
-    };
-
-    let tempoTotalReal = 0;
-    const tempoMap = new Map<string, number>();
-
-    for (const h of histTarefasCru ?? []) {
-      if (!dentroDoPeriodoData(h.created_at)) continue;
-      const [sessao] = sessoesDoHistorico([{ autor_id: f?.auth_user_id ?? null, descricao: h.descricao, created_at: h.created_at }]);
-      if (!sessao) continue;
-      tempoTotalReal += sessao.segundos;
-      const clienteId = clienteIdDaTarefa.get(h.tarefa_id);
-      const cli = clienteId ? nomeDoCliente.get(clienteId) ?? "Cliente" : "Interno/sem cliente";
-      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + sessao.segundos);
-    }
-    for (const h of histPostsCru ?? []) {
-      if (!dentroDoPeriodoData(h.created_at)) continue;
-      const [sessao] = sessoesDoHistorico([{ autor_id: f?.auth_user_id ?? null, descricao: h.descricao, created_at: h.created_at }]);
-      if (!sessao) continue;
-      tempoTotalReal += sessao.segundos;
-      const clienteId = clienteIdDoPost.get(h.post_id);
-      const cli = clienteId ? nomeDoCliente.get(clienteId) ?? "Cliente" : "Interno/sem cliente";
-      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + sessao.segundos);
-    }
-
+    // Tempo total e por cliente: soma direta do tempo_total_segundos de
+    // cada tarefa/conteúdo que a pessoa é responsável, filtrado pelo
+    // período selecionado. Simples e direto — sem tentar reconstruir nada
+    // lendo texto do histórico.
+    const tempoTotalReal =
+      minhasTarefas.filter((t) => dentroDoPeriodo(t.prazo)).reduce((s, t) => s + (t.tempo_total_segundos ?? 0), 0) +
+      meusPosts.filter((p) => dentroDoPeriodo(p.data_publicacao)).reduce((s, p) => s + (p.tempo_total_segundos ?? 0), 0);
     setTempoTotalGeral(tempoTotalReal);
+
+    const tempoMap = new Map<string, number>();
+    for (const t of minhasTarefas.filter((t) => dentroDoPeriodo(t.prazo))) {
+      const cli = t.clientes?.papeis?.pessoas?.nome ?? "Sem cliente";
+      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + (t.tempo_total_segundos ?? 0));
+    }
+    for (const p of meusPosts.filter((p) => dentroDoPeriodo(p.data_publicacao))) {
+      const cli = p.clientes?.papeis?.pessoas?.nome ?? "Sem cliente";
+      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + (p.tempo_total_segundos ?? 0));
+    }
     setTempoPorCliente(
       Array.from(tempoMap.entries())
         .map(([clienteNome, segundos]) => ({ clienteNome, segundos }))
