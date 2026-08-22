@@ -125,9 +125,14 @@ export function AbaLucratividadeCliente({ clienteId }: { clienteId: string }) {
   }, [clienteId, mes, ano]);
 
   const { totalHoras, custoEstimado, porPessoa } = useMemo(() => {
-    const inicioMes = new Date(ano, mes, 1).toISOString();
-    const fimMes = new Date(ano, mes + 1, 1).toISOString();
-    const doMes = sessoes.filter((s) => s.dataISO >= inicioMes && s.dataISO < fimMes);
+    // Comparação por objeto Date (não texto) — evita o limite do mês ficar
+    // deslocado pelo fuso horário (a diferença do Brasil pro UTC).
+    const inicioMesData = new Date(ano, mes, 1, 0, 0, 0);
+    const fimMesData = new Date(ano, mes + 1, 1, 0, 0, 0);
+    const doMes = sessoes.filter((s) => {
+      const d = new Date(s.dataISO);
+      return d >= inicioMesData && d < fimMesData;
+    });
 
     const segundosPorPessoa = new Map<string, number>();
     for (const s of doMes) {

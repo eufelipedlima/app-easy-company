@@ -238,11 +238,15 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
       posts_conteudo: { cliente_id: string | null; clientes: { papeis: { pessoas: { nome: string } | null } | null } | null } | null;
     };
 
-    const inicioISO = inicio ? `${inicio}T00:00:00` : null;
-    const fimISO = fim ? `${fim}T23:59:59` : null;
+    // Comparamos como objetos Date (não como texto) pra não misturar
+    // formato com fuso horário (UTC) e sem fuso — isso evitava um erro
+    // sutil de até 3h no limite do dia/semana.
+    const inicioData = inicio ? new Date(`${inicio}T00:00:00`) : null;
+    const fimData = fim ? new Date(`${fim}T23:59:59`) : null;
     const dentroDoPeriodoData = (dataISO: string) => {
-      if (!inicioISO || !fimISO) return true;
-      return dataISO >= inicioISO && dataISO <= fimISO;
+      if (!inicioData || !fimData) return true;
+      const d = new Date(dataISO);
+      return d >= inicioData && d <= fimData;
     };
     const regexTempo = /^passou (?:menos de 1min|(\d+)min) trabalhando/;
     function segundosDoTexto(descricao: string): number | null {

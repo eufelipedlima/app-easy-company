@@ -59,9 +59,17 @@ export default function EquipePage() {
     const supabase = createClient();
     const hojeISO = new Date().toISOString().slice(0, 10);
     const hoje = new Date();
-    const inicioMesISO = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10);
-    const fimMesISO = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).toISOString().slice(0, 10);
-    const noMes = (data: string | null) => !!data && data >= inicioMesISO && data <= fimMesISO;
+    const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1, 0, 0, 0);
+    const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0, 23, 59, 59);
+    // Comparamos como objetos Date, não como texto — comparar só a "data"
+    // (sem hora) de um horário UTC contra um limite local pode jogar pro
+    // dia errado quem trabalha à noite (ex: 23h no Brasil já é outro dia
+    // em UTC).
+    const noMes = (dataISO: string | null) => {
+      if (!dataISO) return false;
+      const d = new Date(dataISO);
+      return d >= inicioMes && d <= fimMes;
+    };
 
     const [{ data: funcData }, { data: statusData }] = await Promise.all([
       supabase
@@ -125,7 +133,7 @@ export default function EquipePage() {
     ]);
     const segundosPorAutorNoMes = new Map<string, number>();
     for (const s of [...sessoesDoHistorico(histTarefas ?? []), ...sessoesDoHistorico(histPosts ?? [])]) {
-      if (!noMes(s.dataISO.slice(0, 10))) continue;
+      if (!noMes(s.dataISO)) continue;
       segundosPorAutorNoMes.set(s.autorId, (segundosPorAutorNoMes.get(s.autorId) ?? 0) + s.segundos);
     }
 

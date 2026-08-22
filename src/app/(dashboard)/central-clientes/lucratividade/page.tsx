@@ -128,8 +128,14 @@ export default function LucratividadeGeralPage() {
   }, [temAcesso, mes, ano]);
 
   const linhas: LinhaCliente[] = useMemo(() => {
-    const inicioMesISO = new Date(ano, mes, 1).toISOString();
-    const fimMesISO = new Date(ano, mes + 1, 1).toISOString();
+    // Comparação por objeto Date (não texto) — evita o limite do mês ficar
+    // deslocado pelo fuso horário (a diferença do Brasil pro UTC).
+    const inicioMesData = new Date(ano, mes, 1, 0, 0, 0);
+    const fimMesData = new Date(ano, mes + 1, 1, 0, 0, 0);
+    const noMes = (dataISO: string) => {
+      const d = new Date(dataISO);
+      return d >= inicioMesData && d < fimMesData;
+    };
 
     const horasPorCliente = new Map<string, number>();
     const custoPorCliente = new Map<string, number>();
@@ -137,7 +143,7 @@ export default function LucratividadeGeralPage() {
     for (const h of historicoTarefas) {
       const clienteId = clienteDaTarefa.get(h.tarefa_id);
       if (!clienteId) continue;
-      if (h.created_at < inicioMesISO || h.created_at >= fimMesISO) continue;
+      if (!noMes(h.created_at)) continue;
       const [sessao] = sessoesDoHistorico([h]);
       if (!sessao) continue;
       const horas = sessao.segundos / 3600;
@@ -148,7 +154,7 @@ export default function LucratividadeGeralPage() {
     for (const h of historicoPosts) {
       const clienteId = clienteDoPost.get(h.post_id);
       if (!clienteId) continue;
-      if (h.created_at < inicioMesISO || h.created_at >= fimMesISO) continue;
+      if (!noMes(h.created_at)) continue;
       const [sessao] = sessoesDoHistorico([h]);
       if (!sessao) continue;
       const horas = sessao.segundos / 3600;
