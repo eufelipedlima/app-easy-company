@@ -8,6 +8,7 @@ import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { EstadoVazio } from "@/components/estado-vazio";
 import { EsqueletoLinha, EsqueletoLista } from "@/components/esqueleto";
+import { ListaAgrupavel } from "@/components/lista-agrupavel";
 import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import {
   DndContext,
@@ -1162,43 +1163,110 @@ export const CalendarioConteudoConteudo = forwardRef<
       )}
 
       {visualizacao === "lista" && (
-        <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
+        <div>
           {loadingKanban ? (
-            <div className="p-5">
+            <div className="rounded-3xl bg-card border border-black/5 p-5">
               <EsqueletoLista linhas={5} />
             </div>
           ) : aplicarFiltros(postsKanban).length === 0 ? (
-            <EstadoVazio emoji="🗂️" titulo="Nenhum conteúdo encontrado" descricao="Tenta ajustar os filtros ou cria um novo post." />
+            <div className="rounded-3xl bg-card border border-black/5">
+              <EstadoVazio emoji="🗂️" titulo="Nenhum conteúdo encontrado" descricao="Tenta ajustar os filtros ou cria um novo post." />
+            </div>
           ) : (
-            <>
-              <div className="grid grid-cols-[1fr_140px_110px_140px_110px] gap-2 px-5 py-2.5 text-[11px] font-bold uppercase tracking-wide text-ink/40 bg-surface/60">
-                <span>Título</span>
-                <span>Cliente</span>
-                <span>Formato</span>
-                <span>Responsáveis</span>
-                <span>Status</span>
-              </div>
-              {aplicarFiltros(postsKanban)
-                .sort((a, b) => (a.data_publicacao < b.data_publicacao ? 1 : -1))
-                .map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => router.push(`/conteudo/calendario/post/${p.id}`)}
-                    className="w-full grid grid-cols-[1fr_140px_110px_140px_110px] items-center gap-2 px-5 py-3 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
-                  >
+            <ListaAgrupavel<Post>
+              itens={aplicarFiltros(postsKanban).sort((a, b) => (a.data_publicacao < b.data_publicacao ? 1 : -1))}
+              chaveId={(p) => p.id}
+              chaveArmazenamento="conteudo-geral"
+              onAbrir={(p) => router.push(`/conteudo/calendario/post/${p.id}`)}
+              colunas={[
+                {
+                  chave: "nome",
+                  label: "Título",
+                  larguraCss: "1fr",
+                  ehNome: true,
+                  render: (p) => (
                     <span className="text-sm text-ink truncate flex items-center gap-1.5">
                       {p.post_pai_id && <span className="text-forest text-xs">↳</span>}
                       {p.titulo || "Sem título"}
                     </span>
-                    <span className="text-xs text-ink/50 truncate">{p.clientes?.papeis?.pessoas?.nome ?? "Interno"}</span>
-                    <span className="text-xs text-ink/50">{p.formato ? FORMATO_CONFIG[p.formato]?.label : "—"}</span>
-                    <AvatarStackPost pessoas={responsaveisPorPost[p.id] ?? []} tamanho={20} />
+                  ),
+                },
+                {
+                  chave: "status",
+                  label: "Status",
+                  larguraCss: "110px",
+                  render: (p) => (
                     <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}>
                       {p.status_conteudo?.nome ?? "—"}
                     </span>
-                  </button>
-                ))}
-            </>
+                  ),
+                },
+                {
+                  chave: "responsavel",
+                  label: "Responsáveis",
+                  larguraCss: "120px",
+                  render: (p) => <AvatarStackPost pessoas={responsaveisPorPost[p.id] ?? []} tamanho={20} />,
+                },
+                {
+                  chave: "data",
+                  label: "Data",
+                  larguraCss: "90px",
+                  render: (p) => <span className="text-xs text-ink/40">{formatarDataChip(p.data_publicacao)}</span>,
+                },
+                {
+                  chave: "cliente",
+                  label: "Cliente",
+                  larguraCss: "140px",
+                  render: (p) => <span className="text-xs text-ink/50 truncate">{p.clientes?.papeis?.pessoas?.nome ?? "Interno"}</span>,
+                },
+                {
+                  chave: "formato",
+                  label: "Formato",
+                  larguraCss: "110px",
+                  render: (p) => <span className="text-xs text-ink/50">{p.formato ? FORMATO_CONFIG[p.formato]?.label : "—"}</span>,
+                },
+              ]}
+              opcoesAgrupamento={[
+                {
+                  chave: "status",
+                  label: "Status",
+                  grupoDe: (p) => ({
+                    chave: p.status_id,
+                    label: p.status_conteudo?.nome ?? "—",
+                    cor: corDoStatus(p.status_conteudo?.cor ?? "cinza").cor,
+                  }),
+                },
+                {
+                  chave: "cliente",
+                  label: "Cliente",
+                  grupoDe: (p) => ({
+                    chave: p.cliente_id ?? "interno",
+                    label: p.clientes?.papeis?.pessoas?.nome ?? "Interno",
+                  }),
+                },
+                {
+                  chave: "responsavel",
+                  label: "Responsável",
+                  grupoDe: (p) => {
+                    const resp = responsaveisPorPost[p.id] ?? [];
+                    return resp.length > 0 ? { chave: resp[0].id, label: resp[0].nome } : { chave: "sem-responsavel", label: "Sem responsável" };
+                  },
+                },
+                {
+                  chave: "formato",
+                  label: "Formato",
+                  grupoDe: (p) => ({
+                    chave: p.formato ?? "sem-formato",
+                    label: p.formato ? FORMATO_CONFIG[p.formato]?.label ?? p.formato : "Sem formato",
+                  }),
+                },
+                {
+                  chave: "data",
+                  label: "Data de publicação",
+                  grupoDe: (p) => ({ chave: p.data_publicacao, label: formatarDataChip(p.data_publicacao) }),
+                },
+              ]}
+            />
           )}
         </div>
       )}

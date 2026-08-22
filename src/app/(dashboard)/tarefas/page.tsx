@@ -9,6 +9,7 @@ import { IconeTarefa, IconeProjeto } from "@/components/icones-tarefa";
 import { EsqueletoLinha } from "@/components/esqueleto";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { BuscaCliente } from "@/components/busca-cliente";
+import { ListaAgrupavel } from "@/components/lista-agrupavel";
 import {
   DndContext,
   DragOverlay,
@@ -182,7 +183,7 @@ export default function TarefasPage() {
   const [camposVisiveis, setCamposVisiveis] = useState<CamposVisiveisTarefa>(CAMPOS_PADRAO);
   const [painelCamposAberto, setPainelCamposAberto] = useState(false);
   const [painelFiltroAberto, setPainelFiltroAberto] = useState(false);
-  const [visualizacao, setVisualizacao] = useState<"kanban" | "semana" | "mes">("kanban");
+  const [visualizacao, setVisualizacao] = useState<"kanban" | "lista" | "semana" | "mes">("kanban");
   const [filtroStatusIds, setFiltroStatusIds] = useState<string[]>([]);
   const [filtroResponsavelId, setFiltroResponsavelId] = useState<string | null>(null);
   const [filtroPrioridade, setFiltroPrioridade] = useState("");
@@ -671,6 +672,14 @@ export default function TarefasPage() {
               Kanban
             </button>
             <button
+              onClick={() => setVisualizacao("lista")}
+              className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
+                visualizacao === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Lista
+            </button>
+            <button
               onClick={() => setVisualizacao("semana")}
               className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
                 visualizacao === "semana" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
@@ -757,6 +766,108 @@ export default function TarefasPage() {
             acoes={acoesCard}
             onMoverTarefa={moverTarefaStatus}
             onAbrirTarefa={(t) => router.push(`/tarefas/${t.id}`)}
+          />
+        ) : visualizacao === "lista" ? (
+          <ListaAgrupavel<Tarefa>
+            itens={tarefasFiltradas}
+            chaveId={(t) => t.id}
+            chaveArmazenamento="tarefas-geral"
+            onAbrir={(t) => router.push(`/tarefas/${t.id}`)}
+            colunas={[
+              {
+                chave: "nome",
+                label: "Nome",
+                larguraCss: "1fr",
+                ehNome: true,
+                render: (t) => (
+                  <span className="text-sm text-ink truncate flex items-center gap-1.5">
+                    {t.eh_projeto && <IconeProjeto tamanho={13} />}
+                    <span className="truncate">{t.titulo}</span>
+                    {t.descricao && <span className="text-ink/25 text-xs shrink-0">☰</span>}
+                  </span>
+                ),
+              },
+              {
+                chave: "status",
+                label: "Status",
+                larguraCss: "110px",
+                render: (t) => {
+                  const s = statusList.find((s) => s.id === t.status_id);
+                  return <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(s?.cor ?? "cinza").cor}`}>{s?.nome ?? "—"}</span>;
+                },
+              },
+              {
+                chave: "responsavel",
+                label: "Responsável",
+                larguraCss: "110px",
+                render: (t) => <AvatarStack pessoas={responsaveisPorTarefa[t.id] ?? []} />,
+              },
+              {
+                chave: "vencimento",
+                label: "Vencimento",
+                larguraCss: "100px",
+                render: (t) => <span className="text-xs text-ink/40">{t.prazo ? formatarPrazo(t.prazo) : "—"}</span>,
+              },
+              {
+                chave: "cliente",
+                label: "Cliente",
+                larguraCss: "140px",
+                render: (t) => <span className="text-xs text-ink/50 truncate">{t.clientes?.papeis?.pessoas?.nome ?? "Interna"}</span>,
+              },
+              {
+                chave: "prioridade",
+                label: "Prioridade",
+                larguraCss: "90px",
+                render: (t) => (
+                  <span className="text-xs text-ink/40">
+                    {t.prioridade === "alta" ? "🔴 Alta" : t.prioridade === "media" ? "🟡 Média" : t.prioridade === "baixa" ? "🟢 Baixa" : "—"}
+                  </span>
+                ),
+              },
+            ]}
+            opcoesAgrupamento={[
+              {
+                chave: "status",
+                label: "Status",
+                grupoDe: (t) => {
+                  const s = statusList.find((s) => s.id === t.status_id);
+                  return { chave: t.status_id, label: s?.nome ?? "—", cor: corDoStatus(s?.cor ?? "cinza").cor };
+                },
+              },
+              {
+                chave: "cliente",
+                label: "Cliente",
+                grupoDe: (t) => ({
+                  chave: t.cliente_id ?? "interna",
+                  label: t.clientes?.papeis?.pessoas?.nome ?? "Interna",
+                }),
+              },
+              {
+                chave: "responsavel",
+                label: "Responsável",
+                grupoDe: (t) => {
+                  const resp = responsaveisPorTarefa[t.id] ?? [];
+                  return resp.length > 0 ? { chave: resp[0].id, label: resp[0].nome } : { chave: "sem-responsavel", label: "Sem responsável" };
+                },
+              },
+              {
+                chave: "prioridade",
+                label: "Prioridade",
+                grupoDe: (t) => ({
+                  chave: t.prioridade ?? "nenhuma",
+                  label: t.prioridade === "alta" ? "🔴 Alta" : t.prioridade === "media" ? "🟡 Média" : t.prioridade === "baixa" ? "🟢 Baixa" : "Sem prioridade",
+                }),
+                ordemGrupos: (a, b) => {
+                  const ordem = { alta: 0, media: 1, baixa: 2, nenhuma: 3 };
+                  return (ordem[a as keyof typeof ordem] ?? 9) - (ordem[b as keyof typeof ordem] ?? 9);
+                },
+              },
+              {
+                chave: "vencimento",
+                label: "Data de vencimento",
+                grupoDe: (t) => ({ chave: t.prazo ?? "sem-data", label: t.prazo ? formatarPrazo(t.prazo) : "Sem data" }),
+              },
+            ]}
           />
         ) : visualizacao === "semana" ? (
           <TarefasSemana
