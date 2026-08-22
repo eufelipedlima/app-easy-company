@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from "recharts";
+import { sessoesDoHistorico } from "@/lib/historico-visual";
 
 const HORAS_PADRAO_MES = 220;
+const MESES = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
 
 function formatarMoeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -23,10 +28,22 @@ interface LinhaCliente {
 
 export default function LucratividadeGeralPage() {
   const router = useRouter();
+  const hoje = new Date();
+  const [mes, setMes] = useState(hoje.getMonth());
+  const [ano, setAno] = useState(hoje.getFullYear());
   const [loading, setLoading] = useState(true);
   const [temAcesso, setTemAcesso] = useState<boolean | null>(null);
-  const [linhas, setLinhas] = useState<LinhaCliente[]>([]);
   const [ordem, setOrdem] = useState<"lucro" | "margem" | "receita">("lucro");
+  const [incluirDespesas, setIncluirDespesas] = useState(false);
+
+  const [nomesCliente, setNomesCliente] = useState<Map<string, string>>(new Map());
+  const [receitaPorCliente, setReceitaPorCliente] = useState<Map<string, number>>(new Map());
+  const [clienteDaTarefa, setClienteDaTarefa] = useState<Map<string, string>>(new Map());
+  const [clienteDoPost, setClienteDoPost] = useState<Map<string, string>>(new Map());
+  const [historicoTarefas, setHistoricoTarefas] = useState<{ tarefa_id: string; autor_id: string | null; descricao: string; created_at: string }[]>([]);
+  const [historicoPosts, setHistoricoPosts] = useState<{ post_id: string; autor_id: string | null; descricao: string; created_at: string }[]>([]);
+  const [custoHoraSimplesPorFuncionario, setCustoHoraSimplesPorFuncionario] = useState<Map<string, number>>(new Map());
+  const [custoHoraCompleto, setCustoHoraCompleto] = useState(0);
 
   useEffect(() => {
     async function carregarPermissao() {
@@ -43,96 +60,134 @@ export default function LucratividadeGeralPage() {
       setLoading(true);
       const supabase = createClient();
 
-      const [{ data: clientes }, { data: contratos }, { data: tarefas }, { data: posts }, { data: funcionarios }] = await Promise.all([
-        supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )").eq("ativo_central_clientes", true),
-        supabase.from("contratos").select("cliente_id, tipo_contrato, valor_mensal, status"),
-        supabase.from("tarefas").select("id, cliente_id, tempo_total_segundos").is("excluido_em", null).not("cliente_id", "is", null),
-        supabase.from("posts_conteudo").select("id, cliente_id, tempo_total_segundos").is("excluido_em", null).not("cliente_id", "is", null),
-        supabase
-          .from("funcionarios")
-          .select("auth_user_id, salario")
-          .not("auth_user_id", "is", null),
-      ]);
+      const inicioMes = new Date(ano, mes, 1).toISOString().slice(0, 10);
+      const fimMes = new Date(ano, mes + 1, 0).toISOString().slice(0, 10);
 
-      const nomesCliente = new Map<string, string>();
+      const [{ data: clientes }, { data: contratos }, { data: tarefas }, { data: posts }, { data: funcionarios }, { data: despesas }] =
+        await Promise.all([
+          supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )").eq("ativo_central_clientes", true),
+          supabase
+            .from("contratos")
+            .select("cliente_id, tipo_contrato, valor_mensal, status, data_primeira_mensalidade, data_encerramento"),
+          supabase.from("tarefas").select("id, cliente_id").is("excluido_em", null).not("cliente_id", "is", null),
+          supabase.from("posts_conteudo").select("id, cliente_id").is("excluido_em", null).not("cliente_id", "is", null),
+          supabase.from("funcionarios").select("auth_user_id, salario").not("auth_user_id", "is", null),
+          supabase.from("despesas_fixas").select("valor_mensal").eq("status", "ativo"),
+        ]);
+
+      const mapaNomes = new Map<string, string>();
       for (const c of (clientes ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[]) {
-        nomesCliente.set(c.id, c.papeis?.pessoas?.nome ?? "—");
+        mapaNomes.set(c.id, c.papeis?.pessoas?.nome ?? "—");
       }
+      setNomesCliente(mapaNomes);
 
-      const receitaPorCliente = new Map<string, number>();
+      const mapaReceita = new Map<string, number>();
       for (const c of contratos ?? []) {
-        if (c.status !== "ativo" || c.tipo_contrato !== "recorrente" || !c.cliente_id) continue;
-        receitaPorCliente.set(c.cliente_id, (receitaPorCliente.get(c.cliente_id) ?? 0) + (c.valor_mensal ?? 0));
+        if (c.tipo_contrato !== "recorrente" || !c.cliente_id) continue;
+        if (c.data_primeira_mensalidade && c.data_primeira_mensalidade > fimMes) continue;
+        if (c.data_encerramento && c.data_encerramento < inicioMes) continue;
+        if (c.status === "encerrado" && !c.data_encerramento) continue;
+        mapaReceita.set(c.cliente_id, (mapaReceita.get(c.cliente_id) ?? 0) + (c.valor_mensal ?? 0));
       }
+      setReceitaPorCliente(mapaReceita);
 
-      const clienteDaTarefa = new Map<string, string>();
-      const horasPorCliente = new Map<string, number>();
-      for (const t of tarefas ?? []) {
-        if (!t.cliente_id) continue;
-        clienteDaTarefa.set(t.id, t.cliente_id);
-        horasPorCliente.set(t.cliente_id, (horasPorCliente.get(t.cliente_id) ?? 0) + (t.tempo_total_segundos ?? 0) / 3600);
-      }
-      const clienteDoPost = new Map<string, string>();
-      for (const p of posts ?? []) {
-        if (!p.cliente_id) continue;
-        clienteDoPost.set(p.id, p.cliente_id);
-        horasPorCliente.set(p.cliente_id, (horasPorCliente.get(p.cliente_id) ?? 0) + (p.tempo_total_segundos ?? 0) / 3600);
-      }
+      const mapaTarefa = new Map<string, string>();
+      for (const t of tarefas ?? []) if (t.cliente_id) mapaTarefa.set(t.id, t.cliente_id);
+      setClienteDaTarefa(mapaTarefa);
+      const mapaPost = new Map<string, string>();
+      for (const p of posts ?? []) if (p.cliente_id) mapaPost.set(p.id, p.cliente_id);
+      setClienteDoPost(mapaPost);
 
-      const custoHoraPorFuncionario = new Map<string, number>();
+      const mapaCustoSimples = new Map<string, number>();
       for (const f of (funcionarios ?? []) as { auth_user_id: string; salario: number }[]) {
-        custoHoraPorFuncionario.set(f.auth_user_id, (f.salario ?? 0) / HORAS_PADRAO_MES);
+        mapaCustoSimples.set(f.auth_user_id, (Number(f.salario) || 0) / HORAS_PADRAO_MES);
       }
+      setCustoHoraSimplesPorFuncionario(mapaCustoSimples);
+
+      const somaSalarios = (funcionarios ?? []).reduce((s, f) => s + (Number(f.salario) || 0), 0);
+      const somaDespesas = (despesas ?? []).reduce((s, d) => s + (Number(d.valor_mensal) || 0), 0);
+      const numFuncionarios = (funcionarios ?? []).length || 1;
+      setCustoHoraCompleto((somaSalarios + somaDespesas) / (numFuncionarios * HORAS_PADRAO_MES));
 
       const idsTarefas = (tarefas ?? []).map((t) => t.id);
       const idsPosts = (posts ?? []).map((p) => p.id);
-      const [{ data: sessoesTarefas }, { data: sessoesPosts }] = await Promise.all([
+      const [{ data: histT }, { data: histP }] = await Promise.all([
         idsTarefas.length > 0
-          ? supabase.from("tarefas_tempo_sessoes").select("tarefa_id, funcionario_auth_id, segundos_acumulados").in("tarefa_id", idsTarefas)
-          : Promise.resolve({ data: [] as { tarefa_id: string; funcionario_auth_id: string; segundos_acumulados: number }[] }),
+          ? supabase.from("tarefas_historico").select("tarefa_id, autor_id, descricao, created_at").in("tarefa_id", idsTarefas)
+          : Promise.resolve({ data: [] }),
         idsPosts.length > 0
-          ? supabase.from("posts_conteudo_tempo_sessoes").select("post_id, funcionario_auth_id, segundos_acumulados").in("post_id", idsPosts)
-          : Promise.resolve({ data: [] as { post_id: string; funcionario_auth_id: string; segundos_acumulados: number }[] }),
+          ? supabase.from("posts_conteudo_historico").select("post_id, autor_id, descricao, created_at").in("post_id", idsPosts)
+          : Promise.resolve({ data: [] }),
       ]);
+      setHistoricoTarefas((histT ?? []) as typeof historicoTarefas);
+      setHistoricoPosts((histP ?? []) as typeof historicoPosts);
 
-      const custoPorCliente = new Map<string, number>();
-      for (const s of sessoesTarefas ?? []) {
-        const clienteId = clienteDaTarefa.get(s.tarefa_id);
-        if (!clienteId) continue;
-        const custoHora = custoHoraPorFuncionario.get(s.funcionario_auth_id) ?? 0;
-        custoPorCliente.set(clienteId, (custoPorCliente.get(clienteId) ?? 0) + (s.segundos_acumulados / 3600) * custoHora);
-      }
-      for (const s of sessoesPosts ?? []) {
-        const clienteId = clienteDoPost.get(s.post_id);
-        if (!clienteId) continue;
-        const custoHora = custoHoraPorFuncionario.get(s.funcionario_auth_id) ?? 0;
-        custoPorCliente.set(clienteId, (custoPorCliente.get(clienteId) ?? 0) + (s.segundos_acumulados / 3600) * custoHora);
-      }
-
-      const todosOsIds = new Set([...nomesCliente.keys(), ...receitaPorCliente.keys(), ...horasPorCliente.keys()]);
-      const resultado: LinhaCliente[] = Array.from(todosOsIds)
-        .filter((id) => nomesCliente.has(id))
-        .map((id) => {
-          const receitaMensal = receitaPorCliente.get(id) ?? 0;
-          const custoEstimado = custoPorCliente.get(id) ?? 0;
-          const lucro = receitaMensal - custoEstimado;
-          return {
-            id,
-            nome: nomesCliente.get(id) ?? "—",
-            receitaMensal,
-            custoEstimado,
-            lucro,
-            margem: receitaMensal > 0 ? (lucro / receitaMensal) * 100 : null,
-            horas: horasPorCliente.get(id) ?? 0,
-          };
-        })
-        .filter((l) => l.receitaMensal > 0 || l.horas > 0);
-
-      setLinhas(resultado);
       setLoading(false);
     }
     carregar();
-  }, [temAcesso]);
+  }, [temAcesso, mes, ano]);
+
+  const linhas: LinhaCliente[] = useMemo(() => {
+    const inicioMesISO = new Date(ano, mes, 1).toISOString();
+    const fimMesISO = new Date(ano, mes + 1, 1).toISOString();
+
+    const horasPorCliente = new Map<string, number>();
+    const custoPorCliente = new Map<string, number>();
+
+    for (const h of historicoTarefas) {
+      const clienteId = clienteDaTarefa.get(h.tarefa_id);
+      if (!clienteId) continue;
+      if (h.created_at < inicioMesISO || h.created_at >= fimMesISO) continue;
+      const [sessao] = sessoesDoHistorico([h]);
+      if (!sessao) continue;
+      const horas = sessao.segundos / 3600;
+      horasPorCliente.set(clienteId, (horasPorCliente.get(clienteId) ?? 0) + horas);
+      const custoHora = incluirDespesas ? custoHoraCompleto : custoHoraSimplesPorFuncionario.get(sessao.autorId) ?? 0;
+      custoPorCliente.set(clienteId, (custoPorCliente.get(clienteId) ?? 0) + horas * custoHora);
+    }
+    for (const h of historicoPosts) {
+      const clienteId = clienteDoPost.get(h.post_id);
+      if (!clienteId) continue;
+      if (h.created_at < inicioMesISO || h.created_at >= fimMesISO) continue;
+      const [sessao] = sessoesDoHistorico([h]);
+      if (!sessao) continue;
+      const horas = sessao.segundos / 3600;
+      horasPorCliente.set(clienteId, (horasPorCliente.get(clienteId) ?? 0) + horas);
+      const custoHora = incluirDespesas ? custoHoraCompleto : custoHoraSimplesPorFuncionario.get(sessao.autorId) ?? 0;
+      custoPorCliente.set(clienteId, (custoPorCliente.get(clienteId) ?? 0) + horas * custoHora);
+    }
+
+    const todosOsIds = new Set([...nomesCliente.keys(), ...receitaPorCliente.keys(), ...horasPorCliente.keys()]);
+    return Array.from(todosOsIds)
+      .filter((id) => nomesCliente.has(id))
+      .map((id) => {
+        const receitaMensal = receitaPorCliente.get(id) ?? 0;
+        const custoEstimado = custoPorCliente.get(id) ?? 0;
+        const lucro = receitaMensal - custoEstimado;
+        return {
+          id,
+          nome: nomesCliente.get(id) ?? "—",
+          receitaMensal,
+          custoEstimado,
+          lucro,
+          margem: receitaMensal > 0 ? (lucro / receitaMensal) * 100 : null,
+          horas: horasPorCliente.get(id) ?? 0,
+        };
+      })
+      .filter((l) => l.receitaMensal > 0 || l.horas > 0);
+  }, [
+    historicoTarefas,
+    historicoPosts,
+    clienteDaTarefa,
+    clienteDoPost,
+    nomesCliente,
+    receitaPorCliente,
+    custoHoraSimplesPorFuncionario,
+    custoHoraCompleto,
+    incluirDespesas,
+    mes,
+    ano,
+  ]);
 
   if (temAcesso === false) {
     return (
@@ -174,28 +229,61 @@ export default function LucratividadeGeralPage() {
         ← Central de Clientes
       </button>
 
-      <div className="mb-6">
-        <h1 className="text-2xl font-extrabold text-ink mb-1">Lucratividade por Cliente</h1>
-        <p className="text-sm text-ink/60">Receita recorrente ativa comparada ao custo estimado das horas trabalhadas.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+        <div>
+          <h1 className="text-2xl font-extrabold text-ink mb-1">Lucratividade por Cliente</h1>
+          <p className="text-sm text-ink/60">Receita recorrente ativa comparada ao custo estimado das horas trabalhadas.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              const d = new Date(ano, mes - 1, 1);
+              setMes(d.getMonth());
+              setAno(d.getFullYear());
+            }}
+            className="rounded-full h-8 w-8 flex items-center justify-center hover:bg-surface text-ink/50"
+          >
+            ←
+          </button>
+          <p className="text-sm font-bold text-ink w-32 text-center">
+            {MESES[mes]} {ano}
+          </p>
+          <button
+            onClick={() => {
+              const d = new Date(ano, mes + 1, 1);
+              setMes(d.getMonth());
+              setAno(d.getFullYear());
+            }}
+            disabled={ano === hoje.getFullYear() && mes === hoje.getMonth()}
+            className="rounded-full h-8 w-8 flex items-center justify-center hover:bg-surface text-ink/50 disabled:opacity-20"
+          >
+            →
+          </button>
+        </div>
       </div>
+
+      <label className="flex items-center gap-2 text-xs text-ink/60 cursor-pointer mb-6 w-fit">
+        <input type="checkbox" checked={incluirDespesas} onChange={(e) => setIncluirDespesas(e.target.checked)} className="accent-forest" />
+        Ratear despesas fixas no custo/hora (não só o salário de cada pessoa)
+      </label>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="rounded-2xl bg-card border border-black/5 p-4">
-          <p className="text-xs text-ink/50 mb-1">Receita mensal total</p>
+          <p className="text-xs text-ink/50 mb-1">Receita do mês</p>
           <p className="text-xl font-extrabold text-ink">{formatarMoeda(receitaTotal)}</p>
         </div>
         <div className="rounded-2xl bg-card border border-black/5 p-4">
-          <p className="text-xs text-ink/50 mb-1">Custo estimado total</p>
+          <p className="text-xs text-ink/50 mb-1">Custo estimado</p>
           <p className="text-xl font-extrabold text-red-600">{formatarMoeda(custoTotal)}</p>
         </div>
         <div className="rounded-2xl bg-card border border-black/5 p-4">
-          <p className="text-xs text-ink/50 mb-1">Lucro estimado total</p>
+          <p className="text-xs text-ink/50 mb-1">Lucro estimado</p>
           <p className={`text-xl font-extrabold ${lucroTotal >= 0 ? "text-forest" : "text-red-600"}`}>{formatarMoeda(lucroTotal)}</p>
         </div>
       </div>
 
       {linhasOrdenadas.length === 0 ? (
-        <p className="text-sm text-ink/40">Nenhum cliente com receita ou horas registradas ainda.</p>
+        <p className="text-sm text-ink/40">Nenhum cliente com receita ou horas registradas em {MESES[mes]}.</p>
       ) : (
         <>
           <div className="rounded-2xl bg-card border border-black/5 p-5 mb-6">
@@ -248,8 +336,9 @@ export default function LucratividadeGeralPage() {
       )}
 
       <p className="text-[11px] text-ink/30 mt-4">
-        Custo estimado a partir do salário de cada pessoa ÷ {HORAS_PADRAO_MES}h/mês, multiplicado pelas horas
-        registradas em cada cliente. Contratos pontuais/avulsos não entram nesse cálculo de margem mensal.
+        {incluirDespesas
+          ? `Custo/hora usado: ${formatarMoeda(custoHoraCompleto)} pra todo mundo — média entre a soma de todos os salários + despesas fixas ativas, dividida pelas horas-padrão de toda a equipe (${HORAS_PADRAO_MES}h/pessoa/mês).`
+          : `Custo estimado a partir do salário de cada pessoa ÷ ${HORAS_PADRAO_MES}h/mês, multiplicado pelas horas registradas em cada cliente no mês selecionado. Contratos pontuais/avulsos não entram nesse cálculo.`}
       </p>
     </main>
   );

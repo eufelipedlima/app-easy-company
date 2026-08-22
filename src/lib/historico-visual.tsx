@@ -43,16 +43,30 @@ export function comValoresDestacados(descricao: string): ReactNode[] {
  * (+Xmin)"), usado antes de deixarmos a frase mais direta — sem isso,
  * sessões registradas há mais tempo ficavam de fora da soma. */
 export function segundosPorPessoaDoHistorico(
-  historico: { autor_id: string | null; descricao: string }[]
+  historico: { autor_id: string | null; descricao: string; created_at: string }[]
 ): Map<string, number> {
   const mapa = new Map<string, number>();
+  for (const s of sessoesDoHistorico(historico)) {
+    mapa.set(s.autorId, (mapa.get(s.autorId) ?? 0) + s.segundos);
+  }
+  return mapa;
+}
+
+/** Mesma leitura acima, mas devolvendo cada sessão individual (com data) em
+ * vez de já somar tudo — usado quando é preciso filtrar por período (ex:
+ * lucratividade por mês), já que a soma pronta não permite recortar por
+ * data depois. */
+export function sessoesDoHistorico(
+  historico: { autor_id: string | null; descricao: string; created_at: string }[]
+): { autorId: string; segundos: number; dataISO: string }[] {
   const regexes = [/^passou (?:menos de 1min|(\d+)min) trabalhando/, /^pausou o cronômetro \(\+(?:menos de 1|(\d+))min\)/];
+  const sessoes: { autorId: string; segundos: number; dataISO: string }[] = [];
   for (const h of historico) {
     if (!h.autor_id) continue;
     const m = regexes.map((r) => h.descricao.match(r)).find((r) => r);
     if (!m) continue;
     const segundos = m[1] ? Number(m[1]) * 60 : 30;
-    mapa.set(h.autor_id, (mapa.get(h.autor_id) ?? 0) + segundos);
+    sessoes.push({ autorId: h.autor_id, segundos, dataISO: h.created_at });
   }
-  return mapa;
+  return sessoes;
 }
