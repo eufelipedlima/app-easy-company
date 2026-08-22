@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { NumeroAnimado } from "@/components/numero-animado";
+import { sessoesDoHistorico } from "@/lib/historico-visual";
 
 interface ItemTrabalho {
   id: string;
@@ -205,29 +206,60 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
     ];
     setItens(listaItens);
 
-    // Total geral de horas: soma direta do tempo_total_segundos de tudo que a
-    // pessoa é responsável — igual à tela de visão geral da Equipe faz. Antes,
-    // aqui embaixo o total vinha de tentar reconstruir o tempo lendo o texto
-    // do histórico (limitado a 300 registros e só dentro do período
-    // selecionado), o que dava números bem menores e inconsistentes.
-    const tempoTotalReal =
-      minhasTarefas.filter((t) => dentroDoPeriodo(t.prazo)).reduce((s, t) => s + (t.tempo_total_segundos ?? 0), 0) +
-      meusPosts.filter((p) => dentroDoPeriodo(p.data_publicacao)).reduce((s, p) => s + (p.tempo_total_segundos ?? 0), 0);
-    setTempoTotalGeral(tempoTotalReal);
+    // Total geral de horas e o detalhamento "por cliente" vêm do histórico
+    // das tarefas/conteúdos — cada sessão de cronômetro concluída sempre
+    // gera uma linha ali, com a data exata de quando o trabalho aconteceu
+    // de verdade. Antes, isso era calculado errado de duas formas ao mesmo
+    // tempo: 1) filtrava a tarefa pelo PRAZO dela cair no período, em vez de
+    // quando o trabalho foi feito — uma tarefa que vence essa semana mas
+    // vem sendo trabalhada há meses jogava TODO o tempo acumulado pra
+    // "essa semana"; 2) somava o tempo_total_segundos da tarefa inteira,
+    // que é a soma de TODAS as pessoas que trabalharam nela, não só dessa
+    // pessoa. Os dois problemas juntos inflavam bastante o número.
+    const idsTodasTarefas = minhasTarefas.map((t) => t.id);
+    const idsTodosPosts = meusPosts.map((p) => p.id);
+    const [{ data: histTarefas }, { data: histPosts }] = await Promise.all([
+      idsTodasTarefas.length > 0
+        ? supabase.from("tarefas_historico").select("tarefa_id, autor_id, descricao, created_at").in("tarefa_id", idsTodasTarefas)
+        : Promise.resolve({ data: [] }),
+      idsTodosPosts.length > 0
+        ? supabase.from("posts_conteudo_historico").select("post_id, autor_id, descricao, created_at").in("post_id", idsTodosPosts)
+        : Promise.resolve({ data: [] }),
+    ]);
 
-    // O detalhamento "por cliente" abaixo continua respeitando o período
-    // selecionado, mas agora soma o tempo_total_segundos de cada tarefa/post
-    // (a mesma fonte confiável), em vez de tentar interpretar o texto do
-    // histórico.
+    const clienteDaTarefa = new Map(minhasTarefas.map((t) => [t.id, t.clientes?.papeis?.pessoas?.nome ?? "Sem cliente"]));
+    const clienteDoPost = new Map(meusPosts.map((p) => [p.id, p.clientes?.papeis?.pessoas?.nome ?? "Sem cliente"]));
+
+    const inicioISO = inicio ? `${inicio}T00:00:00` : null;
+    const fimISO = fim ? `${fim}T23:59:59` : null;
+    const dentroDoPeriodoData = (dataISO: string) => {
+      if (!inicioISO || !fimISO) return true;
+      return dataISO >= inicioISO && dataISO <= fimISO;
+    };
+
+    let tempoTotalReal = 0;
     const tempoMap = new Map<string, number>();
-    for (const t of minhasTarefas.filter((t) => dentroDoPeriodo(t.prazo))) {
-      const cli = t.clientes?.papeis?.pessoas?.nome ?? "Sem cliente";
-      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + (t.tempo_total_segundos ?? 0));
+
+    for (const h of histTarefas ?? []) {
+      if (h.autor_id !== f?.auth_user_id) continue;
+      if (!dentroDoPeriodoData(h.created_at)) continue;
+      const [sessao] = sessoesDoHistorico([h]);
+      if (!sessao) continue;
+      tempoTotalReal += sessao.segundos;
+      const cli = clienteDaTarefa.get(h.tarefa_id) ?? "Sem cliente";
+      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + sessao.segundos);
     }
-    for (const p of meusPosts.filter((p) => dentroDoPeriodo(p.data_publicacao))) {
-      const cli = p.clientes?.papeis?.pessoas?.nome ?? "Sem cliente";
-      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + (p.tempo_total_segundos ?? 0));
+    for (const h of histPosts ?? []) {
+      if (h.autor_id !== f?.auth_user_id) continue;
+      if (!dentroDoPeriodoData(h.created_at)) continue;
+      const [sessao] = sessoesDoHistorico([h]);
+      if (!sessao) continue;
+      tempoTotalReal += sessao.segundos;
+      const cli = clienteDoPost.get(h.post_id) ?? "Sem cliente";
+      tempoMap.set(cli, (tempoMap.get(cli) ?? 0) + sessao.segundos);
     }
+
+    setTempoTotalGeral(tempoTotalReal);
     setTempoPorCliente(
       Array.from(tempoMap.entries())
         .map(([clienteNome, segundos]) => ({ clienteNome, segundos }))

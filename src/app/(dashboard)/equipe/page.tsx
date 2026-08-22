@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { EstadoVazio } from "@/components/estado-vazio";
 import { EsqueletoGrade } from "@/components/esqueleto";
 import { Archive, ArchiveRestore } from "lucide-react";
+import { sessoesDoHistorico } from "@/lib/historico-visual";
 
 interface Membro {
   id: string;
@@ -65,7 +66,7 @@ export default function EquipePage() {
     const [{ data: funcData }, { data: statusData }] = await Promise.all([
       supabase
         .from("funcionarios")
-        .select("id, oculto_equipe, papeis ( pessoas ( nome, foto_url ) ), cargos ( nome )")
+        .select("id, auth_user_id, oculto_equipe, papeis ( pessoas ( nome, foto_url ) ), cargos ( nome )")
         .not("auth_user_id", "is", null),
       supabase.from("status_conteudo").select("id, cor"),
     ]);
@@ -74,11 +75,13 @@ export default function EquipePage() {
 
     const listaFunc = ((funcData ?? []) as unknown as {
       id: string;
+      auth_user_id: string;
       oculto_equipe: boolean;
       papeis: { pessoas: { nome: string; foto_url: string | null } | null } | null;
       cargos: { nome: string } | null;
     }[]).map((f) => ({
       id: f.id,
+      authUserId: f.auth_user_id,
       nome: f.papeis?.pessoas?.nome ?? "—",
       fotoUrl: f.papeis?.pessoas?.foto_url ?? null,
       cargoNome: f.cargos?.nome ?? null,
@@ -105,6 +108,32 @@ export default function EquipePage() {
     type LinhaT = { funcionario_id: string; tarefas: { id: string; status_id: string; prazo: string | null; tempo_total_segundos: number; arquivada: boolean; excluido_em: string | null } | null };
     type LinhaP = { funcionario_id: string; posts_conteudo: { id: string; status_id: string; data_publicacao: string; tempo_total_segundos: number; arquivado: boolean; excluido_em: string | null } | null };
 
+    // O tempo "deste mês" vem do histórico de cada tarefa/conteúdo, filtrado
+    // pela data real de cada sessão de cronômetro (não pelo prazo da
+    // tarefa) e só contando o que a própria pessoa registrou — evita o
+    // problema de uma tarefa de longa duração, com o prazo caindo esse
+    // mês, jogar o tempo acumulado de TODO MUNDO que já trabalhou nela
+    // pra essa única pessoa.
+    const todosOsIdsTarefas = Array.from(
+      new Set(((respTarefas ?? []) as unknown as LinhaT[]).map((r) => r.tarefas?.id).filter((v): v is string => !!v))
+    );
+    const todosOsIdsPosts = Array.from(
+      new Set(((respPosts ?? []) as unknown as LinhaP[]).map((r) => r.posts_conteudo?.id).filter((v): v is string => !!v))
+    );
+    const [{ data: histTarefas }, { data: histPosts }] = await Promise.all([
+      todosOsIdsTarefas.length > 0
+        ? supabase.from("tarefas_historico").select("autor_id, descricao, created_at").in("tarefa_id", todosOsIdsTarefas)
+        : Promise.resolve({ data: [] }),
+      todosOsIdsPosts.length > 0
+        ? supabase.from("posts_conteudo_historico").select("autor_id, descricao, created_at").in("post_id", todosOsIdsPosts)
+        : Promise.resolve({ data: [] }),
+    ]);
+    const segundosPorAutorNoMes = new Map<string, number>();
+    for (const s of [...sessoesDoHistorico(histTarefas ?? []), ...sessoesDoHistorico(histPosts ?? [])]) {
+      if (!noMes(s.dataISO.slice(0, 10))) continue;
+      segundosPorAutorNoMes.set(s.autorId, (segundosPorAutorNoMes.get(s.autorId) ?? 0) + s.segundos);
+    }
+
     const membrosComDados: Membro[] = listaFunc.map((f) => {
       const minhasTarefas = ((respTarefas ?? []) as unknown as LinhaT[])
         .filter((r) => r.funcionario_id === f.id && r.tarefas && !r.tarefas.arquivada && !r.tarefas.excluido_em)
@@ -118,9 +147,7 @@ export default function EquipePage() {
       const atrasadas =
         minhasTarefas.filter((t) => !idsConcluido.has(t.status_id) && t.prazo && t.prazo < hojeISO).length +
         meusPosts.filter((p) => !idsConcluido.has(p.status_id) && p.data_publicacao < hojeISO).length;
-      const tempoTotalSegundos =
-        minhasTarefas.filter((t) => noMes(t.prazo)).reduce((s, t) => s + (t.tempo_total_segundos ?? 0), 0) +
-        meusPosts.filter((p) => noMes(p.data_publicacao)).reduce((s, p) => s + (p.tempo_total_segundos ?? 0), 0);
+      const tempoTotalSegundos = segundosPorAutorNoMes.get(f.authUserId) ?? 0;
 
       return { ...f, abertas, concluidas, atrasadas, tempoTotalSegundos };
     });
