@@ -7,7 +7,7 @@ import { normalizar } from "@/lib/normalizar";
 import { EstadoVazio } from "@/components/estado-vazio";
 import { EsqueletoGrade } from "@/components/esqueleto";
 import { NumeroAnimado } from "@/components/numero-animado";
-import { Users2, ListChecks, MessageCircle, FileText } from "lucide-react";
+import { Users2, ListChecks, MessageCircle, FileText, TrendingUp } from "lucide-react";
 
 interface ClienteResumo {
   id: string;
@@ -37,6 +37,7 @@ export default function CentralClientesPage() {
   const [busca, setBusca] = useState("");
   const [loading, setLoading] = useState(true);
   const [souAdmin, setSouAdmin] = useState(false);
+  const [temAcessoFinanceiro, setTemAcessoFinanceiro] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -114,6 +115,8 @@ export default function CentralClientesPage() {
         .maybeSingle();
       const nomePerfil = (perfilData as unknown as { perfis_acesso: { nome: string } | null } | null)?.perfis_acesso?.nome;
       setSouAdmin(nomePerfil === "Administrador");
+      const { data: nivelFinanceiro } = await supabase.rpc("meu_nivel_acesso", { area_slug: "financeiro" });
+      setTemAcessoFinanceiro(nivelFinanceiro !== "nenhum");
     }
     carregarPermissao();
     carregar();
@@ -137,14 +140,24 @@ export default function CentralClientesPage() {
           <h1 className="text-2xl font-extrabold text-ink mb-1">Central de Clientes</h1>
           <p className="text-sm text-ink/60">Tarefas, conteúdo, chat e docs de cada cliente, tudo num só lugar.</p>
         </div>
-        {souAdmin && (
-          <button
-            onClick={() => setModalAberto(true)}
-            className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors shrink-0"
-          >
-            + Adicionar cliente
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {temAcessoFinanceiro && (
+            <button
+              onClick={() => router.push("/central-clientes/lucratividade")}
+              className="inline-flex items-center gap-1.5 rounded-full border-2 border-ink/15 text-ink px-4 py-2 text-sm font-semibold hover:bg-surface transition-colors"
+            >
+              <TrendingUp size={15} /> Lucratividade
+            </button>
+          )}
+          {souAdmin && (
+            <button
+              onClick={() => setModalAberto(true)}
+              className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors"
+            >
+              + Adicionar cliente
+            </button>
+          )}
+        </div>
       </div>
 
       <input

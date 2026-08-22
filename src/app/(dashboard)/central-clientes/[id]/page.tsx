@@ -8,7 +8,8 @@ import { IconeProjeto } from "@/components/icones-tarefa";
 import { normalizar } from "@/lib/normalizar";
 import { DndContext, useDraggable, useDroppable, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { CalendarioConteudoConteudo, type CalendarioConteudoHandle } from "@/app/(dashboard)/conteudo/calendario/page";
-import { Archive, LayoutGrid, CheckSquare, FileText, MessageCircle, FolderOpen, Link2 } from "lucide-react";
+import { Archive, LayoutGrid, CheckSquare, FileText, MessageCircle, FolderOpen, Link2, TrendingUp } from "lucide-react";
+import { AbaLucratividadeCliente } from "@/components/aba-lucratividade-cliente";
 
 interface Responsavel {
   id: string;
@@ -137,7 +138,7 @@ function formatarHoraMsg(iso: string) {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-type Aba = "geral" | "tarefas" | "conteudo" | "chat" | "docs";
+type Aba = "geral" | "tarefas" | "conteudo" | "chat" | "docs" | "lucratividade";
 
 export default function CentralClienteDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -151,6 +152,7 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
   const calendarioRef = useRef<CalendarioConteudoHandle>(null);
   const [aba, setAba] = useState<Aba>("geral");
   const [souAdmin, setSouAdmin] = useState(false);
+  const [temAcessoFinanceiro, setTemAcessoFinanceiro] = useState(false);
   const [confirmandoArquivar, setConfirmandoArquivar] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -459,6 +461,8 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
         .maybeSingle();
       const nomePerfil = (perfilData as unknown as { perfis_acesso: { nome: string } | null } | null)?.perfis_acesso?.nome;
       setSouAdmin(nomePerfil === "Administrador");
+      const { data: nivelFinanceiro } = await supabase.rpc("meu_nivel_acesso", { area_slug: "financeiro" });
+      setTemAcessoFinanceiro(nivelFinanceiro !== "nenhum");
     }
     carregarPermissao();
   }, []);
@@ -631,6 +635,9 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
     { chave: "conteudo", label: "Conteúdo", contagem: posts.filter((p) => p.statusCor !== "verde").length, icone: <FileText size={14} /> },
     { chave: "chat", label: "Chat", icone: <MessageCircle size={14} /> },
     { chave: "docs", label: "Docs", contagem: docs.length, icone: <FolderOpen size={14} /> },
+    ...(temAcessoFinanceiro
+      ? [{ chave: "lucratividade" as Aba, label: "Lucratividade", icone: <TrendingUp size={14} /> }]
+      : []),
   ];
 
   return (
@@ -1227,6 +1234,8 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
           )}
         </div>
       )}
+
+      {aba === "lucratividade" && temAcessoFinanceiro && <AbaLucratividadeCliente clienteId={id} />}
     </main>
   );
 }
