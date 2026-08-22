@@ -648,24 +648,55 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   async function iniciarCronometro() {
     if (!meuId) return;
     const supabase = createClient();
+    // Sempre confere o banco antes de começar — nunca confia só no que a
+    // tela já tinha na memória. Isso é o que evita perder tempo: se já
+    // tiver uma sessão rodando (começada nessa mesma aba, em outra aba, ou
+    // em outro dispositivo), não sobrescreve a hora de início — só
+    // sincroniza a tela com o que já está rodando de verdade.
+    const { data: existente } = await supabase
+      .from("tarefas_tempo_sessoes")
+      .select("iniciado_em, segundos_acumulados")
+      .eq("tarefa_id", id)
+      .eq("funcionario_auth_id", meuId)
+      .maybeSingle();
+    if (existente?.iniciado_em) {
+      setSessoesTempo((atual) => {
+        const semEu = atual.filter((s) => s.funcionario_auth_id !== meuId);
+        return [...semEu, { funcionario_auth_id: meuId, iniciado_em: existente.iniciado_em, segundos_acumulados: existente.segundos_acumulados }];
+      });
+      return;
+    }
     const agora = new Date().toISOString();
+    const acumuladoAtual = existente?.segundos_acumulados ?? 0;
     await supabase
       .from("tarefas_tempo_sessoes")
-      .upsert({ tarefa_id: id, funcionario_auth_id: meuId, iniciado_em: agora }, { onConflict: "tarefa_id,funcionario_auth_id" });
+      .upsert(
+        { tarefa_id: id, funcionario_auth_id: meuId, iniciado_em: agora, segundos_acumulados: acumuladoAtual },
+        { onConflict: "tarefa_id,funcionario_auth_id" }
+      );
     setSessoesTempo((atual) => {
       const semEu = atual.filter((s) => s.funcionario_auth_id !== meuId);
-      const minha = atual.find((s) => s.funcionario_auth_id === meuId);
-      return [...semEu, { funcionario_auth_id: meuId, iniciado_em: agora, segundos_acumulados: minha?.segundos_acumulados ?? 0 }];
+      return [...semEu, { funcionario_auth_id: meuId, iniciado_em: agora, segundos_acumulados: acumuladoAtual }];
     });
   }
 
   async function pausarCronometro() {
-    const minhaSessao = sessoesTempo.find((s) => s.funcionario_auth_id === meuId);
-    if (!meuId || !minhaSessao?.iniciado_em || !tarefa) return;
-    const segundosCorridos = Math.floor((Date.now() - new Date(minhaSessao.iniciado_em).getTime()) / 1000);
-    const novoAcumuladoMeu = minhaSessao.segundos_acumulados + segundosCorridos;
-    const novoTotalGeral = tarefa.tempo_total_segundos + segundosCorridos;
+    if (!meuId || !tarefa) return;
     const supabase = createClient();
+    // Mesma lógica: lê o estado real do banco na hora de pausar, em vez de
+    // confiar no que a tela tinha guardado — assim, mesmo que outra
+    // aba/dispositivo tenha mexido nesse meio tempo, a conta fica certa.
+    const { data: existente } = await supabase
+      .from("tarefas_tempo_sessoes")
+      .select("iniciado_em, segundos_acumulados")
+      .eq("tarefa_id", id)
+      .eq("funcionario_auth_id", meuId)
+      .maybeSingle();
+    if (!existente?.iniciado_em) return;
+    const segundosCorridos = Math.floor((Date.now() - new Date(existente.iniciado_em).getTime()) / 1000);
+    const novoAcumuladoMeu = (existente.segundos_acumulados ?? 0) + segundosCorridos;
+    const { data: tarefaAtual } = await supabase.from("tarefas").select("tempo_total_segundos").eq("id", id).maybeSingle();
+    const novoTotalGeral = (tarefaAtual?.tempo_total_segundos ?? tarefa.tempo_total_segundos) + segundosCorridos;
     await Promise.all([
       supabase
         .from("tarefas_tempo_sessoes")
