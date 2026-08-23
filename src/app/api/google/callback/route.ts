@@ -27,12 +27,7 @@ export async function GET(request: NextRequest) {
   if (!user) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
-  const { data: funcionario } = await supabase
-    .from("funcionarios")
-    .select("id, papeis ( pessoas ( nome ) )")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-  const nomePessoa = (funcionario as unknown as { papeis: { pessoas: { nome: string } | null } | null } | null)?.papeis?.pessoas?.nome;
+  const { data: funcionario } = await supabase.from("funcionarios").select("id").eq("auth_user_id", user.id).maybeSingle();
   if (!funcionario || funcionario.id !== state) {
     return NextResponse.redirect(new URL("/perfil?google=erro", request.url));
   }
@@ -74,32 +69,10 @@ export async function GET(request: NextRequest) {
     const emailData = await respostaEmail.json();
     const googleEmail: string | null = emailData?.email ?? null;
 
-    // Cria (ou reaproveita) o calendário dedicado dessa pessoa.
+    // Não cria a agenda ainda — guarda a conexão como "pendente" e deixa
+    // a pessoa escolher, na próxima tela, se quer criar uma agenda nova
+    // ou usar uma que já existe.
     const admin = createAdminClient();
-    const { data: conexaoExistente } = await admin
-      .from("funcionarios_google_calendar")
-      .select("google_calendar_id")
-      .eq("funcionario_id", funcionario.id)
-      .maybeSingle();
-
-    let calendarId = conexaoExistente?.google_calendar_id ?? null;
-    if (!calendarId) {
-      const respostaCalendario = await fetch("https://www.googleapis.com/calendar/v3/calendars", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          summary: `Pauta — ${nomePessoa ?? "Easy Company"}`,
-          description: "Criado automaticamente pelo sistema da Easy Company — mostra suas tarefas e conteúdos com prazo.",
-          timeZone: "America/Sao_Paulo",
-        }),
-      });
-      const calendarioData = await respostaCalendario.json();
-      if (!respostaCalendario.ok) {
-        return NextResponse.redirect(new URL("/perfil?google=erro_calendario", request.url));
-      }
-      calendarId = calendarioData.id;
-    }
-
     await admin.from("funcionarios_google_calendar").upsert(
       {
         funcionario_id: funcionario.id,
@@ -107,13 +80,13 @@ export async function GET(request: NextRequest) {
         refresh_token: tokenData.refresh_token,
         access_token: accessToken,
         access_token_expira_em: expiraEm,
-        google_calendar_id: calendarId,
+        escolha_pendente: true,
         conectado_em: new Date().toISOString(),
       },
       { onConflict: "funcionario_id" }
     );
 
-    return NextResponse.redirect(new URL("/perfil?google=conectado", request.url));
+    return NextResponse.redirect(new URL("/perfil?google=escolher_agenda", request.url));
   } catch {
     return NextResponse.redirect(new URL("/perfil?google=erro", request.url));
   }

@@ -51,9 +51,21 @@ function MeuPerfilConteudo() {
   const [erroSenha, setErroSenha] = useState<string | null>(null);
   const [sucessoSenha, setSucessoSenha] = useState(false);
 
-  const [conexaoGoogle, setConexaoGoogle] = useState<{ googleEmail: string | null } | null | undefined>(undefined);
+  const [conexaoGoogle, setConexaoGoogle] = useState<
+    { googleEmail: string | null; escolhaPendente: boolean; ultimaSincronizacao: string | null } | null | undefined
+  >(undefined);
   const [conectandoGoogle, setConectandoGoogle] = useState(false);
   const [mensagemGoogle, setMensagemGoogle] = useState<string | null>(null);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [resultadoSincronizacao, setResultadoSincronizacao] = useState<string | null>(null);
+
+  const [escolhendoAgenda, setEscolhendoAgenda] = useState(false);
+  const [carregandoAgendas, setCarregandoAgendas] = useState(false);
+  const [agendasGoogle, setAgendasGoogle] = useState<{ id: string; nome: string; principal: boolean }[]>([]);
+  const [modoAgenda, setModoAgenda] = useState<"nova" | "existente">("nova");
+  const [nomeAgendaNova, setNomeAgendaNova] = useState("");
+  const [agendaEscolhidaId, setAgendaEscolhidaId] = useState("");
+  const [salvandoEscolhaAgenda, setSalvandoEscolhaAgenda] = useState(false);
 
   useEffect(() => {
     async function carregar() {
@@ -94,10 +106,14 @@ function MeuPerfilConteudo() {
       if (funcionario?.id) {
         const { data: conexao } = await supabase
           .from("funcionarios_google_calendar")
-          .select("google_email")
+          .select("google_email, escolha_pendente, ultima_sincronizacao")
           .eq("funcionario_id", funcionario.id)
           .maybeSingle();
-        setConexaoGoogle(conexao ? { googleEmail: conexao.google_email } : null);
+        setConexaoGoogle(
+          conexao
+            ? { googleEmail: conexao.google_email, escolhaPendente: conexao.escolha_pendente, ultimaSincronizacao: conexao.ultima_sincronizacao }
+            : null
+        );
       } else {
         setConexaoGoogle(null);
       }
@@ -110,8 +126,14 @@ function MeuPerfilConteudo() {
   useEffect(() => {
     const status = searchParams.get("google");
     if (!status) return;
+    if (status === "escolher_agenda") {
+      setEscolhendoAgenda(true);
+      carregarAgendasGoogle();
+      router.replace("/perfil");
+      return;
+    }
     const mensagens: Record<string, string> = {
-      conectado: "Google Calendar conectado! Sua agenda de pauta já foi criada.",
+      conectado: "Google Calendar conectado!",
       cancelado: "Conexão cancelada.",
       erro: "Não deu pra conectar com o Google. Tenta de novo.",
       erro_calendario: "Conectou, mas não deu pra criar o calendário no Google. Tenta de novo.",
@@ -123,6 +145,66 @@ function MeuPerfilConteudo() {
     router.replace("/perfil");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  async function carregarAgendasGoogle() {
+    setCarregandoAgendas(true);
+    try {
+      const resp = await fetch("/api/google/calendarios");
+      const data = await resp.json();
+      setAgendasGoogle(data.calendarios ?? []);
+    } finally {
+      setCarregandoAgendas(false);
+    }
+  }
+
+  async function confirmarEscolhaAgenda() {
+    setSalvandoEscolhaAgenda(true);
+    const resp = await fetch("/api/google/finalizar-conexao", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        modoAgenda === "nova" ? { modo: "nova", nomeAgendaNova: nomeAgendaNova || undefined } : { modo: "existente", calendarId: agendaEscolhidaId }
+      ),
+    });
+    setSalvandoEscolhaAgenda(false);
+    if (!resp.ok) {
+      const data = await resp.json();
+      setMensagemGoogle(data.error ?? "Não deu pra concluir a conexão.");
+      return;
+    }
+    setEscolhendoAgenda(false);
+    setMensagemGoogle("Google Calendar conectado! Sua agenda já vai começar a se atualizar sozinha em alguns minutos.");
+    // recarrega o status da conexão
+    const supabase = createClient();
+    if (funcionarioId) {
+      const { data: conexao } = await supabase
+        .from("funcionarios_google_calendar")
+        .select("google_email, escolha_pendente, ultima_sincronizacao")
+        .eq("funcionario_id", funcionarioId)
+        .maybeSingle();
+      setConexaoGoogle(
+        conexao
+          ? { googleEmail: conexao.google_email, escolhaPendente: conexao.escolha_pendente, ultimaSincronizacao: conexao.ultima_sincronizacao }
+          : null
+      );
+    }
+  }
+
+  async function sincronizarAgora() {
+    setSincronizando(true);
+    setResultadoSincronizacao(null);
+    const resp = await fetch("/api/google/sincronizar", { method: "POST" });
+    const data = await resp.json();
+    setSincronizando(false);
+    if (!resp.ok) {
+      setResultadoSincronizacao(data.error ?? "Não deu pra sincronizar.");
+      return;
+    }
+    setResultadoSincronizacao(
+      `Pronto: ${data.criados ?? 0} criado(s), ${data.atualizados ?? 0} atualizado(s), ${data.removidos ?? 0} removido(s).`
+    );
+    setConexaoGoogle((atual) => (atual ? { ...atual, ultimaSincronizacao: new Date().toISOString() } : atual));
+  }
 
   async function desconectarGoogle() {
     if (!window.confirm("Desconectar sua conta do Google? O calendário de pauta continua existindo na sua agenda, só para de ser atualizado.")) return;
@@ -298,24 +380,92 @@ function MeuPerfilConteudo() {
       <div className="mt-8 pt-6 border-t border-black/5">
         <p className="text-sm font-bold text-ink mb-1">Google Calendar</p>
         <p className="text-xs text-ink/50 mb-3">
-          Conecte sua conta Google pra criar um calendário próprio com suas tarefas e conteúdos com prazo.
+          Conecte sua conta Google pra ver suas tarefas e conteúdos com prazo direto na sua agenda.
         </p>
         {mensagemGoogle && <p className="text-xs font-semibold text-ink/70 bg-surface rounded-xl px-3 py-2 mb-3">{mensagemGoogle}</p>}
-        {conexaoGoogle === undefined ? (
+
+        {escolhendoAgenda ? (
+          <div className="rounded-2xl bg-card border border-black/5 p-4 space-y-3">
+            <p className="text-sm font-bold text-ink">Onde você quer ver suas tarefas?</p>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="radio" checked={modoAgenda === "nova"} onChange={() => setModoAgenda("nova")} className="mt-1 accent-forest" />
+              <span className="flex-1">
+                <span className="block text-sm font-semibold text-ink">Criar uma agenda nova, só pra isso</span>
+                {modoAgenda === "nova" && (
+                  <input
+                    value={nomeAgendaNova}
+                    onChange={(e) => setNomeAgendaNova(e.target.value)}
+                    placeholder="Nome da agenda (opcional)"
+                    className="input text-sm mt-1.5"
+                  />
+                )}
+              </span>
+            </label>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="radio" checked={modoAgenda === "existente"} onChange={() => setModoAgenda("existente")} className="mt-1 accent-forest" />
+              <span className="flex-1">
+                <span className="block text-sm font-semibold text-ink">Usar uma agenda que eu já tenho</span>
+                {modoAgenda === "existente" &&
+                  (carregandoAgendas ? (
+                    <p className="text-xs text-ink/40 mt-1.5">Carregando suas agendas...</p>
+                  ) : (
+                    <select value={agendaEscolhidaId} onChange={(e) => setAgendaEscolhidaId(e.target.value)} className="input text-sm mt-1.5">
+                      <option value="">Selecione...</option>
+                      {agendasGoogle.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.nome}
+                          {a.principal ? " (principal)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ))}
+              </span>
+            </label>
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                onClick={confirmarEscolhaAgenda}
+                disabled={salvandoEscolhaAgenda || (modoAgenda === "existente" && !agendaEscolhidaId)}
+                className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+              >
+                {salvandoEscolhaAgenda ? "Confirmando..." : "Confirmar"}
+              </button>
+              <button onClick={() => setEscolhendoAgenda(false)} className="text-sm font-semibold text-ink/50 hover:text-ink">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : conexaoGoogle === undefined ? (
           <p className="text-xs text-ink/40">Carregando...</p>
         ) : conexaoGoogle ? (
-          <div className="flex items-center justify-between rounded-2xl bg-card border border-black/5 px-4 py-3">
-            <div>
-              <p className="text-sm font-semibold text-ink">✓ Conectado</p>
-              {conexaoGoogle.googleEmail && <p className="text-xs text-ink/50">{conexaoGoogle.googleEmail}</p>}
+          <div className="rounded-2xl bg-card border border-black/5 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-ink">✓ Conectado</p>
+                {conexaoGoogle.googleEmail && <p className="text-xs text-ink/50">{conexaoGoogle.googleEmail}</p>}
+              </div>
+              <button
+                onClick={desconectarGoogle}
+                disabled={conectandoGoogle}
+                className="text-xs font-semibold text-red-500 hover:text-red-700 disabled:opacity-50"
+              >
+                {conectandoGoogle ? "Desconectando..." : "Desconectar"}
+              </button>
             </div>
-            <button
-              onClick={desconectarGoogle}
-              disabled={conectandoGoogle}
-              className="text-xs font-semibold text-red-500 hover:text-red-700 disabled:opacity-50"
-            >
-              {conectandoGoogle ? "Desconectando..." : "Desconectar"}
-            </button>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-black/5">
+              <p className="text-[11px] text-ink/40">
+                {conexaoGoogle.ultimaSincronizacao
+                  ? `Última sincronização: ${new Date(conexaoGoogle.ultimaSincronizacao).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`
+                  : "Ainda não sincronizou — roda sozinho a cada 30min, ou clique para sincronizar agora."}
+              </p>
+              <button
+                onClick={sincronizarAgora}
+                disabled={sincronizando}
+                className="text-xs font-semibold text-forest hover:underline disabled:opacity-50 shrink-0 ml-2"
+              >
+                {sincronizando ? "Sincronizando..." : "Sincronizar agora"}
+              </button>
+            </div>
+            {resultadoSincronizacao && <p className="text-[11px] text-ink/50 mt-1.5">{resultadoSincronizacao}</p>}
           </div>
         ) : funcionarioId ? (
           <a
