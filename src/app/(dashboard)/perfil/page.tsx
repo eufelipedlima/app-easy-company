@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const CORES_AVATAR = [
@@ -18,8 +19,19 @@ function iniciais(nome: string) {
 }
 
 export default function MeuPerfilPage() {
+  return (
+    <Suspense fallback={<main className="mx-auto max-w-lg px-6 py-10" />}>
+      <MeuPerfilConteudo />
+    </Suspense>
+  );
+}
+
+function MeuPerfilConteudo() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [pessoaId, setPessoaId] = useState<string | null>(null);
+  const [funcionarioId, setFuncionarioId] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [apelido, setApelido] = useState("");
   const [cargo, setCargo] = useState<string | null>(null);
@@ -39,6 +51,10 @@ export default function MeuPerfilPage() {
   const [erroSenha, setErroSenha] = useState<string | null>(null);
   const [sucessoSenha, setSucessoSenha] = useState(false);
 
+  const [conexaoGoogle, setConexaoGoogle] = useState<{ googleEmail: string | null } | null | undefined>(undefined);
+  const [conectandoGoogle, setConectandoGoogle] = useState(false);
+  const [mensagemGoogle, setMensagemGoogle] = useState<string | null>(null);
+
   useEffect(() => {
     async function carregar() {
       const supabase = createClient();
@@ -51,13 +67,14 @@ export default function MeuPerfilPage() {
       }
       setEmail(user.email ?? "");
 
-      const { data: funcionario } = await supabase
+      const { data: funcData } = await supabase
         .from("funcionarios")
-        .select("cargo, cargo_id, cargos ( nome ), papeis ( pessoa_id, pessoas ( id, nome, apelido, whatsapp, foto_url ) )")
+        .select("id, cargo, cargo_id, cargos ( nome ), papeis ( pessoa_id, pessoas ( id, nome, apelido, whatsapp, foto_url ) )")
         .eq("auth_user_id", user.id)
         .maybeSingle();
 
-      const f = funcionario as unknown as {
+      const funcionario = funcData as unknown as {
+        id: string;
         cargo: string | null;
         cargos: { nome: string } | null;
         papeis: {
@@ -66,16 +83,54 @@ export default function MeuPerfilPage() {
         } | null;
       } | null;
 
-      setCargo(f?.cargos?.nome ?? f?.cargo ?? null);
-      setPessoaId(f?.papeis?.pessoas?.id ?? null);
-      setNome(f?.papeis?.pessoas?.nome ?? "");
-      setApelido(f?.papeis?.pessoas?.apelido ?? "");
-      setWhatsapp(f?.papeis?.pessoas?.whatsapp ?? null);
-      setFotoUrl(f?.papeis?.pessoas?.foto_url ?? null);
+      setCargo(funcionario?.cargos?.nome ?? funcionario?.cargo ?? null);
+      setPessoaId(funcionario?.papeis?.pessoas?.id ?? null);
+      setFuncionarioId(funcionario?.id ?? null);
+      setNome(funcionario?.papeis?.pessoas?.nome ?? "");
+      setApelido(funcionario?.papeis?.pessoas?.apelido ?? "");
+      setWhatsapp(funcionario?.papeis?.pessoas?.whatsapp ?? null);
+      setFotoUrl(funcionario?.papeis?.pessoas?.foto_url ?? null);
+
+      if (funcionario?.id) {
+        const { data: conexao } = await supabase
+          .from("funcionarios_google_calendar")
+          .select("google_email")
+          .eq("funcionario_id", funcionario.id)
+          .maybeSingle();
+        setConexaoGoogle(conexao ? { googleEmail: conexao.google_email } : null);
+      } else {
+        setConexaoGoogle(null);
+      }
+
       setLoading(false);
     }
     carregar();
   }, []);
+
+  useEffect(() => {
+    const status = searchParams.get("google");
+    if (!status) return;
+    const mensagens: Record<string, string> = {
+      conectado: "Google Calendar conectado! Sua agenda de pauta já foi criada.",
+      cancelado: "Conexão cancelada.",
+      erro: "Não deu pra conectar com o Google. Tenta de novo.",
+      erro_calendario: "Conectou, mas não deu pra criar o calendário no Google. Tenta de novo.",
+      sem_refresh_token: "O Google não devolveu a permissão esperada. Tenta desconectar e conectar de novo.",
+      nao_configurado: "A integração com Google ainda não foi configurada no sistema.",
+      sem_funcionario: "Sua conta ainda não está vinculada a um cadastro de Funcionário.",
+    };
+    setMensagemGoogle(mensagens[status] ?? null);
+    router.replace("/perfil");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  async function desconectarGoogle() {
+    if (!window.confirm("Desconectar sua conta do Google? O calendário de pauta continua existindo na sua agenda, só para de ser atualizado.")) return;
+    setConectandoGoogle(true);
+    await fetch("/api/google/desconectar", { method: "POST" });
+    setConexaoGoogle(null);
+    setConectandoGoogle(false);
+  }
 
   async function enviarFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const arquivo = e.target.files?.[0];
@@ -239,6 +294,42 @@ export default function MeuPerfilPage() {
           {salvando ? "Salvando..." : "Salvar"}
         </button>
       </form>
+
+      <div className="mt-8 pt-6 border-t border-black/5">
+        <p className="text-sm font-bold text-ink mb-1">Google Calendar</p>
+        <p className="text-xs text-ink/50 mb-3">
+          Conecte sua conta Google pra criar um calendário próprio com suas tarefas e conteúdos com prazo.
+        </p>
+        {mensagemGoogle && <p className="text-xs font-semibold text-ink/70 bg-surface rounded-xl px-3 py-2 mb-3">{mensagemGoogle}</p>}
+        {conexaoGoogle === undefined ? (
+          <p className="text-xs text-ink/40">Carregando...</p>
+        ) : conexaoGoogle ? (
+          <div className="flex items-center justify-between rounded-2xl bg-card border border-black/5 px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-ink">✓ Conectado</p>
+              {conexaoGoogle.googleEmail && <p className="text-xs text-ink/50">{conexaoGoogle.googleEmail}</p>}
+            </div>
+            <button
+              onClick={desconectarGoogle}
+              disabled={conectandoGoogle}
+              className="text-xs font-semibold text-red-500 hover:text-red-700 disabled:opacity-50"
+            >
+              {conectandoGoogle ? "Desconectando..." : "Desconectar"}
+            </button>
+          </div>
+        ) : funcionarioId ? (
+          <a
+            href="/api/google/connect"
+            className="inline-flex items-center gap-2 rounded-full border-2 border-black/10 px-5 py-2.5 text-sm font-semibold text-ink hover:bg-surface transition-colors"
+          >
+            Conectar Google Calendar
+          </a>
+        ) : (
+          <p className="text-xs text-ink/40">
+            Você precisa ter um cadastro de Funcionário vinculado antes de conectar o Google Calendar.
+          </p>
+        )}
+      </div>
 
       <div className="mt-8 pt-6 border-t border-black/5">
         {!senhaAberta ? (
