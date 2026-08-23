@@ -20,7 +20,7 @@ function iniciais(nome: string) {
 
 export default function MeuPerfilPage() {
   return (
-    <Suspense fallback={<main className="mx-auto max-w-lg px-6 py-10" />}>
+    <Suspense fallback={<main className="mx-auto max-w-5xl px-6 py-10" />}>
       <MeuPerfilConteudo />
     </Suspense>
   );
@@ -277,9 +277,15 @@ function MeuPerfilConteudo() {
 
   const nomeExibicao = apelido || nome;
 
+  async function sair() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.replace("/login");
+  }
+
   if (loading) {
     return (
-      <main className="mx-auto max-w-lg px-6 py-10">
+      <main className="mx-auto max-w-5xl px-6 py-10">
         <p className="text-sm text-ink/50">Carregando...</p>
       </main>
     );
@@ -287,8 +293,8 @@ function MeuPerfilConteudo() {
 
   if (!pessoaId) {
     return (
-      <main className="mx-auto max-w-lg px-6 py-10">
-        <h1 className="text-2xl font-extrabold text-ink mb-2">Meu perfil</h1>
+      <main className="mx-auto max-w-5xl px-6 py-10">
+        <h1 className="text-2xl font-extrabold text-ink mb-2">Minha conta</h1>
         <p className="text-sm text-ink/60">
           Você ainda não tem um cadastro de Funcionário vinculado à sua conta. Peça pra alguém com
           acesso de Administrador te cadastrar em Pessoas → Funcionários.
@@ -297,221 +303,243 @@ function MeuPerfilConteudo() {
     );
   }
 
+  const itensPerfil = [
+    { label: "Nome completo", preenchido: !!nome },
+    { label: "Como te chamar", preenchido: !!apelido },
+    { label: "E-mail", preenchido: !!email },
+    { label: "WhatsApp", preenchido: !!whatsapp },
+    { label: "Foto", preenchido: !!fotoUrl },
+  ];
+
   return (
-    <main className="mx-auto max-w-lg px-6 py-10">
-      <h1 className="text-2xl font-extrabold text-ink mb-1">Meu perfil</h1>
-      <p className="text-sm text-ink/60 mb-8">Como você aparece pro resto da equipe no Chat e nas tarefas.</p>
-
-      <div className="flex items-center gap-4 mb-8">
-        <div className="relative">
-          {fotoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={fotoUrl} alt={nomeExibicao} className="h-20 w-20 rounded-full object-cover" />
-          ) : (
-            <div className={`h-20 w-20 rounded-full ${corAvatar(nomeExibicao || "?")} text-white flex items-center justify-center text-xl font-bold`}>
-              {iniciais(nomeExibicao || "?")}
-            </div>
-          )}
-        </div>
+    <main className="mx-auto max-w-5xl px-6 py-10">
+      <div className="flex items-center justify-between gap-4 mb-8">
         <div>
-          <input ref={inputFotoRef} type="file" accept="image/*" onChange={enviarFoto} className="hidden" />
-          <button
-            onClick={() => inputFotoRef.current?.click()}
-            disabled={enviandoFoto}
-            className="rounded-full border-2 border-black/10 px-4 py-2 text-sm font-semibold text-ink hover:bg-surface transition-colors disabled:opacity-50"
-          >
-            {enviandoFoto ? "Enviando..." : "Trocar foto"}
-          </button>
+          <h1 className="text-2xl font-extrabold text-ink mb-1">Minha conta</h1>
+          <p className="text-sm text-ink/60">Sua foto, dados de contato e senha de acesso.</p>
         </div>
-      </div>
-
-      <form onSubmit={salvar} className="space-y-4">
-        <div className="rounded-2xl bg-card border border-black/5 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-ink/50">Nome completo</span>
-            <span className="text-sm font-semibold text-ink">{nome}</span>
-          </div>
-          {cargo && (
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-ink/50">Cargo</span>
-              <span className="text-sm font-semibold text-ink">{cargo}</span>
-            </div>
-          )}
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-ink/50">E-mail de login</span>
-            <span className="text-sm font-semibold text-ink">{email}</span>
-          </div>
-          {whatsapp && (
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-ink/50">Telefone</span>
-              <span className="text-sm font-semibold text-ink">{whatsapp}</span>
-            </div>
-          )}
-          <p className="text-xs text-ink/40 pt-1 border-t border-black/5">
-            Nome, cargo, e-mail e telefone são editados em Pessoas → Funcionários.
-          </p>
-        </div>
-
-        <label className="block">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Como você quer ser chamado?</span>
-          <input
-            value={apelido}
-            onChange={(e) => setApelido(e.target.value)}
-            className="input"
-            placeholder={nome || "Ex: Felipe, Bia..."}
-          />
-          <span className="block text-xs text-ink/40 mt-1">
-            Esse é o nome que aparece no Chat e nas tarefas. Deixe em branco pra usar seu nome completo.
-          </span>
-        </label>
-
-        {erro && <p className="text-sm text-red-600">{erro}</p>}
-        {sucesso && <p className="text-sm text-forest font-semibold">Salvo!</p>}
-
-        <button
-          type="submit"
-          disabled={salvando}
-          className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
-        >
-          {salvando ? "Salvando..." : "Salvar"}
+        <button onClick={sair} className="rounded-full border-2 border-black/10 px-4 py-2 text-sm font-semibold text-ink hover:bg-surface transition-colors shrink-0">
+          Sair
         </button>
-      </form>
-
-      <div className="mt-8 pt-6 border-t border-black/5">
-        <p className="text-sm font-bold text-ink mb-1">Google Calendar</p>
-        <p className="text-xs text-ink/50 mb-3">
-          Conecte sua conta Google pra ver suas tarefas e conteúdos com prazo direto na sua agenda.
-        </p>
-        {mensagemGoogle && <p className="text-xs font-semibold text-ink/70 bg-surface rounded-xl px-3 py-2 mb-3">{mensagemGoogle}</p>}
-
-        {escolhendoAgenda ? (
-          <div className="rounded-2xl bg-card border border-black/5 p-4 space-y-3">
-            <p className="text-sm font-bold text-ink">Onde você quer ver suas tarefas?</p>
-            <label className="flex items-start gap-2.5 cursor-pointer">
-              <input type="radio" checked={modoAgenda === "nova"} onChange={() => setModoAgenda("nova")} className="mt-1 accent-forest" />
-              <span className="flex-1">
-                <span className="block text-sm font-semibold text-ink">Criar uma agenda nova, só pra isso</span>
-                {modoAgenda === "nova" && (
-                  <input
-                    value={nomeAgendaNova}
-                    onChange={(e) => setNomeAgendaNova(e.target.value)}
-                    placeholder="Nome da agenda (opcional)"
-                    className="input text-sm mt-1.5"
-                  />
-                )}
-              </span>
-            </label>
-            <label className="flex items-start gap-2.5 cursor-pointer">
-              <input type="radio" checked={modoAgenda === "existente"} onChange={() => setModoAgenda("existente")} className="mt-1 accent-forest" />
-              <span className="flex-1">
-                <span className="block text-sm font-semibold text-ink">Usar uma agenda que eu já tenho</span>
-                {modoAgenda === "existente" &&
-                  (carregandoAgendas ? (
-                    <p className="text-xs text-ink/40 mt-1.5">Carregando suas agendas...</p>
-                  ) : (
-                    <select value={agendaEscolhidaId} onChange={(e) => setAgendaEscolhidaId(e.target.value)} className="input text-sm mt-1.5">
-                      <option value="">Selecione...</option>
-                      {agendasGoogle.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.nome}
-                          {a.principal ? " (principal)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  ))}
-              </span>
-            </label>
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                onClick={confirmarEscolhaAgenda}
-                disabled={salvandoEscolhaAgenda || (modoAgenda === "existente" && !agendaEscolhidaId)}
-                className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
-              >
-                {salvandoEscolhaAgenda ? "Confirmando..." : "Confirmar"}
-              </button>
-              <button onClick={() => setEscolhendoAgenda(false)} className="text-sm font-semibold text-ink/50 hover:text-ink">
-                Cancelar
-              </button>
-            </div>
-          </div>
-        ) : conexaoGoogle === undefined ? (
-          <p className="text-xs text-ink/40">Carregando...</p>
-        ) : conexaoGoogle ? (
-          <div className="rounded-2xl bg-card border border-black/5 px-4 py-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-ink">✓ Conectado</p>
-                {conexaoGoogle.googleEmail && <p className="text-xs text-ink/50">{conexaoGoogle.googleEmail}</p>}
-              </div>
-              <button
-                onClick={desconectarGoogle}
-                disabled={conectandoGoogle}
-                className="text-xs font-semibold text-red-500 hover:text-red-700 disabled:opacity-50"
-              >
-                {conectandoGoogle ? "Desconectando..." : "Desconectar"}
-              </button>
-            </div>
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-black/5">
-              <p className="text-[11px] text-ink/40">
-                {conexaoGoogle.ultimaSincronizacao
-                  ? `Última sincronização: ${new Date(conexaoGoogle.ultimaSincronizacao).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`
-                  : "Ainda não sincronizou — roda sozinho a cada 30min, ou clique para sincronizar agora."}
-              </p>
-              <button
-                onClick={sincronizarAgora}
-                disabled={sincronizando}
-                className="text-xs font-semibold text-forest hover:underline disabled:opacity-50 shrink-0 ml-2"
-              >
-                {sincronizando ? "Sincronizando..." : "Sincronizar agora"}
-              </button>
-            </div>
-            {resultadoSincronizacao && <p className="text-[11px] text-ink/50 mt-1.5">{resultadoSincronizacao}</p>}
-          </div>
-        ) : funcionarioId ? (
-          <a
-            href="/api/google/connect"
-            className="inline-flex items-center gap-2 rounded-full border-2 border-black/10 px-5 py-2.5 text-sm font-semibold text-ink hover:bg-surface transition-colors"
-          >
-            Conectar Google Calendar
-          </a>
-        ) : (
-          <p className="text-xs text-ink/40">
-            Você precisa ter um cadastro de Funcionário vinculado antes de conectar o Google Calendar.
-          </p>
-        )}
       </div>
 
-      <div className="mt-8 pt-6 border-t border-black/5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        <div className="lg:col-span-2 rounded-3xl bg-card border border-black/5 p-6">
+          <div className="flex items-center gap-4 mb-6">
+            {fotoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={fotoUrl} alt={nomeExibicao} className="h-20 w-20 rounded-full object-cover shrink-0" />
+            ) : (
+              <div className={`h-20 w-20 rounded-full ${corAvatar(nomeExibicao || "?")} text-white flex items-center justify-center text-xl font-bold shrink-0`}>
+                {iniciais(nomeExibicao || "?")}
+              </div>
+            )}
+            <div>
+              <input ref={inputFotoRef} type="file" accept="image/*" onChange={enviarFoto} className="hidden" />
+              <button
+                onClick={() => inputFotoRef.current?.click()}
+                disabled={enviandoFoto}
+                className="rounded-full border-2 border-black/10 px-4 py-2 text-sm font-semibold text-ink hover:bg-surface transition-colors disabled:opacity-50"
+              >
+                {enviandoFoto ? "Enviando..." : "Trocar foto"}
+              </button>
+              <p className="text-xs text-ink/40 mt-1.5">JPG ou PNG.</p>
+            </div>
+          </div>
+
+          <form onSubmit={salvar} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <span className="block text-sm font-medium text-ink/70 mb-1">Nome completo</span>
+                <p className="input flex items-center bg-surface/60 text-ink/70">{nome}</p>
+              </div>
+              <label className="block">
+                <span className="block text-sm font-medium text-ink/70 mb-1">Como você quer ser chamado</span>
+                <input value={apelido} onChange={(e) => setApelido(e.target.value)} className="input" placeholder={nome || "Ex: Felipe, Bia..."} />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <span className="block text-sm font-medium text-ink/70 mb-1">E-mail de login</span>
+                <p className="input flex items-center bg-surface/60 text-ink/70 truncate">{email}</p>
+              </div>
+              <div>
+                <span className="block text-sm font-medium text-ink/70 mb-1">WhatsApp</span>
+                <p className="input flex items-center bg-surface/60 text-ink/70">{whatsapp || "—"}</p>
+              </div>
+            </div>
+
+            {cargo && (
+              <div className="sm:w-1/2 sm:pr-2">
+                <span className="block text-sm font-medium text-ink/70 mb-1">Cargo</span>
+                <p className="input flex items-center bg-surface/60 text-ink/70">{cargo}</p>
+              </div>
+            )}
+
+            <p className="text-xs text-ink/40">Nome, cargo, e-mail e telefone são editados em Pessoas → Funcionários.</p>
+
+            {erro && <p className="text-sm text-red-600">{erro}</p>}
+            {sucesso && <p className="text-sm text-forest font-semibold">Salvo!</p>}
+
+            <button
+              type="submit"
+              disabled={salvando}
+              className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+            >
+              {salvando ? "Salvando..." : "Salvar alterações"}
+            </button>
+          </form>
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-3xl bg-card border border-black/5 p-5">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-3">Google Calendar</p>
+            <p className="text-xs text-ink/50 mb-3">Veja suas tarefas e conteúdos com prazo direto na sua agenda.</p>
+            {mensagemGoogle && <p className="text-xs font-semibold text-ink/70 bg-surface rounded-xl px-3 py-2 mb-3">{mensagemGoogle}</p>}
+
+            {escolhendoAgenda ? (
+              <div className="space-y-3">
+                <p className="text-sm font-bold text-ink">Onde você quer ver suas tarefas?</p>
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input type="radio" checked={modoAgenda === "nova"} onChange={() => setModoAgenda("nova")} className="mt-1 accent-forest" />
+                  <span className="flex-1">
+                    <span className="block text-sm font-semibold text-ink">Criar uma agenda nova, só pra isso</span>
+                    {modoAgenda === "nova" && (
+                      <input
+                        value={nomeAgendaNova}
+                        onChange={(e) => setNomeAgendaNova(e.target.value)}
+                        placeholder="Nome da agenda (opcional)"
+                        className="input text-sm mt-1.5"
+                      />
+                    )}
+                  </span>
+                </label>
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input type="radio" checked={modoAgenda === "existente"} onChange={() => setModoAgenda("existente")} className="mt-1 accent-forest" />
+                  <span className="flex-1">
+                    <span className="block text-sm font-semibold text-ink">Usar uma agenda que eu já tenho</span>
+                    {modoAgenda === "existente" &&
+                      (carregandoAgendas ? (
+                        <p className="text-xs text-ink/40 mt-1.5">Carregando suas agendas...</p>
+                      ) : (
+                        <select value={agendaEscolhidaId} onChange={(e) => setAgendaEscolhidaId(e.target.value)} className="input text-sm mt-1.5">
+                          <option value="">Selecione...</option>
+                          {agendasGoogle.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.nome}
+                              {a.principal ? " (principal)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      ))}
+                  </span>
+                </label>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={confirmarEscolhaAgenda}
+                    disabled={salvandoEscolhaAgenda || (modoAgenda === "existente" && !agendaEscolhidaId)}
+                    className="rounded-full bg-ink text-white px-4 py-2 text-xs font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+                  >
+                    {salvandoEscolhaAgenda ? "Confirmando..." : "Confirmar"}
+                  </button>
+                  <button onClick={() => setEscolhendoAgenda(false)} className="text-xs font-semibold text-ink/50 hover:text-ink">
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : conexaoGoogle === undefined ? (
+              <p className="text-xs text-ink/40">Carregando...</p>
+            ) : conexaoGoogle ? (
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-ink">✓ Conectado</p>
+                    {conexaoGoogle.googleEmail && <p className="text-xs text-ink/50 truncate">{conexaoGoogle.googleEmail}</p>}
+                  </div>
+                  <button
+                    onClick={desconectarGoogle}
+                    disabled={conectandoGoogle}
+                    className="text-xs font-semibold text-red-500 hover:text-red-700 disabled:opacity-50 shrink-0 ml-2"
+                  >
+                    {conectandoGoogle ? "..." : "Desconectar"}
+                  </button>
+                </div>
+                <div className="mt-3 pt-3 border-t border-black/5">
+                  <p className="text-[11px] text-ink/40 mb-1.5">
+                    {conexaoGoogle.ultimaSincronizacao
+                      ? `Última sincronização: ${new Date(conexaoGoogle.ultimaSincronizacao).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`
+                      : "Ainda não sincronizou — roda sozinho a cada 30min."}
+                  </p>
+                  <button
+                    onClick={sincronizarAgora}
+                    disabled={sincronizando}
+                    className="text-xs font-semibold text-forest hover:underline disabled:opacity-50"
+                  >
+                    {sincronizando ? "Sincronizando..." : "Sincronizar agora"}
+                  </button>
+                  {resultadoSincronizacao && <p className="text-[11px] text-ink/50 mt-1.5">{resultadoSincronizacao}</p>}
+                </div>
+              </div>
+            ) : funcionarioId ? (
+              <a
+                href="/api/google/connect"
+                className="inline-flex items-center gap-2 rounded-full border-2 border-black/10 px-4 py-2 text-sm font-semibold text-ink hover:bg-surface transition-colors w-full justify-center"
+              >
+                Conectar Google Calendar
+              </a>
+            ) : (
+              <p className="text-xs text-ink/40">Vincule um cadastro de Funcionário pra conectar.</p>
+            )}
+          </div>
+
+          <div className="rounded-3xl bg-card border border-black/5 p-5">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-3">Seu perfil</p>
+            <ul className="space-y-2">
+              {itensPerfil.map((item) => (
+                <li key={item.label} className="flex items-center gap-2 text-sm">
+                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${item.preenchido ? "bg-forest" : "bg-black/15"}`} />
+                  <span className={item.preenchido ? "text-ink/80" : "text-ink/40"}>{item.label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-3xl bg-card border border-black/5 p-6">
+        <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-4">Trocar senha</p>
         {!senhaAberta ? (
           <button onClick={() => setSenhaAberta(true)} className="text-sm font-semibold text-ink/60 hover:text-ink">
-            Alterar senha
+            Alterar minha senha
           </button>
         ) : (
-          <form onSubmit={alterarSenha} className="space-y-3">
-            <p className="text-sm font-bold text-ink">Alterar senha</p>
-            <input
-              type="password"
-              value={novaSenha}
-              onChange={(e) => setNovaSenha(e.target.value)}
-              className="input"
-              placeholder="Nova senha (mín. 6 caracteres)"
-            />
-            <input
-              type="password"
-              value={confirmarSenha}
-              onChange={(e) => setConfirmarSenha(e.target.value)}
-              className="input"
-              placeholder="Confirmar nova senha"
-            />
+          <form onSubmit={alterarSenha} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="block">
+                <span className="block text-sm font-medium text-ink/70 mb-1">Nova senha</span>
+                <input
+                  type="password"
+                  value={novaSenha}
+                  onChange={(e) => setNovaSenha(e.target.value)}
+                  className="input"
+                  placeholder="Mínimo de 6 caracteres"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium text-ink/70 mb-1">Confirmar nova senha</span>
+                <input type="password" value={confirmarSenha} onChange={(e) => setConfirmarSenha(e.target.value)} className="input" />
+              </label>
+            </div>
             {erroSenha && <p className="text-sm text-red-600">{erroSenha}</p>}
             {sucessoSenha && <p className="text-sm text-forest font-semibold">Senha alterada!</p>}
             <div className="flex items-center gap-3">
               <button
                 type="submit"
                 disabled={salvandoSenha}
-                className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
+                className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
               >
-                {salvandoSenha ? "Salvando..." : "Salvar nova senha"}
+                {salvandoSenha ? "Salvando..." : "Trocar senha"}
               </button>
               <button type="button" onClick={() => setSenhaAberta(false)} className="text-sm font-semibold text-ink/60 hover:text-ink">
                 Cancelar
