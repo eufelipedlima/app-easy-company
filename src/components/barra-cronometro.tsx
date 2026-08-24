@@ -11,7 +11,7 @@ interface CronometroAtivo {
   id: string;
   titulo: string;
   tempoTotalSegundos: number;
-  timerIniciadoEm: string;
+  iniciadoEm: string;
 }
 
 function formatarDuracao(totalSegundos: number) {
@@ -31,47 +31,65 @@ export function BarraCronometro() {
   const [pausando, setPausando] = useState(false);
   const intervaloBuscaRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Busca a MINHA sessão de cronômetro ativa (se houver) nas tabelas por
+  // pessoa — antes lia dois campos únicos na própria tarefa/post, que
+  // deixaram de ser atualizados quando o cronômetro passou a funcionar
+  // por pessoa (permitindo várias pessoas ao mesmo tempo na mesma
+  // tarefa). Por isso essa barra tinha parado de aparecer.
   const buscarAtivo = useCallback(async (userId: string) => {
     const supabase = createClient();
-    const [{ data: tarefa }, { data: post }] = await Promise.all([
+    const [{ data: sessaoTarefa }, { data: sessaoPost }] = await Promise.all([
       supabase
-        .from("tarefas")
-        .select("id, titulo, tempo_total_segundos, timer_iniciado_em")
-        .eq("timer_iniciado_por", userId)
-        .not("timer_iniciado_em", "is", null)
-        .order("timer_iniciado_em", { ascending: false })
+        .from("tarefas_tempo_sessoes")
+        .select("tarefa_id, iniciado_em, tarefas ( id, titulo, tempo_total_segundos )")
+        .eq("funcionario_auth_id", userId)
+        .not("iniciado_em", "is", null)
+        .order("iniciado_em", { ascending: false })
         .limit(1)
         .maybeSingle(),
       supabase
-        .from("posts_conteudo")
-        .select("id, titulo, legenda, tempo_total_segundos, timer_iniciado_em")
-        .eq("timer_iniciado_por", userId)
-        .not("timer_iniciado_em", "is", null)
-        .order("timer_iniciado_em", { ascending: false })
+        .from("posts_conteudo_tempo_sessoes")
+        .select("post_id, iniciado_em, posts_conteudo ( id, titulo, legenda, tempo_total_segundos )")
+        .eq("funcionario_auth_id", userId)
+        .not("iniciado_em", "is", null)
+        .order("iniciado_em", { ascending: false })
         .limit(1)
         .maybeSingle(),
     ]);
 
     const candidatos: CronometroAtivo[] = [];
-    if (tarefa?.timer_iniciado_em) {
+
+    const t = sessaoTarefa as unknown as {
+      tarefa_id: string;
+      iniciado_em: string;
+      tarefas: { id: string; titulo: string; tempo_total_segundos: number } | null;
+    } | null;
+    if (t?.iniciado_em && t.tarefas) {
       candidatos.push({
         origem: "tarefa",
-        id: tarefa.id,
-        titulo: tarefa.titulo || "Tarefa sem título",
-        tempoTotalSegundos: tarefa.tempo_total_segundos ?? 0,
-        timerIniciadoEm: tarefa.timer_iniciado_em,
+        id: t.tarefas.id,
+        titulo: t.tarefas.titulo || "Tarefa sem título",
+        tempoTotalSegundos: t.tarefas.tempo_total_segundos ?? 0,
+        iniciadoEm: t.iniciado_em,
       });
     }
-    if (post?.timer_iniciado_em) {
+
+    const p = sessaoPost as unknown as {
+      post_id: string;
+      iniciado_em: string;
+      posts_conteudo: { id: string; titulo: string | null; legenda: string | null; tempo_total_segundos: number } | null;
+    } | null;
+    if (p?.iniciado_em && p.posts_conteudo) {
       candidatos.push({
         origem: "conteudo",
-        id: post.id,
-        titulo: post.titulo || post.legenda?.slice(0, 40) || "Conteúdo sem título",
-        tempoTotalSegundos: post.tempo_total_segundos ?? 0,
-        timerIniciadoEm: post.timer_iniciado_em,
+        id: p.posts_conteudo.id,
+        titulo: p.posts_conteudo.titulo || p.posts_conteudo.legenda?.slice(0, 40) || "Conteúdo sem título",
+        tempoTotalSegundos: p.posts_conteudo.tempo_total_segundos ?? 0,
+        iniciadoEm: p.iniciado_em,
       });
     }
-    candidatos.sort((a, b) => new Date(b.timerIniciadoEm).getTime() - new Date(a.timerIniciadoEm).getTime());
+
+    candidatos.sort((a, b) => new Date(b.iniciadoEm).getTime() - new Date(a.iniciadoEm).getTime());
     setAtivo(candidatos[0] ?? null);
   }, []);
 
@@ -110,16 +128,54 @@ export function BarraCronometro() {
   }, [ativo]);
 
   async function pausar() {
-    if (!ativo) return;
+    if (!ativo || !meuId) return;
     setPausando(true);
     const supabase = createClient();
-    const segundosCorridos = Math.floor((Date.now() - new Date(ativo.timerIniciadoEm).getTime()) / 1000);
-    const novoTotal = ativo.tempoTotalSegundos + segundosCorridos;
-    const tabela = ativo.origem === "tarefa" ? "tarefas" : "posts_conteudo";
-    await supabase
-      .from(tabela)
-      .update({ tempo_total_segundos: novoTotal, timer_iniciado_em: null, timer_iniciado_por: null })
-      .eq("id", ativo.id);
+
+    const tabelaSessao = ativo.origem === "tarefa" ? "tarefas_tempo_sessoes" : "posts_conteudo_tempo_sessoes";
+    const colunaId = ativo.origem === "tarefa" ? "tarefa_id" : "post_id";
+    const tabelaItem = ativo.origem === "tarefa" ? "tarefas" : "posts_conteudo";
+    const tabelaHistorico = ativo.origem === "tarefa" ? "tarefas_historico" : "posts_conteudo_historico";
+
+    // Sempre confere o banco antes de agir, em vez de confiar só no que
+    // essa barra já tinha em memória — evita perder tempo se algo mudou
+    // nesse meio tempo em outra aba ou dispositivo.
+    const { data: existente } = await supabase
+      .from(tabelaSessao)
+      .select("iniciado_em, segundos_acumulados")
+      .eq(colunaId, ativo.id)
+      .eq("funcionario_auth_id", meuId)
+      .maybeSingle();
+
+    if (!existente?.iniciado_em) {
+      setPausando(false);
+      setAtivo(null);
+      return;
+    }
+
+    const segundosCorridos = Math.floor((Date.now() - new Date(existente.iniciado_em).getTime()) / 1000);
+    const novoAcumuladoMeu = (existente.segundos_acumulados ?? 0) + segundosCorridos;
+
+    const { data: itemAtual } = await supabase.from(tabelaItem).select("tempo_total_segundos").eq("id", ativo.id).maybeSingle();
+    const novoTotalGeral = (itemAtual?.tempo_total_segundos ?? ativo.tempoTotalSegundos) + segundosCorridos;
+
+    await Promise.all([
+      supabase
+        .from(tabelaSessao)
+        .update({ iniciado_em: null, segundos_acumulados: novoAcumuladoMeu })
+        .eq(colunaId, ativo.id)
+        .eq("funcionario_auth_id", meuId),
+      supabase.from(tabelaItem).update({ tempo_total_segundos: novoTotalGeral }).eq("id", ativo.id),
+    ]);
+
+    // Registra no histórico, igual as telas de tarefa/conteúdo já fazem —
+    // sem isso, esse tempo não aparecia nem no "Horas" nem no Meu Time.
+    const minutos = Math.round(segundosCorridos / 60);
+    const descricao = `passou ${minutos < 1 ? "menos de 1min" : `${minutos}min`} trabalhando ${
+      ativo.origem === "tarefa" ? "nessa tarefa" : "nesse conteúdo"
+    }`;
+    await supabase.from(tabelaHistorico).insert({ [colunaId]: ativo.id, autor_id: meuId, descricao });
+
     setPausando(false);
     setAtivo(null);
   }
@@ -127,7 +183,7 @@ export function BarraCronometro() {
   if (!ativo) return null;
 
   const rotaDoAtivo = ativo.origem === "tarefa" ? `/tarefas/${ativo.id}` : `/conteudo/calendario/post/${ativo.id}`;
-  const segundosCorrendo = Math.floor((agora - new Date(ativo.timerIniciadoEm).getTime()) / 1000);
+  const segundosCorrendo = Math.floor((agora - new Date(ativo.iniciadoEm).getTime()) / 1000);
   const totalExibido = ativo.tempoTotalSegundos + segundosCorrendo;
 
   return (
