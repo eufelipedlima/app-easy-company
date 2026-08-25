@@ -60,6 +60,29 @@ export function nomePessoaLancamento(l: { clientes: Lancamento["clientes"]; pess
   return l.clientes?.papeis?.pessoas?.nome ?? l.pessoas?.nome ?? null;
 }
 
+/** Navegação por teclado (seta pra cima/baixo + Enter) numa lista de
+ * sugestões — usado em todos os campos de busca desse formulário. */
+function useNavegacaoLista<T>(itens: T[], aoSelecionar: (item: T) => void) {
+  const [indice, setIndice] = useState(-1);
+  useEffect(() => setIndice(-1), [itens.length]);
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setIndice((i) => Math.min(i + 1, itens.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setIndice((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter" && indice >= 0 && itens[indice]) {
+      e.preventDefault();
+      aoSelecionar(itens[indice]);
+      setIndice(-1);
+    } else if (e.key === "Escape") {
+      setIndice(-1);
+    }
+  }
+  return { indice, onKeyDown };
+}
+
 export function LancamentoForm({
   lancamentoEditando,
   escopoEdicao,
@@ -172,6 +195,15 @@ export function LancamentoForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Transferência não mostra campo de competência/vencimento — usa a
+  // própria data de quitação pros três, já que é sempre "feita na hora".
+  useEffect(() => {
+    if (tipo !== "transferencia") return;
+    setDataVencimento(dataQuitacao || hojeISOForm);
+    setDataCompetencia(dataQuitacao || hojeISOForm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tipo, dataQuitacao]);
+
   const sugCliente = pessoas.filter((p) => normalizar(p.nome).includes(normalizar(buscaCliente)));
   const sugBanco = bancos.filter((b) => normalizar(b.nome).includes(normalizar(buscaBanco)));
   const sugBancoDestino = bancos.filter((b) => normalizar(b.nome).includes(normalizar(buscaBancoDestino)));
@@ -179,6 +211,39 @@ export function LancamentoForm({
     .filter((p) => p.tipo === tipo)
     .filter((p) => normalizar(p.nome).includes(normalizar(buscaPlanoConta)));
   const sugServico = servicos.filter((s) => normalizar(s.nome).includes(normalizar(buscaServico)));
+
+  const navCliente = useNavegacaoLista(sugCliente, (p) => {
+    setPessoaSelecionada(p);
+    setBuscaCliente(p.nome);
+    setMostrarSugCliente(false);
+  });
+  const navBanco = useNavegacaoLista(sugBanco, (b) => {
+    setBancoSelecionado(b);
+    setBuscaBanco(b.nome);
+    setMostrarSugBanco(false);
+  });
+  const navBancoDestino = useNavegacaoLista(sugBancoDestino, (b) => {
+    setBancoDestinoSelecionado(b);
+    setBuscaBancoDestino(b.nome);
+    setMostrarSugBancoDestino(false);
+  });
+  const navPlanoConta = useNavegacaoLista(sugPlanoConta, (p) => {
+    setPlanoContaSelecionado(p);
+    setBuscaPlanoConta(p.nome);
+    setMostrarSugPlanoConta(false);
+  });
+  const navServico = useNavegacaoLista(sugServico, (s) => {
+    setServicoSelecionado(s);
+    setBuscaServico(s.nome);
+    setMostrarSugServico(false);
+    if (s.plano_conta_id) {
+      const plano = planosConta.find((p) => p.id === s.plano_conta_id);
+      if (plano) {
+        setPlanoContaSelecionado(plano);
+        setBuscaPlanoConta(plano.nome);
+      }
+    }
+  });
 
   async function garantirClienteId(pessoaId: string): Promise<string> {
     const supabase = createClient();
@@ -513,46 +578,17 @@ export function LancamentoForm({
         </button>
         <button
           type="button"
-          onClick={() => setTipo("transferencia")}
+          onClick={() => {
+            setTipo("transferencia");
+            setSituacao("pago");
+            if (!dataQuitacao) setDataQuitacao(hojeISOForm);
+          }}
           className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
             tipo === "transferencia" ? "bg-ink text-white" : "text-ink/60"
           }`}
         >
           Transferência
         </button>
-      </div>
-
-      <div className={`rounded-2xl p-3 ${situacao === "pago" ? "bg-mint" : "bg-surface"}`}>
-        <span className="block text-sm font-semibold text-ink mb-1.5">
-          {tipo === "receita" ? "Esse valor já entrou?" : tipo === "despesa" ? "Essa conta já foi paga?" : "Já foi feita?"}
-        </span>
-        <div className="flex items-center gap-1 rounded-full bg-white p-1 w-fit shadow-sm">
-          <button
-            type="button"
-            onClick={() => setSituacao("pendente")}
-            className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-              situacao === "pendente" ? "bg-ink text-white" : "text-ink/60"
-            }`}
-          >
-            Ainda não
-          </button>
-          <button
-            type="button"
-            onClick={() => setSituacao("pago")}
-            className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-              situacao === "pago" ? "bg-forest text-white" : "text-ink/60"
-            }`}
-          >
-            ✓ Já foi — dar baixa agora
-          </button>
-        </div>
-        {situacao === "pago" && (
-          <div className="mt-3">
-            <Campo label="Data de quitação" required>
-              <input type="date" required value={dataQuitacao} onChange={(e) => setDataQuitacao(e.target.value)} className="input" />
-            </Campo>
-          </div>
-        )}
       </div>
 
       {tipo !== "transferencia" && (
@@ -566,14 +602,16 @@ export function LancamentoForm({
               setMostrarSugCliente(true);
             }}
             onFocus={() => setMostrarSugCliente(true)}
+            onKeyDown={navCliente.onKeyDown}
             placeholder="Digite o nome..."
           />
           {mostrarSugCliente && buscaCliente && !pessoaSelecionada && (
             <ListaSugestoes>
               {sugCliente.length > 0 ? (
-                sugCliente.map((p) => (
+                sugCliente.map((p, i) => (
                   <ItemSugestao
                     key={p.id}
+                    navegado={i === navCliente.indice}
                     onClick={() => {
                       setPessoaSelecionada(p);
                       setBuscaCliente(p.nome);
@@ -595,9 +633,43 @@ export function LancamentoForm({
 
       <div className="grid grid-cols-2 gap-3">
         {tipo !== "transferencia" && (
-          <Campo label="Descrição">
-            <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="input" placeholder="Ex: Assessoria de Marketing" />
-          </Campo>
+          <div className="relative">
+            <Busca
+              label="Plano de conta"
+              valor={buscaPlanoConta}
+              onChange={(v) => {
+                setBuscaPlanoConta(v);
+                setPlanoContaSelecionado(null);
+                setMostrarSugPlanoConta(true);
+              }}
+              onFocus={() => setMostrarSugPlanoConta(true)}
+              onKeyDown={navPlanoConta.onKeyDown}
+              placeholder="Digite o plano de conta..."
+            />
+            {mostrarSugPlanoConta && buscaPlanoConta && !planoContaSelecionado && (
+              <ListaSugestoes>
+                {sugPlanoConta.length > 0 ? (
+                  sugPlanoConta.map((p, i) => (
+                    <ItemSugestao
+                      key={p.id}
+                      navegado={i === navPlanoConta.indice}
+                      onClick={() => {
+                        setPlanoContaSelecionado(p);
+                        setBuscaPlanoConta(p.nome);
+                        setMostrarSugPlanoConta(false);
+                      }}
+                    >
+                      {p.nome}
+                    </ItemSugestao>
+                  ))
+                ) : (
+                  <ItemSugestao destaque onClick={() => setMostrarSugPlanoConta(false)}>
+                    + Cadastrar &ldquo;{buscaPlanoConta}&rdquo; como novo plano de {tipo}
+                  </ItemSugestao>
+                )}
+              </ListaSugestoes>
+            )}
+          </div>
         )}
         <Campo label="Valor (R$)" required>
           <input
@@ -611,19 +683,21 @@ export function LancamentoForm({
             placeholder="0,00"
           />
         </Campo>
-        {!ehDespesaFixa && (
+        {!ehDespesaFixa && tipo !== "transferencia" && (
           <Campo label="Data de competência">
             <input type="date" value={dataCompetencia} onChange={(e) => setDataCompetencia(e.target.value)} className="input" />
           </Campo>
         )}
-        <Campo label="Data de vencimento" required>
-          <input type="date" required value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} className="input" />
-          {ehDespesaFixa && (
-            <span className="block text-xs text-ink/40 mt-1">
-              Vira a data de início. A competência de cada parcela acompanha o mês dela.
-            </span>
-          )}
-        </Campo>
+        {tipo !== "transferencia" && (
+          <Campo label="Data de vencimento" required>
+            <input type="date" required value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} className="input" />
+            {ehDespesaFixa && (
+              <span className="block text-xs text-ink/40 mt-1">
+                Vira a data de início. A competência de cada parcela acompanha o mês dela.
+              </span>
+            )}
+          </Campo>
+        )}
       </div>
 
       {situacao === "pago" && tipo !== "transferencia" && (
@@ -738,14 +812,16 @@ export function LancamentoForm({
               setMostrarSugServico(true);
             }}
             onFocus={() => setMostrarSugServico(true)}
+            onKeyDown={navServico.onKeyDown}
             placeholder="Digite o serviço..."
           />
           {mostrarSugServico && buscaServico && !servicoSelecionado && (
             <ListaSugestoes>
               {sugServico.length > 0 ? (
-                sugServico.map((s) => (
+                sugServico.map((s, i) => (
                   <ItemSugestao
                     key={s.id}
+                    navegado={i === navServico.indice}
                     onClick={() => {
                       setServicoSelecionado(s);
                       setBuscaServico(s.nome);
@@ -782,14 +858,16 @@ export function LancamentoForm({
             setMostrarSugBanco(true);
           }}
           onFocus={() => setMostrarSugBanco(true)}
+          onKeyDown={navBanco.onKeyDown}
           placeholder="Digite o banco..."
         />
         {mostrarSugBanco && !bancoSelecionado && (
           <ListaSugestoes>
             {sugBanco.length > 0 ? (
-              sugBanco.map((b) => (
+              sugBanco.map((b, i) => (
                 <ItemSugestao
                   key={b.id}
+                  navegado={i === navBanco.indice}
                   onClick={() => {
                     setBancoSelecionado(b);
                     setBuscaBanco(b.nome);
@@ -823,14 +901,16 @@ export function LancamentoForm({
               setMostrarSugBancoDestino(true);
             }}
             onFocus={() => setMostrarSugBancoDestino(true)}
+            onKeyDown={navBancoDestino.onKeyDown}
             placeholder="Digite o banco de destino..."
           />
           {mostrarSugBancoDestino && !bancoDestinoSelecionado && (
             <ListaSugestoes>
               {sugBancoDestino.length > 0 ? (
-                sugBancoDestino.map((b) => (
+                sugBancoDestino.map((b, i) => (
                   <ItemSugestao
                     key={b.id}
+                    navegado={i === navBancoDestino.indice}
                     onClick={() => {
                       setBancoDestinoSelecionado(b);
                       setBuscaBancoDestino(b.nome);
@@ -855,42 +935,46 @@ export function LancamentoForm({
       )}
 
       {tipo !== "transferencia" && (
-        <div className="relative">
-          <Busca
-            label="Plano de conta"
-            valor={buscaPlanoConta}
-            onChange={(v) => {
-              setBuscaPlanoConta(v);
-              setPlanoContaSelecionado(null);
-              setMostrarSugPlanoConta(true);
-            }}
-            onFocus={() => setMostrarSugPlanoConta(true)}
-            placeholder="Digite o plano de conta..."
-          />
-          {mostrarSugPlanoConta && buscaPlanoConta && !planoContaSelecionado && (
-            <ListaSugestoes>
-              {sugPlanoConta.length > 0 ? (
-                sugPlanoConta.map((p) => (
-                  <ItemSugestao
-                    key={p.id}
-                    onClick={() => {
-                      setPlanoContaSelecionado(p);
-                      setBuscaPlanoConta(p.nome);
-                      setMostrarSugPlanoConta(false);
-                    }}
-                  >
-                    {p.nome}
-                  </ItemSugestao>
-                ))
-              ) : (
-                <ItemSugestao destaque onClick={() => setMostrarSugPlanoConta(false)}>
-                  + Cadastrar &ldquo;{buscaPlanoConta}&rdquo; como novo plano de {tipo}
-                </ItemSugestao>
-              )}
-            </ListaSugestoes>
-          )}
-        </div>
+        <Campo label="Descrição">
+          <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="input" placeholder="Ex: Assessoria de Marketing" />
+        </Campo>
       )}
+
+      <div className={`rounded-2xl p-3 ${situacao === "pago" ? "bg-mint" : "bg-surface"}`}>
+        <span className="block text-sm font-semibold text-ink mb-1.5">
+          {tipo === "receita" ? "Esse valor já entrou?" : tipo === "despesa" ? "Essa conta já foi paga?" : "Já foi feita?"}
+        </span>
+        <div className="flex items-center gap-1 rounded-full bg-white p-1 w-fit shadow-sm">
+          <button
+            type="button"
+            onClick={() => setSituacao("pendente")}
+            className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+              situacao === "pendente" ? "bg-ink text-white" : "text-ink/60"
+            }`}
+          >
+            Ainda não
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSituacao("pago");
+              if (!dataQuitacao) setDataQuitacao(hojeISOForm);
+            }}
+            className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+              situacao === "pago" ? "bg-forest text-white" : "text-ink/60"
+            }`}
+          >
+            ✓ Já foi — dar baixa agora
+          </button>
+        </div>
+        {situacao === "pago" && (
+          <div className="mt-3">
+            <Campo label="Data de quitação" required>
+              <input type="date" required value={dataQuitacao} onChange={(e) => setDataQuitacao(e.target.value)} className="input" />
+            </Campo>
+          </div>
+        )}
+      </div>
 
       {tipo !== "transferencia" && (
         <label className="block">
@@ -933,12 +1017,14 @@ function Busca({
   valor,
   onChange,
   onFocus,
+  onKeyDown,
   placeholder,
 }: {
   label: string;
   valor: string;
   onChange: (v: string) => void;
   onFocus: () => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   placeholder: string;
 }) {
   return (
@@ -948,6 +1034,7 @@ function Busca({
         value={valor}
         onChange={(e) => onChange(e.target.value)}
         onFocus={onFocus}
+        onKeyDown={onKeyDown}
         className="input"
         placeholder={placeholder}
       />
@@ -967,17 +1054,19 @@ function ItemSugestao({
   children,
   onClick,
   destaque,
+  navegado,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   destaque?: boolean;
+  navegado?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface ${
-        destaque ? "font-semibold text-forest" : ""
+      className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface ${destaque ? "font-semibold text-forest" : ""} ${
+        navegado ? "bg-surface" : ""
       }`}
     >
       {children}

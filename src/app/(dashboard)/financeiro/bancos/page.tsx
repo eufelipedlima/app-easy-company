@@ -418,37 +418,6 @@ export default function BancosPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
         <div className="rounded-3xl bg-card border border-black/5 p-5">
-          <h2 className="text-sm font-bold text-ink mb-4">Distribuição do saldo</h2>
-          {dadosDonut.length === 0 ? (
-            <p className="text-sm text-ink/40 py-10 text-center">Sem saldo positivo pra distribuir ainda.</p>
-          ) : (
-            <div className="flex items-center gap-6">
-              <div className="w-40 h-40 shrink-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={dadosDonut} dataKey="valor" nameKey="nome" innerRadius={45} outerRadius={70} paddingAngle={2}>
-                      {dadosDonut.map((d, i) => (
-                        <Cell key={i} fill={d.cor} stroke="none" />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v) => formatarMoeda(Number(v))} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="space-y-2 flex-1 min-w-0">
-                {dadosDonut.map((d) => (
-                  <div key={d.nome} className="flex items-center gap-2 text-sm">
-                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: d.cor }} />
-                    <span className="text-ink font-medium truncate flex-1">{d.nome}</span>
-                    <span className="text-ink/40 text-xs shrink-0">{((d.valor / somaDonut) * 100).toFixed(1)}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-3xl bg-card border border-black/5 p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold text-ink">Contas cadastradas</h2>
           </div>
@@ -498,6 +467,37 @@ export default function BancosPage() {
               })
             )}
           </div>
+        </div>
+
+        <div className="rounded-3xl bg-card border border-black/5 p-5">
+          <h2 className="text-sm font-bold text-ink mb-4">Distribuição do saldo</h2>
+          {dadosDonut.length === 0 ? (
+            <p className="text-sm text-ink/40 py-10 text-center">Sem saldo positivo pra distribuir ainda.</p>
+          ) : (
+            <div className="flex items-center gap-6">
+              <div className="w-40 h-40 shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={dadosDonut} dataKey="valor" nameKey="nome" innerRadius={45} outerRadius={70} paddingAngle={2}>
+                      {dadosDonut.map((d, i) => (
+                        <Cell key={i} fill={d.cor} stroke="none" />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v) => formatarMoeda(Number(v))} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-2 flex-1 min-w-0">
+                {dadosDonut.map((d) => (
+                  <div key={d.nome} className="flex items-center gap-2 text-sm">
+                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: d.cor }} />
+                    <span className="text-ink font-medium truncate flex-1">{d.nome}</span>
+                    <span className="text-ink/40 text-xs shrink-0">{((d.valor / somaDonut) * 100).toFixed(1)}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

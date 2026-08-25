@@ -309,6 +309,7 @@ export default function LancamentosPage() {
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
   const [bancosOpcoesPagamento, setBancosOpcoesPagamento] = useState<Opcao[]>([]);
   const [painelPagamentoAberto, setPainelPagamentoAberto] = useState(false);
+  const [pagamentoEditandoId, setPagamentoEditandoId] = useState<string | null>(null);
   const [dataPagamentoNovo, setDataPagamentoNovo] = useState("");
   const [bancoPagamentoNovo, setBancoPagamentoNovo] = useState("");
   const [valorPagamentoNovo, setValorPagamentoNovo] = useState("");
@@ -339,27 +340,57 @@ export default function LancamentosPage() {
 
   const valorPagoTotal = pagamentos.reduce((s, p) => s + p.valor, 0);
 
+  function iniciarEdicaoPagamento(p: Pagamento) {
+    setPagamentoEditandoId(p.id);
+    setDataPagamentoNovo(p.data_pagamento);
+    setBancoPagamentoNovo(p.banco_id ?? "");
+    setValorPagamentoNovo(String(p.valor));
+    setTaxaPagamentoNovo(p.taxa ? String(p.taxa) : "");
+    setDescontoPagamentoNovo(p.desconto ? String(p.desconto) : "");
+    setPainelPagamentoAberto(true);
+  }
+
   async function registrarPagamento(e: React.FormEvent) {
     e.preventDefault();
     if (!detalhe || !dataPagamentoNovo || !valorPagamentoNovo) return;
     setSalvandoPagamento(true);
     const supabase = createClient();
 
-    await supabase.from("lancamento_pagamentos").insert({
-      lancamento_id: detalhe.id,
+    const dadosPagamento = {
       data_pagamento: dataPagamentoNovo,
       banco_id: bancoPagamentoNovo || null,
       valor: Number(valorPagamentoNovo),
       taxa: taxaPagamentoNovo ? Number(taxaPagamentoNovo) : null,
       desconto: descontoPagamentoNovo ? Number(descontoPagamentoNovo) : null,
-    });
+    };
 
-    const novoTotalPago = valorPagoTotal + Number(valorPagamentoNovo);
+    if (pagamentoEditandoId) {
+      await supabase.from("lancamento_pagamentos").update(dadosPagamento).eq("id", pagamentoEditandoId);
+    } else {
+      await supabase.from("lancamento_pagamentos").insert({ lancamento_id: detalhe.id, ...dadosPagamento });
+    }
+
+    const { data: pAtualizados } = await supabase
+      .from("lancamento_pagamentos")
+      .select("id, data_pagamento, banco_id, valor, taxa, desconto, bancos ( nome )")
+      .eq("lancamento_id", detalhe.id)
+      .order("data_pagamento", { ascending: false });
+    const listaAtualizada = (pAtualizados as unknown as Pagamento[]) ?? [];
+    setPagamentos(listaAtualizada);
+
+    const novoTotalPago = listaAtualizada.reduce((s, pg) => s + pg.valor, 0);
     if (novoTotalPago >= detalhe.valor) {
       await supabase
         .from("lancamentos")
         .update({ situacao: "pago", data_quitacao: dataPagamentoNovo })
         .eq("id", detalhe.id);
+      setDetalhe((d) => (d ? { ...d, situacao: "pago", data_quitacao: dataPagamentoNovo } : d));
+    } else if (detalhe.situacao === "pago") {
+      // A edição pode ter reduzido o total pago abaixo do valor devido —
+      // sem essa checagem, o lançamento ficava marcado "pago" com saldo
+      // em aberto.
+      await supabase.from("lancamentos").update({ situacao: "pendente", data_quitacao: null }).eq("id", detalhe.id);
+      setDetalhe((d) => (d ? { ...d, situacao: "pendente", data_quitacao: null } : d));
     }
 
     setDataPagamentoNovo("");
@@ -368,14 +399,8 @@ export default function LancamentosPage() {
     setTaxaPagamentoNovo("");
     setDescontoPagamentoNovo("");
     setPainelPagamentoAberto(false);
+    setPagamentoEditandoId(null);
     setSalvandoPagamento(false);
-
-    const { data: p } = await supabase
-      .from("lancamento_pagamentos")
-      .select("id, data_pagamento, banco_id, valor, taxa, desconto, bancos ( nome )")
-      .eq("lancamento_id", detalhe.id)
-      .order("data_pagamento", { ascending: false });
-    setPagamentos((p as unknown as Pagamento[]) ?? []);
     carregar();
   }
 
@@ -1199,6 +1224,9 @@ export default function LancamentosPage() {
                   {!painelPagamentoAberto && (
                     <button
                       onClick={() => {
+                        setPagamentoEditandoId(null);
+                        setTaxaPagamentoNovo("");
+                        setDescontoPagamentoNovo("");
                         setDataPagamentoNovo(new Date().toISOString().slice(0, 10));
                         setValorPagamentoNovo(String(Math.max(detalhe.valor - valorPagoTotal, 0)));
                         setBancoPagamentoNovo(detalhe.banco_id ?? "");
@@ -1242,7 +1270,10 @@ export default function LancamentosPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-ink">{formatarMoeda(p.valor)}</span>
-                          <button onClick={() => removerPagamento(p.id)} className="text-xs text-ink/30 hover:text-red-600">
+                          <button onClick={() => iniciarEdicaoPagamento(p)} className="text-xs text-ink/30 hover:text-forest" title="Editar pagamento">
+                            ✎
+                          </button>
+                          <button onClick={() => removerPagamento(p.id)} className="text-xs text-ink/30 hover:text-red-600" title="Excluir pagamento">
                             ✕
                           </button>
                         </div>
@@ -1252,6 +1283,9 @@ export default function LancamentosPage() {
 
                   {painelPagamentoAberto && (
                     <form onSubmit={registrarPagamento} className="space-y-2 pt-2 border-t border-black/5">
+                      <p className="text-xs font-bold text-ink/50 uppercase tracking-wide">
+                        {pagamentoEditandoId ? "Editando pagamento" : "Novo pagamento"}
+                      </p>
                       <div className="grid grid-cols-2 gap-2">
                         <input
                           type="date"
@@ -1309,11 +1343,19 @@ export default function LancamentosPage() {
                           disabled={salvandoPagamento}
                           className="rounded-full bg-forest text-white px-4 py-1.5 text-xs font-bold hover:bg-ink transition-colors disabled:opacity-50"
                         >
-                          {salvandoPagamento ? "Salvando..." : "Salvar pagamento"}
+                          {salvandoPagamento ? "Salvando..." : pagamentoEditandoId ? "Salvar alterações" : "Salvar pagamento"}
                         </button>
                         <button
                           type="button"
-                          onClick={() => setPainelPagamentoAberto(false)}
+                          onClick={() => {
+                            setPainelPagamentoAberto(false);
+                            setPagamentoEditandoId(null);
+                            setDataPagamentoNovo("");
+                            setBancoPagamentoNovo("");
+                            setValorPagamentoNovo("");
+                            setTaxaPagamentoNovo("");
+                            setDescontoPagamentoNovo("");
+                          }}
                           className="text-xs font-semibold text-ink/50 hover:text-ink"
                         >
                           Cancelar
