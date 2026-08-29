@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -102,6 +103,43 @@ const MENU: Grupo[] = [
     href: "/configuracoes",
   },
 ];
+
+/** Envolve um item do menu e mostra o nome dele numa dica que flutua por
+ * cima de tudo (via portal, desenhada direto no body) — assim ela nunca
+ * fica presa ou cortada pela rolagem do menu, não importa o que aconteça
+ * ao redor. Só ativa quando o menu está recolhido (ativa=false não faz
+ * nada, deixando o item normal). */
+function ComDicaLateral({ ativa, texto, children }: { ativa: boolean; texto: string; children: React.ReactNode }) {
+  const [hover, setHover] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  function aoEntrar() {
+    if (!ativa) return;
+    const rect = ref.current?.getBoundingClientRect();
+    if (rect) setPos({ top: rect.top + rect.height / 2, left: rect.right + 10 });
+    setHover(true);
+  }
+
+  return (
+    <div ref={ref} onMouseEnter={aoEntrar} onMouseLeave={() => setHover(false)}>
+      {children}
+      {ativa &&
+        hover &&
+        pos &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <span
+            style={{ position: "fixed", top: pos.top, left: pos.left, transform: "translateY(-50%)" }}
+            className="pointer-events-none whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-semibold text-white z-[999] shadow-lg"
+          >
+            {texto}
+          </span>,
+          document.body
+        )}
+    </div>
+  );
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -443,32 +481,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               const ativo = pathname?.startsWith(grupo.href);
               const badge = grupo.label === "Início" && chatNaoLidas + caixaEntradaNaoLidas > 0 ? chatNaoLidas + caixaEntradaNaoLidas : null;
               return (
-                <Link
-                  key={grupo.label}
-                  href={grupo.href}
-                  title={grupo.label}
-                  className={`relative group/tip flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
-                    !expandidoVisual ? "justify-center px-0" : ""
-                  } ${ativo ? "bg-forest text-white" : "text-white/60 hover:bg-forest/50 hover:text-white"}`}
-                >
-                  <span className="relative">
-                    {grupo.icon}
-                    {badge && !expandidoVisual && (
-                      <span className="absolute -top-1.5 -right-1.5 h-2 w-2 rounded-full bg-red-500" />
+                <ComDicaLateral key={grupo.label} ativa={!expandidoVisual} texto={grupo.label}>
+                  <Link
+                    href={grupo.href}
+                    title={grupo.label}
+                    className={`relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+                      !expandidoVisual ? "justify-center px-0" : ""
+                    } ${ativo ? "bg-forest text-white" : "text-white/60 hover:bg-forest/50 hover:text-white"}`}
+                  >
+                    <span className="relative">
+                      {grupo.icon}
+                      {badge && !expandidoVisual && (
+                        <span className="absolute -top-1.5 -right-1.5 h-2 w-2 rounded-full bg-red-500" />
+                      )}
+                    </span>
+                    {expandidoVisual && <span className="flex-1">{grupo.label}</span>}
+                    {badge && expandidoVisual && (
+                      <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">
+                        {badge}
+                      </span>
                     )}
-                  </span>
-                  {expandidoVisual && <span className="flex-1">{grupo.label}</span>}
-                  {badge && expandidoVisual && (
-                    <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">
-                      {badge}
-                    </span>
-                  )}
-                  {!expandidoVisual && (
-                    <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 shadow-lg hidden lg:block">
-                      {grupo.label}
-                    </span>
-                  )}
-                </Link>
+                  </Link>
+                </ComDicaLateral>
               );
             }
 
@@ -477,26 +511,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             return (
               <div key={grupo.label}>
-                <button
-                  onClick={() => (expandidoVisual ? setAberto(expandido ? null : grupo.label) : undefined)}
-                  title={grupo.label}
-                  className={`relative group/tip w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
-                    !expandidoVisual ? "justify-center px-0" : ""
-                  } ${grupoAtivo ? "text-white" : "text-white/60 hover:text-white"}`}
-                >
-                  {grupo.icon}
-                  {expandidoVisual && (
-                    <>
-                      <span className="flex-1 text-left">{grupo.label}</span>
-                      <ChevronDown size={15} className={`transition-transform ${expandido ? "rotate-180" : ""}`} />
-                    </>
-                  )}
-                  {!expandidoVisual && (
-                    <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 shadow-lg hidden lg:block">
-                      {grupo.label}
-                    </span>
-                  )}
-                </button>
+                <ComDicaLateral ativa={!expandidoVisual} texto={grupo.label}>
+                  <button
+                    onClick={() => (expandidoVisual ? setAberto(expandido ? null : grupo.label) : undefined)}
+                    title={grupo.label}
+                    className={`relative w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+                      !expandidoVisual ? "justify-center px-0" : ""
+                    } ${grupoAtivo ? "text-white" : "text-white/60 hover:text-white"}`}
+                  >
+                    {grupo.icon}
+                    {expandidoVisual && (
+                      <>
+                        <span className="flex-1 text-left">{grupo.label}</span>
+                        <ChevronDown size={15} className={`transition-transform ${expandido ? "rotate-180" : ""}`} />
+                      </>
+                    )}
+                  </button>
+                </ComDicaLateral>
 
                 {expandido && expandidoVisual && (
                   <div className="mt-1 ml-3 pl-3 border-l border-white/10 space-y-0.5">
@@ -524,30 +555,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {(!permissoes || permissoes.financeiro !== "nenhum") && (
           <div className="px-3 pb-3 border-t border-white/10 pt-3">
-            <button
-              onClick={() => {
-                if (!expandidoVisual) return;
-                setContasAbertas((v) => !v);
-                carregarContas();
-              }}
-              title="Contas"
-              className={`relative group/tip w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/60 hover:text-white transition-colors ${
-                !expandidoVisual ? "justify-center px-0" : ""
-              }`}
-            >
-              <Wallet size={16} />
-              {expandidoVisual && (
-                <>
-                  <span className="flex-1 text-left">Contas</span>
-                  {contasAbertas ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-                </>
-              )}
-              {!expandidoVisual && (
-                <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 shadow-lg hidden lg:block">
-                  Contas
-                </span>
-              )}
-            </button>
+            <ComDicaLateral ativa={!expandidoVisual} texto="Contas">
+              <button
+                onClick={() => {
+                  if (!expandidoVisual) return;
+                  setContasAbertas((v) => !v);
+                  carregarContas();
+                }}
+                title="Contas"
+                className={`relative w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/60 hover:text-white transition-colors ${
+                  !expandidoVisual ? "justify-center px-0" : ""
+                }`}
+              >
+                <Wallet size={16} />
+                {expandidoVisual && (
+                  <>
+                    <span className="flex-1 text-left">Contas</span>
+                    {contasAbertas ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                  </>
+                )}
+              </button>
+            </ComDicaLateral>
 
             {contasAbertas && expandidoVisual && (
               <div className="mt-1 mb-2 rounded-xl bg-white/5 px-3 py-3 space-y-2">
@@ -576,40 +604,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
 
         <div className="px-3 pb-6 space-y-0.5">
-          <Link
-            href="/perfil"
-            title="Meu perfil"
-            className={`relative group/tip w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/50 hover:bg-forest/50 hover:text-white transition-colors ${
-              !expandidoVisual ? "justify-center px-0" : ""
-            }`}
-          >
-            <UserCircle size={16} />
-            {expandidoVisual && "Meu perfil"}
-            {!expandidoVisual && (
-              <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 shadow-lg hidden lg:block">
-                Meu perfil
-              </span>
-            )}
-          </Link>
-          <button
-            onClick={async () => {
-              const supabase = createClient();
-              await supabase.auth.signOut();
-              router.replace("/login");
-            }}
-            title="Sair"
-            className={`relative group/tip w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/50 hover:bg-forest/50 hover:text-white transition-colors ${
-              !expandidoVisual ? "justify-center px-0" : ""
-            }`}
-          >
-            <LogOut size={16} />
-            {expandidoVisual && "Sair"}
-            {!expandidoVisual && (
-              <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 shadow-lg hidden lg:block">
-                Sair
-              </span>
-            )}
-          </button>
+          <ComDicaLateral ativa={!expandidoVisual} texto="Meu perfil">
+            <Link
+              href="/perfil"
+              title="Meu perfil"
+              className={`relative w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/50 hover:bg-forest/50 hover:text-white transition-colors ${
+                !expandidoVisual ? "justify-center px-0" : ""
+              }`}
+            >
+              <UserCircle size={16} />
+              {expandidoVisual && "Meu perfil"}
+            </Link>
+          </ComDicaLateral>
+          <ComDicaLateral ativa={!expandidoVisual} texto="Sair">
+            <button
+              onClick={async () => {
+                const supabase = createClient();
+                await supabase.auth.signOut();
+                router.replace("/login");
+              }}
+              title="Sair"
+              className={`relative w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/50 hover:bg-forest/50 hover:text-white transition-colors ${
+                !expandidoVisual ? "justify-center px-0" : ""
+              }`}
+            >
+              <LogOut size={16} />
+              {expandidoVisual && "Sair"}
+            </button>
+          </ComDicaLateral>
         </div>
       </aside>
 
