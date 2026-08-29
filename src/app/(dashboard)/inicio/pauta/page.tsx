@@ -194,7 +194,7 @@ function BlocoSemanaPessoa({
                 </span>
               </p>
               {fx.item.clienteNome ? (
-                <p className="text-[10px] opacity-50 truncate mt-0.5">{fx.item.clienteNome}</p>
+                <p className="text-[10px] font-bold opacity-90 truncate mt-0.5">{fx.item.clienteNome}</p>
               ) : (
                 <p className="text-[10px] opacity-40 italic truncate mt-0.5">Tarefa interna</p>
               )}
@@ -258,7 +258,7 @@ function BlocoSemanaPessoa({
                       </span>
                     </p>
                     {item.clienteNome ? (
-                      <p className="text-[10px] opacity-50 truncate mt-0.5">{item.clienteNome}</p>
+                      <p className="text-[10px] font-bold opacity-90 truncate mt-0.5">{item.clienteNome}</p>
                     ) : (
                       <p className="text-[10px] opacity-40 italic truncate mt-0.5">Tarefa interna</p>
                     )}

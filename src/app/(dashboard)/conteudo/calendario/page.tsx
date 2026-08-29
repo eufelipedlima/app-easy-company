@@ -632,7 +632,7 @@ export const CalendarioConteudoConteudo = forwardRef<
       chave: "cliente",
       label: "Cliente",
       larguraCss: "140px",
-      render: (p) => <span className="text-xs text-ink/50 truncate">{p.clientes?.papeis?.pessoas?.nome ?? "Interno"}</span>,
+      render: (p) => <span className="text-xs font-semibold text-ink/75 truncate">{p.clientes?.papeis?.pessoas?.nome ?? "Interno"}</span>,
     },
     {
       chave: "formato",
@@ -1141,7 +1141,7 @@ export const CalendarioConteudoConteudo = forwardRef<
                   >
                     {tituloPaiPorPost[p.id] && <p className="text-[9px] text-forest font-semibold truncate">↳ {tituloPaiPorPost[p.id]}</p>}
                     <p className="text-[11px] font-semibold truncate">{mostrarTitulo ? p.titulo : p.hora_publicacao?.slice(0, 5) || "Post"}</p>
-                    {mostrarCliente && <p className="text-[10px] opacity-70 truncate">{nomeCliente(p)}</p>}
+                    {mostrarCliente && <p className="text-[10px] font-bold opacity-95 truncate">{nomeCliente(p)}</p>}
                     {mostrarFormato && <p className="text-[10px] opacity-70 truncate">{FORMATO_CONFIG[p.formato!]?.label}</p>}
                     {(p.observacoes_internas || mostrarResponsavel) && (
                       <div className="flex items-center justify-between mt-0.5">
@@ -1367,7 +1367,7 @@ export const CalendarioConteudoConteudo = forwardRef<
                   >
                     {tituloPaiPorPost[p.id] && <p className="text-[10px] text-forest font-semibold truncate">↳ {tituloPaiPorPost[p.id]}</p>}
                     <p className="text-sm font-semibold truncate">{mostrarTitulo ? p.titulo : p.hora_publicacao?.slice(0, 5) || "Post"}</p>
-                    {mostrarCliente && <p className="text-xs opacity-70 truncate">{nomeCliente(p)}</p>}
+                    {mostrarCliente && <p className="text-xs font-bold opacity-95 truncate">{nomeCliente(p)}</p>}
                     {mostrarFormato && <p className="text-xs opacity-70 truncate">{FORMATO_CONFIG[p.formato!]?.label}</p>}
                     {(p.observacoes_internas || mostrarResponsavel) && (
                       <div className="flex items-center justify-between mt-1">
@@ -2557,7 +2557,7 @@ function KanbanCardConteudo({
       <p className="text-sm font-semibold text-ink truncate pr-5">
         {mostrarTitulo ? post.titulo : nomeCliente(post) || "Sem título"}
       </p>
-      {mostrarCliente && <p className="text-xs text-ink/50 truncate mt-0.5">{nomeCliente(post)}</p>}
+      {mostrarCliente && <p className="text-xs font-bold text-ink/75 truncate mt-0.5">{nomeCliente(post)}</p>}
 
       {progresso &&
         progresso.total > 0 &&

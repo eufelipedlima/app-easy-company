@@ -4,7 +4,6 @@ import { useEffect, useLayoutEffect, useState, useCallback, useRef, use } from "
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { comLinks } from "@/lib/linkify";
-import { comMencoesColoridas } from "@/lib/mencao-highlight";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { RichTextEditor } from "@/components/rich-text-editor";
@@ -954,10 +953,10 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       <div className="px-8 py-4 flex items-center justify-between shrink-0 bg-white">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push(veioDePauta ? "/inicio/pauta" : "/conteudo/calendario")}
+            onClick={() => router.back()}
             className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors"
           >
-            {veioDePauta ? "← Pauta" : "← Calendário de Conteúdo"}
+            ← Voltar
           </button>
           {tituloPostPai && post.post_pai_id && (
             <>
@@ -1573,14 +1572,6 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                 </div>
                 <div className="p-4 border-t border-black/5 shrink-0 relative">
                   <div className="relative">
-                    <div
-                      aria-hidden
-                      className="text-sm whitespace-pre-wrap break-words pointer-events-none absolute inset-0 overflow-hidden rounded-xl z-10"
-                      style={{ padding: "0.55rem 0.9rem", color: "var(--ec-ink)" }}
-                    >
-                      {comMencoesColoridas(novoComentario, colegas)}
-                      {novoComentario.endsWith("\n") ? "\u200b" : ""}
-                    </div>
                     <textarea
                       ref={comentarioRef}
                       value={novoComentario}
@@ -1623,8 +1614,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                       }}
                       rows={2}
                       placeholder="Escreva um comentário... (@ pra mencionar)"
-                      className="input resize-none w-full text-sm relative bg-transparent"
-                      style={{ color: "transparent", caretColor: "var(--ec-ink)" }}
+                      className="input resize-none w-full text-sm"
                     />
                   </div>
                   {mencaoBusca !== null && colegasParaMencao.length > 0 && (

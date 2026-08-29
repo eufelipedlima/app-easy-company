@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, use } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useRef, use, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { IconeProjeto } from "@/components/icones-tarefa";
@@ -142,8 +142,17 @@ function formatarHoraMsg(iso: string) {
 type Aba = "geral" | "tarefas" | "conteudo" | "chat" | "docs";
 
 export default function CentralClienteDetalhePage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<main className="w-full px-6 sm:px-8 lg:px-10 py-8" />}>
+      <CentralClienteDetalheConteudo params={params} />
+    </Suspense>
+  );
+}
+
+function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [nomeCliente, setNomeCliente] = useState("");
   const [pessoaIdCliente, setPessoaIdCliente] = useState<string | null>(null);
@@ -151,7 +160,10 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const inputFotoRef = useRef<HTMLInputElement>(null);
   const calendarioRef = useRef<CalendarioConteudoHandle>(null);
-  const [aba, setAba] = useState<Aba>("geral");
+  const [aba, setAba] = useState<Aba>(() => {
+    const abaUrl = searchParams.get("aba") as Aba | null;
+    return abaUrl && ["geral", "tarefas", "conteudo", "chat", "docs"].includes(abaUrl) ? abaUrl : "geral";
+  });
   const [souAdmin, setSouAdmin] = useState(false);
   const [confirmandoArquivar, setConfirmandoArquivar] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -159,18 +171,41 @@ export default function CentralClienteDetalhePage({ params }: { params: Promise<
   const [tarefas, setTarefas] = useState<TarefaResumo[]>([]);
   const [progressoTarefas, setProgressoTarefas] = useState<Record<string, { total: number; completos: number }>>({});
   const [responsaveisPorTarefa, setResponsaveisPorTarefa] = useState<Record<string, Responsavel[]>>({});
-  const [visualizacaoTarefas, setVisualizacaoTarefas] = useState<"lista" | "kanban">("kanban");
+  const [visualizacaoTarefas, setVisualizacaoTarefas] = useState<"lista" | "kanban">(() => {
+    const v = searchParams.get("vTarefas");
+    return v === "lista" ? "lista" : "kanban";
+  });
   const [filtroStatusAtivo, setFiltroStatusAtivo] = useState<string | null>(null);
   const [atividadeRecente, setAtividadeRecente] = useState<AtividadeItem[]>([]);
   const [posts, setPosts] = useState<PostResumo[]>([]);
   const [progressoPosts, setProgressoPosts] = useState<Record<string, { total: number; completos: number }>>({});
   const [responsaveisPorPost, setResponsaveisPorPost] = useState<Record<string, Responsavel[]>>({});
-  const [visualizacaoConteudo, setVisualizacaoConteudo] = useState<"lista" | "kanban" | "calendario">("kanban");
+  const [visualizacaoConteudo, setVisualizacaoConteudo] = useState<"lista" | "kanban" | "calendario">(() => {
+    const v = searchParams.get("vConteudo");
+    return v === "lista" || v === "calendario" ? v : "kanban";
+  });
   const [mostrarSubconteudos, setMostrarSubconteudos] = useState(false);
   const [docs, setDocs] = useState<DocResumo[]>([]);
   const [categoriasDocs, setCategoriasDocs] = useState<{ id: string; nome: string; cor: string }[]>([]);
   const [nomesPorAutor, setNomesPorAutor] = useState<Record<string, string>>({});
   const [statusList, setStatusList] = useState<{ id: string; nome: string; cor: string; ordem: number }[]>([]);
+
+  // Mantém a aba e a visão escolhidas (Kanban/Lista/Calendário) salvas na
+  // própria URL — assim, quando a pessoa entra numa tarefa/conteúdo e
+  // aperta "Voltar", o navegador restaura exatamente essa mesma URL, e a
+  // tela volta a abrir do jeito que estava, em vez de sempre cair na aba
+  // padrão. Usamos replace (não push) pra trocar de aba não empilhar uma
+  // entrada nova no histórico a cada clique.
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("aba", aba);
+    if (aba === "tarefas") params.set("vTarefas", visualizacaoTarefas);
+    else params.delete("vTarefas");
+    if (aba === "conteudo") params.set("vConteudo", visualizacaoConteudo);
+    else params.delete("vConteudo");
+    router.replace(`/central-clientes/${id}?${params.toString()}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aba, visualizacaoTarefas, visualizacaoConteudo]);
 
   const [canalChatId, setCanalChatId] = useState<string | null>(null);
   const [mensagens, setMensagens] = useState<MensagemChat[]>([]);

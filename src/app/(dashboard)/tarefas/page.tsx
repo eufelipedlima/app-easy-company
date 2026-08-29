@@ -598,7 +598,7 @@ export default function TarefasPage() {
       chave: "cliente",
       label: "Cliente",
       larguraCss: "140px",
-      render: (t) => <span className="text-xs text-ink/50 truncate">{t.clientes?.papeis?.pessoas?.nome ?? "Interna"}</span>,
+      render: (t) => <span className="text-xs font-semibold text-ink/75 truncate">{t.clientes?.papeis?.pessoas?.nome ?? "Interna"}</span>,
     },
     {
       chave: "prioridade",
@@ -1294,7 +1294,7 @@ function TarefaCardConteudo({
             </div>
           );
         })()}
-      {camposVisiveis.cliente && <p className="text-xs text-ink/50 truncate mt-0.5">{cliente ?? "Interna"}</p>}
+      {camposVisiveis.cliente && <p className="text-xs font-bold text-ink/75 truncate mt-0.5">{cliente ?? "Interna"}</p>}
 
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {tarefa.prioridade && (

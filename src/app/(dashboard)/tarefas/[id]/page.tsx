@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { comLinks } from "@/lib/linkify";
-import { comMencoesColoridas } from "@/lib/mencao-highlight";
 import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
@@ -923,10 +922,10 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       <div className="px-8 py-4 flex items-center justify-between shrink-0 bg-white">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push(veioDePauta ? "/inicio/pauta" : "/tarefas")}
+            onClick={() => router.back()}
             className="inline-flex items-center gap-1.5 rounded-full bg-ink text-white px-4 py-2 text-sm font-bold hover:bg-forest transition-colors"
           >
-            {veioDePauta ? "← Pauta" : "← Tarefas"}
+            ← Voltar
           </button>
           {tituloTarefaMae && tarefa.tarefa_pai_id && (
             <>
@@ -1467,14 +1466,6 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                 </div>
                 <div className="p-4 border-t border-black/5 shrink-0 relative">
                   <div className="relative">
-                    <div
-                      aria-hidden
-                      className="text-sm whitespace-pre-wrap break-words pointer-events-none absolute inset-0 overflow-hidden rounded-xl z-10"
-                      style={{ padding: "0.55rem 0.9rem", color: "var(--ec-ink)" }}
-                    >
-                      {comMencoesColoridas(novoComentario, colegas)}
-                      {novoComentario.endsWith("\n") ? "\u200b" : ""}
-                    </div>
                     <textarea
                       ref={comentarioRef}
                       value={novoComentario}
@@ -1517,8 +1508,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                       }}
                       rows={2}
                       placeholder="Escreva um comentário... (@ pra mencionar)"
-                      className="input resize-none w-full text-sm relative bg-transparent"
-                      style={{ color: "transparent", caretColor: "var(--ec-ink)" }}
+                      className="input resize-none w-full text-sm"
                     />
                   </div>
                   {mencaoBusca !== null && colegasParaMencao.length > 0 && (
