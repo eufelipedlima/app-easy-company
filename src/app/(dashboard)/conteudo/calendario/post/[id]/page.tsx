@@ -1094,155 +1094,117 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
               );
             })()}
 
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 mb-6 rounded-2xl bg-white p-3.5 shadow-sm text-sm">
-            <div>
-              <span className="block text-xs text-ink/50 mb-1">Status</span>
-              <div className="relative">
-                <button
-                  onClick={() => setStatusAberto((v) => !v)}
-                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold ${corDoStatus(statusAtual?.cor ?? "cinza").cor}`}
-                >
-                  <span className={`h-2 w-2 rounded-full ${corDoStatus(statusAtual?.cor ?? "cinza").dot}`} />
-                  {statusAtual?.nome ?? "—"}
-                  <span className="text-xs opacity-60">▾</span>
-                </button>
-                {statusAberto && (
-                  <div className="absolute z-20 mt-1 w-56 rounded-2xl bg-white border border-black/10 shadow-lg p-1.5" onMouseLeave={() => setStatusAberto(false)}>
-                    {statusList.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => {
-                          salvarCampo(
-                            { status_id: s.id },
-                            `mudou o status de "${statusAtual?.nome ?? "—"}" para "${s.nome}"`,
-                            true,
-                            "status"
-                          );
-                          setPost((p) => (p ? { ...p, status_id: s.id } : p));
-                          setStatusAberto(false);
-                        }}
-                        className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-xl text-sm font-medium hover:bg-surface"
-                      >
-                        <span className={`h-2 w-2 rounded-full ${corDoStatus(s.cor).dot}`} />
-                        {s.nome}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <span className="block text-xs text-ink/50 mb-1">Cliente</span>
-              <BuscaCliente
-                clientes={clientes}
-                valor={clienteSelecionado}
-                onSelecionar={(c) => {
-                  if (!c) return;
-                  setClienteSelecionado(c);
-                  salvarCampo({ cliente_id: c.id }, `mudou o cliente para ${c.nome}`);
-                }}
-              />
-            </div>
-
-            <div>
-              <span className="block text-xs text-ink/50 mb-1">Responsáveis</span>
-              <div className="relative">
-                <button
-                  onClick={() => setSeletorResponsavelAberto((v) => !v)}
-                  className="flex items-center gap-2 rounded-full border border-black/10 pl-1 pr-3 py-1 hover:bg-surface"
-                >
-                  {responsaveis.length > 0 ? (
-                    <AvatarStack pessoas={responsaveis} tamanho={26} />
-                  ) : (
-                    <span className="h-6 w-6 rounded-full bg-surface flex items-center justify-center text-ink/30 text-xs">+</span>
-                  )}
-                  <span className="text-xs text-ink/50">{responsaveis.length > 0 ? "Editar" : "Adicionar"}</span>
-                </button>
-                {seletorResponsavelAberto && (
-                  <div
-                    className="absolute z-20 mt-1 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
-                    onMouseLeave={() => setSeletorResponsavelAberto(false)}
-                  >
-                    <div className="grid grid-cols-5 gap-2.5">
-                      {funcionariosComAcesso.map((f) => {
-                        const marcado = responsaveis.some((r) => r.id === f.id);
-                        return (
-                          <button key={f.id} onClick={() => toggleResponsavel(f.id)} className="relative" title={f.nome}>
-                            <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={34} />
-                            {marcado && (
-                              <span className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-forest text-white text-[9px] flex items-center justify-center ring-2 ring-white">
-                                ✓
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <span className="block text-xs text-ink/50 mb-1">Formato</span>
-              <select
-                value={formato}
-                onChange={(e) => {
-                  setFormato(e.target.value);
-                  salvarCampo({ formato: e.target.value || null }, `mudou o formato para "${FORMATO_CONFIG[e.target.value] ?? "nenhum"}"`);
-                }}
-                className="input"
-              >
-                <option value="">Nenhum</option>
-                {Object.entries(FORMATO_CONFIG).map(([k, label]) => (
-                  <option key={k} value={k}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <span className="block text-xs text-ink/50 mb-1">Objetivo</span>
-              <select
-                value={objetivo}
-                onChange={(e) => {
-                  setObjetivo(e.target.value);
-                  salvarCampo({ objetivo: e.target.value || null }, `mudou o objetivo para "${OBJETIVO_CONFIG[e.target.value] ?? "nenhum"}"`);
-                }}
-                className="input"
-              >
-                <option value="">Nenhum</option>
-                {Object.entries(OBJETIVO_CONFIG).map(([k, label]) => (
-                  <option key={k} value={k}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <span className="block text-xs text-ink/50 mb-1">Data de início</span>
-              <input
-                type="date"
-                value={dataInicio}
-                onChange={(e) => {
-                  setDataInicio(e.target.value);
-                  salvarCampo(
-                    { data_inicio: e.target.value || null },
-                    e.target.value ? `mudou a data de início para ${formatarDataCurta(e.target.value)}` : "removeu a data de início",
-                    true,
-                    "data_inicio"
-                  );
-                }}
-                className="input"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-2xl bg-white p-4 shadow-sm mb-6 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
-                <span className="block text-xs text-ink/50 mb-1">Data de vencimento</span>
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40 mb-1">Status</span>
+                <div className="relative">
+                  <button
+                    onClick={() => setStatusAberto((v) => !v)}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold w-full ${corDoStatus(statusAtual?.cor ?? "cinza").cor}`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${corDoStatus(statusAtual?.cor ?? "cinza").dot}`} />
+                    <span className="truncate">{statusAtual?.nome ?? "—"}</span>
+                    <span className="text-[10px] opacity-60 ml-auto">▾</span>
+                  </button>
+                  {statusAberto && (
+                    <div className="absolute z-20 mt-1 w-56 rounded-2xl bg-white border border-black/10 shadow-lg p-1.5" onMouseLeave={() => setStatusAberto(false)}>
+                      {statusList.map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => {
+                            salvarCampo(
+                              { status_id: s.id },
+                              `mudou o status de "${statusAtual?.nome ?? "—"}" para "${s.nome}"`,
+                              true,
+                              "status"
+                            );
+                            setPost((p) => (p ? { ...p, status_id: s.id } : p));
+                            setStatusAberto(false);
+                          }}
+                          className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-xl text-sm font-medium hover:bg-surface"
+                        >
+                          <span className={`h-2 w-2 rounded-full ${corDoStatus(s.cor).dot}`} />
+                          {s.nome}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40 mb-1">Formato</span>
+                <select
+                  value={formato}
+                  onChange={(e) => {
+                    setFormato(e.target.value);
+                    salvarCampo({ formato: e.target.value || null }, `mudou o formato para "${FORMATO_CONFIG[e.target.value] ?? "nenhum"}"`);
+                  }}
+                  className="input py-1.5 text-sm"
+                >
+                  <option value="">Nenhum</option>
+                  {Object.entries(FORMATO_CONFIG).map(([k, label]) => (
+                    <option key={k} value={k}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40 mb-1">Objetivo</span>
+                <select
+                  value={objetivo}
+                  onChange={(e) => {
+                    setObjetivo(e.target.value);
+                    salvarCampo({ objetivo: e.target.value || null }, `mudou o objetivo para "${OBJETIVO_CONFIG[e.target.value] ?? "nenhum"}"`);
+                  }}
+                  className="input py-1.5 text-sm"
+                >
+                  <option value="">Nenhum</option>
+                  {Object.entries(OBJETIVO_CONFIG).map(([k, label]) => (
+                    <option key={k} value={k}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40 mb-1">Hora</span>
+                <input
+                  type="time"
+                  value={horaPublicacao}
+                  onChange={(e) => {
+                    setHoraPublicacao(e.target.value);
+                    salvarCampo({ hora_publicacao: e.target.value || null }, "mudou o horário de publicação");
+                  }}
+                  className="input py-1.5 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-black/5">
+              <div>
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40 mb-1">Início</span>
+                <input
+                  type="date"
+                  value={dataInicio}
+                  onChange={(e) => {
+                    setDataInicio(e.target.value);
+                    salvarCampo(
+                      { data_inicio: e.target.value || null },
+                      e.target.value ? `mudou a data de início para ${formatarDataCurta(e.target.value)}` : "removeu a data de início",
+                      true,
+                      "data_inicio"
+                    );
+                  }}
+                  className="input py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40 mb-1">Vencimento</span>
                 <input
                   type="date"
                   value={dataPublicacao}
@@ -1255,26 +1217,68 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                       "data_publicacao"
                     );
                   }}
-                  className="input"
+                  className="input py-1.5 text-sm"
                 />
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-black/5">
               <div>
-                <span className="block text-xs text-ink/50 mb-1">Hora</span>
-                <input
-                  type="time"
-                  value={horaPublicacao}
-                  onChange={(e) => {
-                    setHoraPublicacao(e.target.value);
-                    salvarCampo({ hora_publicacao: e.target.value || null }, "mudou o horário de publicação");
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40 mb-1">Cliente</span>
+                <BuscaCliente
+                  clientes={clientes}
+                  valor={clienteSelecionado}
+                  onSelecionar={(c) => {
+                    if (!c) return;
+                    setClienteSelecionado(c);
+                    salvarCampo({ cliente_id: c.id }, `mudou o cliente para ${c.nome}`);
                   }}
-                  className="input"
                 />
+              </div>
+
+              <div>
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40 mb-1">Responsáveis</span>
+                <div className="relative">
+                  <button
+                    onClick={() => setSeletorResponsavelAberto((v) => !v)}
+                    className="flex items-center gap-2 rounded-full border border-black/10 pl-1 pr-3 py-1 hover:bg-surface"
+                  >
+                    {responsaveis.length > 0 ? (
+                      <AvatarStack pessoas={responsaveis} tamanho={26} />
+                    ) : (
+                      <span className="h-6 w-6 rounded-full bg-surface flex items-center justify-center text-ink/30 text-xs">+</span>
+                    )}
+                    <span className="text-xs text-ink/50">{responsaveis.length > 0 ? "Editar" : "Adicionar"}</span>
+                  </button>
+                  {seletorResponsavelAberto && (
+                    <div
+                      className="absolute z-20 mt-1 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+                      onMouseLeave={() => setSeletorResponsavelAberto(false)}
+                    >
+                      <div className="grid grid-cols-5 gap-2.5">
+                        {funcionariosComAcesso.map((f) => {
+                          const marcado = responsaveis.some((r) => r.id === f.id);
+                          return (
+                            <button key={f.id} onClick={() => toggleResponsavel(f.id)} className="relative" title={f.nome}>
+                              <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={34} />
+                              {marcado && (
+                                <span className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-forest text-white text-[9px] flex items-center justify-center ring-2 ring-white">
+                                  ✓
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
           <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
-            <span className="block text-sm font-bold text-ink mb-2">Descrição</span>
+            <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Descrição</span>
             <RichTextEditor
               valorHtml={observacoes}
               onChange={setObservacoes}
