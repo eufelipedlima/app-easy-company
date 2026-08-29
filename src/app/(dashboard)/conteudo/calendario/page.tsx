@@ -18,6 +18,7 @@ import {
 } from "@/components/lista-agrupavel";
 import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { CalendarDays } from "lucide-react";
+import { AbasVisualizacao } from "@/components/abas-visualizacao";
 import {
   DndContext,
   DragOverlay,
@@ -969,32 +970,15 @@ export const CalendarioConteudoConteudo = forwardRef<
 
       {!compacto && (
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-          <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 shrink-0">
-            <button
-              onClick={() => setVisualizacao("kanban")}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                visualizacao === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-              }`}
-            >
-              Kanban
-            </button>
-            <button
-              onClick={() => setVisualizacao("calendario")}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                visualizacao === "calendario" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-              }`}
-            >
-              Calendário
-            </button>
-            <button
-              onClick={() => setVisualizacao("lista")}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                visualizacao === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-              }`}
-            >
-              Lista
-            </button>
-          </div>
+          <AbasVisualizacao
+            abas={[
+              { chave: "kanban", label: "Kanban" },
+              { chave: "calendario", label: "Calendário" },
+              { chave: "lista", label: "Lista" },
+            ]}
+            ativa={visualizacao}
+            onMudar={setVisualizacao}
+          />
 
           <div className="flex items-center gap-2">
             {visualizacao === "lista" && (

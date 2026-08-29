@@ -10,6 +10,7 @@ import { EsqueletoLinha } from "@/components/esqueleto";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { corDoCliente } from "@/lib/cor-cliente";
 import { BuscaCliente } from "@/components/busca-cliente";
+import { AbasVisualizacao } from "@/components/abas-visualizacao";
 import {
   useListaAgrupavel,
   BotaoExibirLista,
@@ -891,40 +892,16 @@ export function TarefasPageConteudo({ escopo = "tudo" }: { escopo?: "tudo" | "pr
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
-          <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
-            <button
-              onClick={() => setVisualizacao("kanban")}
-              className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
-                visualizacao === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-              }`}
-            >
-              Kanban
-            </button>
-            <button
-              onClick={() => setVisualizacao("lista")}
-              className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
-                visualizacao === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-              }`}
-            >
-              Lista
-            </button>
-            <button
-              onClick={() => setVisualizacao("semana")}
-              className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
-                visualizacao === "semana" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-              }`}
-            >
-              Semana
-            </button>
-            <button
-              onClick={() => setVisualizacao("mes")}
-              className={`rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
-                visualizacao === "mes" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-              }`}
-            >
-              Mês
-            </button>
-          </div>
+          <AbasVisualizacao
+            abas={[
+              { chave: "kanban", label: "Kanban" },
+              { chave: "lista", label: "Lista" },
+              { chave: "semana", label: "Semana" },
+              { chave: "mes", label: "Mês" },
+            ]}
+            ativa={visualizacao}
+            onMudar={setVisualizacao}
+          />
           {filtroResponsavelId === meuFuncionarioId && meuFuncionarioId && (
             <span className="text-xs text-ink/40">Mostrando suas tarefas</span>
           )}

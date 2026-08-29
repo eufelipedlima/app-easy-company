@@ -38,7 +38,9 @@ export function useListaAgrupavel(chaveArmazenamento: string, chavesColunas: str
   const chaveColapsados = `lista-colapsados:${chaveArmazenamento}`;
 
   const [colunasVisiveis, setColunasVisiveis] = useState<Set<string>>(new Set(chavesColunas));
-  const [agruparPor, setAgruparPor] = useState<string>("nenhum");
+  // Começa agrupado por status por padrão (mais fácil de bater o olho na
+  // lista) — só usamos "nenhum" se a pessoa já tiver trocado antes.
+  const [agruparPor, setAgruparPor] = useState<string>("status");
   const [gruposColapsados, setGruposColapsados] = useState<Set<string>>(new Set());
   const [carregou, setCarregou] = useState(false);
 
