@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { NumeroAnimado } from "@/components/numero-animado";
+import { rotinaAplicavelNaData } from "@/app/(dashboard)/rotinas/page";
 
 interface ItemTrabalho {
   id: string;
@@ -15,6 +16,7 @@ interface ItemTrabalho {
   clienteNome: string | null;
   data: string | null;
   link: string;
+  segundos: number;
 }
 
 interface AtividadeItem {
@@ -70,6 +72,13 @@ function formatarQuandoRelativo(iso: string) {
 function formatarData(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
+const DIAS_SEMANA_LABEL = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+function descreverFrequencia(r: { frequencia: string; dias_semana: number[] | null; dia_mes: number | null }): string {
+  if (r.frequencia === "diaria") return "Todo dia";
+  if (r.frequencia === "semanal") return (r.dias_semana ?? []).map((d) => DIAS_SEMANA_LABEL[d]).join(", ") || "Semanal";
+  if (r.frequencia === "mensal") return `Todo dia ${r.dia_mes ?? "?"}`;
+  return "";
+}
 
 const CORES_AVATAR = [
   "bg-red-400", "bg-orange-400", "bg-amber-500", "bg-lime-500", "bg-emerald-500",
@@ -95,6 +104,19 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
   const [filtro, setFiltro] = useState<"abertas" | "concluidas" | "atrasadas">("abertas");
   const [periodo, setPeriodo] = useState<Periodo>("mes");
   const [temAcesso, setTemAcesso] = useState<boolean | null>(null);
+  const [aba, setAba] = useState<"geral" | "tarefas" | "tempo" | "rotina">("geral");
+
+  // ---------------- Aba Rotina ----------------
+  const [meuCargoIdMembro, setMeuCargoIdMembro] = useState<string | null>(null);
+  const [dataRotina, setDataRotina] = useState(() => {
+    const hj = new Date();
+    hj.setHours(0, 0, 0, 0);
+    return hj;
+  });
+  const [rotinasDoMembro, setRotinasDoMembro] = useState<
+    { id: string; texto: string; grupo: string | null; frequencia: string; dias_semana: number[] | null; dia_mes: number | null; concluido: boolean }[]
+  >([]);
+  const [loadingRotina, setLoadingRotina] = useState(false);
 
   useEffect(() => {
     async function carregarPermissao() {
@@ -112,17 +134,19 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
 
     const { data: func } = await supabase
       .from("funcionarios")
-      .select("auth_user_id, papeis ( pessoas ( nome, foto_url ) ), cargos ( nome )")
+      .select("auth_user_id, cargo_id, papeis ( pessoas ( nome, foto_url ) ), cargos ( nome )")
       .eq("id", id)
       .maybeSingle();
     const f = func as unknown as {
       auth_user_id: string | null;
+      cargo_id: string | null;
       papeis: { pessoas: { nome: string; foto_url: string | null } | null } | null;
       cargos: { nome: string } | null;
     } | null;
     setNome(f?.papeis?.pessoas?.nome ?? "—");
     setFotoUrl(f?.papeis?.pessoas?.foto_url ?? null);
     setCargoNome(f?.cargos?.nome ?? null);
+    setMeuCargoIdMembro(f?.cargo_id ?? null);
 
     const { data: statusData } = await supabase.from("status_conteudo").select("id, nome, cor");
     const mapaStatus = new Map((statusData ?? []).map((s) => [s.id, s]));
@@ -189,6 +213,7 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
           clienteNome: t.clientes?.papeis?.pessoas?.nome ?? null,
           data: t.prazo,
           link: `/tarefas/${t.id}`,
+          segundos: t.tempo_total_segundos ?? 0,
         })),
       ...meusPosts
         .filter((p) => dentroDoPeriodo(p.data_publicacao))
@@ -201,6 +226,7 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
           clienteNome: p.clientes?.papeis?.pessoas?.nome ?? null,
           data: p.data_publicacao,
           link: `/conteudo/calendario/post/${p.id}`,
+          segundos: p.tempo_total_segundos ?? 0,
         })),
     ];
     setItens(listaItens);
@@ -288,6 +314,46 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
     carregar();
   }, [carregar]);
 
+  const carregarRotinaDoMembro = useCallback(async () => {
+    setLoadingRotina(true);
+    const supabase = createClient();
+    const dataIso = dataRotina.toISOString().slice(0, 10);
+    const [{ data: rotinasData }, { data: respCargoData }, { data: respFuncData }] = await Promise.all([
+      supabase.from("rotinas").select("id, texto, grupo, frequencia, dias_semana, dia_mes").eq("ativo", true),
+      supabase.from("rotina_responsaveis_cargo").select("rotina_id, cargo_id"),
+      supabase.from("rotina_responsaveis_funcionario").select("rotina_id, funcionario_id"),
+    ]);
+    const dela = (rotinasData ?? [])
+      .filter(
+        (r) =>
+          (meuCargoIdMembro && (respCargoData ?? []).some((c) => c.rotina_id === r.id && c.cargo_id === meuCargoIdMembro)) ||
+          (respFuncData ?? []).some((rf) => rf.rotina_id === r.id && rf.funcionario_id === id)
+      )
+      .filter((r) => rotinaAplicavelNaData(r, dataRotina));
+
+    const idsRotinas = dela.map((r) => r.id);
+    const { data: execucoes } =
+      idsRotinas.length > 0
+        ? await supabase.from("rotina_execucoes").select("rotina_id").eq("funcionario_id", id).eq("data_referencia", dataIso).in("rotina_id", idsRotinas)
+        : { data: [] };
+    const feitos = new Set((execucoes ?? []).map((e) => e.rotina_id));
+
+    setRotinasDoMembro(dela.map((r) => ({ ...r, concluido: feitos.has(r.id) })));
+    setLoadingRotina(false);
+  }, [id, meuCargoIdMembro, dataRotina]);
+
+  useEffect(() => {
+    if (aba === "rotina" && meuCargoIdMembro !== undefined) carregarRotinaDoMembro();
+  }, [aba, carregarRotinaDoMembro, meuCargoIdMembro]);
+
+  function mudarDiaRotina(delta: number) {
+    setDataRotina((atual) => {
+      const nova = new Date(atual);
+      nova.setDate(nova.getDate() + delta);
+      return nova;
+    });
+  }
+
   const hojeISO = new Date().toISOString().slice(0, 10);
   const concluidas = itens.filter((i) => corDoStatus(i.statusCor) && i.statusCor === "verde");
   const itensAbertos = itens.filter((i) => i.statusCor !== "verde");
@@ -296,6 +362,22 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
   const maiorTempo = Math.max(...tempoPorCliente.map((t) => t.segundos), 1);
 
   const listaFiltrada = filtro === "concluidas" ? concluidas : filtro === "atrasadas" ? atrasadas : itensAbertos;
+
+  const hojeRotinaEhHoje = (() => {
+    const hj = new Date();
+    hj.setHours(0, 0, 0, 0);
+    return dataRotina.getTime() === hj.getTime();
+  })();
+  const gruposRotinaMembro: { grupo: string | null; itens: typeof rotinasDoMembro }[] = [];
+  for (const r of rotinasDoMembro) {
+    let bucket = gruposRotinaMembro.find((g) => g.grupo === r.grupo);
+    if (!bucket) {
+      bucket = { grupo: r.grupo, itens: [] };
+      gruposRotinaMembro.push(bucket);
+    }
+    bucket.itens.push(r);
+  }
+  const tempoPorTarefa = [...itens].filter((i) => i.segundos > 0).sort((a, b) => b.segundos - a.segundos);
 
   if (temAcesso === false) {
     return (
@@ -336,82 +418,143 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
                 {cargoNome && <p className="text-sm text-ink/50">{cargoNome}</p>}
               </div>
             </div>
-
-            <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 shrink-0">
-              <button
-                onClick={() => setPeriodo("semana")}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                  periodo === "semana" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-                }`}
-              >
-                Esta semana
-              </button>
-              <button
-                onClick={() => setPeriodo("mes")}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                  periodo === "mes" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-                }`}
-              >
-                Este mês
-              </button>
-              <button
-                onClick={() => setPeriodo("tudo")}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                  periodo === "tudo" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-                }`}
-              >
-                Tudo
-              </button>
-            </div>
           </div>
 
-          <div className="anim-stagger grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <button
-              onClick={() => setFiltro("abertas")}
-              className={`rounded-2xl p-4 text-left transition-all ${filtro === "abertas" ? "bg-ink text-white" : "bg-card border border-black/5 hover:shadow-sm"}`}
-            >
-              <NumeroAnimado valor={itensAbertos.length} className="block text-2xl font-extrabold" />
-              <p className={`text-xs font-semibold ${filtro === "abertas" ? "text-white/70" : "text-ink/50"}`}>Em aberto</p>
-            </button>
-            <button
-              onClick={() => setFiltro("concluidas")}
-              className={`rounded-2xl p-4 text-left transition-all ${filtro === "concluidas" ? "bg-emerald-600 text-white" : "bg-card border border-black/5 hover:shadow-sm"}`}
-            >
-              <NumeroAnimado valor={concluidas.length} className="block text-2xl font-extrabold" />
-              <p className={`text-xs font-semibold ${filtro === "concluidas" ? "text-white/70" : "text-ink/50"}`}>Concluídas</p>
-            </button>
-            <button
-              onClick={() => setFiltro("atrasadas")}
-              className={`rounded-2xl p-4 text-left transition-all ${filtro === "atrasadas" ? "bg-red-600 text-white" : "bg-card border border-black/5 hover:shadow-sm"}`}
-            >
-              <NumeroAnimado valor={atrasadas.length} className="block text-2xl font-extrabold" />
-              <p className={`text-xs font-semibold ${filtro === "atrasadas" ? "text-white/70" : "text-ink/50"}`}>Atrasadas</p>
-            </button>
-            <div className="rounded-2xl p-4 bg-card border border-black/5">
-              <p className="text-2xl font-extrabold text-ink">{formatarDuracao(tempoTotal)}</p>
-              <p className="text-xs font-semibold text-ink/50">
-                Tempo {periodo === "tudo" ? "total" : periodo === "mes" ? "este mês" : "esta semana"}
-              </p>
-            </div>
+          <div className="flex items-center gap-6 border-b-2 border-black/5 mb-6">
+            {[
+              { chave: "geral" as const, label: "Visão geral" },
+              { chave: "tarefas" as const, label: "Tarefas recentes" },
+              { chave: "tempo" as const, label: "Tempo por cliente e tarefa" },
+              { chave: "rotina" as const, label: "Rotina" },
+            ].map((t) => (
+              <button
+                key={t.chave}
+                onClick={() => setAba(t.chave)}
+                className={`relative pb-2.5 text-sm font-bold transition-colors ${aba === t.chave ? "text-ink" : "text-ink/40 hover:text-ink/70"}`}
+              >
+                {t.label}
+                {aba === t.chave && <span className="absolute left-0 right-0 -bottom-0.5 h-[3px] rounded-full bg-ink" />}
+              </button>
+            ))}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {aba !== "rotina" && (
+            <div className="flex justify-end mb-4">
+              <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 shrink-0">
+                <button
+                  onClick={() => setPeriodo("semana")}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                    periodo === "semana" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                  }`}
+                >
+                  Esta semana
+                </button>
+                <button
+                  onClick={() => setPeriodo("mes")}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                    periodo === "mes" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                  }`}
+                >
+                  Este mês
+                </button>
+                <button
+                  onClick={() => setPeriodo("tudo")}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                    periodo === "tudo" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+                  }`}
+                >
+                  Tudo
+                </button>
+              </div>
+            </div>
+          )}
+
+          {aba === "geral" && (
+            <>
+              <div className="anim-stagger grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                <div className="rounded-2xl p-4 bg-card border border-black/5">
+                  <NumeroAnimado valor={itensAbertos.length} className="block text-2xl font-extrabold text-ink" />
+                  <p className="text-xs font-semibold text-ink/50">Em aberto</p>
+                </div>
+                <div className="rounded-2xl p-4 bg-card border border-black/5">
+                  <NumeroAnimado valor={concluidas.length} className="block text-2xl font-extrabold text-ink" />
+                  <p className="text-xs font-semibold text-ink/50">Concluídas</p>
+                </div>
+                <div className="rounded-2xl p-4 bg-card border border-black/5">
+                  <NumeroAnimado valor={atrasadas.length} className="block text-2xl font-extrabold text-ink" />
+                  <p className="text-xs font-semibold text-ink/50">Atrasadas</p>
+                </div>
+                <div className="rounded-2xl p-4 bg-card border border-black/5">
+                  <p className="text-2xl font-extrabold text-ink">{formatarDuracao(tempoTotal)}</p>
+                  <p className="text-xs font-semibold text-ink/50">
+                    Tempo {periodo === "tudo" ? "total" : periodo === "mes" ? "este mês" : "esta semana"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-3xl bg-card border border-black/5 p-5">
+                <h2 className="text-sm font-bold text-ink mb-3">🕐 Atividade recente</h2>
+                {atividade.length === 0 ? (
+                  <p className="text-xs text-ink/40">Nada por aqui ainda.</p>
+                ) : (
+                  <div className="space-y-2.5 max-h-96 overflow-y-auto">
+                    {atividade.map((a) => (
+                      <button
+                        key={a.id}
+                        onClick={() => router.push(a.link)}
+                        className="w-full flex items-start gap-2 text-left hover:bg-surface rounded-xl px-1.5 py-1 -mx-1.5 transition-colors"
+                      >
+                        <span className="text-sm shrink-0 mt-0.5">{a.tipo === "tarefa" ? "✔️" : "📅"}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="text-xs text-ink block truncate">{a.descricao}</span>
+                          <span className="text-[11px] text-ink/40 block truncate">{a.itemTitulo}</span>
+                        </span>
+                        <span className="text-[10px] text-ink/30 shrink-0">{formatarQuandoRelativo(a.created_at)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {aba === "tarefas" && (
             <div className="rounded-3xl bg-card border border-black/5 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-bold text-ink">
-                  {filtro === "abertas" ? "Tarefas e conteúdos em aberto" : filtro === "concluidas" ? "Concluídas" : "Atrasadas"}
-                </h2>
-                <span className="text-xs text-ink/40">{listaFiltrada.length}</span>
+              <div className="flex items-center gap-2 mb-4">
+                <button
+                  onClick={() => setFiltro("abertas")}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${
+                    filtro === "abertas" ? "bg-ink text-white" : "bg-surface text-ink/50 hover:text-ink"
+                  }`}
+                >
+                  Em aberto · {itensAbertos.length}
+                </button>
+                <button
+                  onClick={() => setFiltro("concluidas")}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${
+                    filtro === "concluidas" ? "bg-emerald-600 text-white" : "bg-surface text-ink/50 hover:text-ink"
+                  }`}
+                >
+                  Concluídas · {concluidas.length}
+                </button>
+                <button
+                  onClick={() => setFiltro("atrasadas")}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${
+                    filtro === "atrasadas" ? "bg-red-600 text-white" : "bg-surface text-ink/50 hover:text-ink"
+                  }`}
+                >
+                  Atrasadas · {atrasadas.length}
+                </button>
               </div>
               {listaFiltrada.length === 0 ? (
                 <p className="text-xs text-ink/40 py-6 text-center">Nada por aqui. 🎉</p>
               ) : (
-                <div className="space-y-1 max-h-96 overflow-y-auto">
+                <div className="space-y-1">
                   {listaFiltrada.map((item) => (
                     <button
                       key={`${item.tipo}-${item.id}`}
                       onClick={() => router.push(item.link)}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-surface transition-colors text-left"
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl hover:bg-surface transition-colors text-left"
                     >
                       <span className="text-sm shrink-0">{item.tipo === "tarefa" ? "✔️" : "📅"}</span>
                       <span className="min-w-0 flex-1">
@@ -431,17 +574,17 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
                 </div>
               )}
             </div>
+          )}
 
-            <div className="space-y-4">
+          {aba === "tempo" && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="rounded-3xl bg-card border border-black/5 p-5">
-                <h2 className="text-sm font-bold text-ink mb-3">
-                  ⏱️ Tempo por cliente {periodo !== "tudo" && <span className="text-ink/40 font-medium">· {periodo === "mes" ? "este mês" : "esta semana"}</span>}
-                </h2>
+                <h2 className="text-sm font-bold text-ink mb-3">⏱️ Tempo por cliente</h2>
                 {tempoPorCliente.length === 0 ? (
                   <p className="text-xs text-ink/40">Nenhum tempo registrado ainda.</p>
                 ) : (
                   <div className="space-y-2.5">
-                    {tempoPorCliente.slice(0, 6).map((t) => (
+                    {tempoPorCliente.map((t) => (
                       <div key={t.clienteNome}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-medium text-ink truncate">{t.clienteNome}</span>
@@ -460,30 +603,92 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
               </div>
 
               <div className="rounded-3xl bg-card border border-black/5 p-5">
-                <h2 className="text-sm font-bold text-ink mb-3">🕐 Atividade recente</h2>
-                {atividade.length === 0 ? (
-                  <p className="text-xs text-ink/40">Nada por aqui ainda.</p>
+                <h2 className="text-sm font-bold text-ink mb-3">📋 Tempo por tarefa</h2>
+                {tempoPorTarefa.length === 0 ? (
+                  <p className="text-xs text-ink/40">Nenhum tempo registrado ainda.</p>
                 ) : (
-                  <div className="space-y-2.5 max-h-72 overflow-y-auto">
-                    {atividade.map((a) => (
+                  <div className="space-y-1 max-h-96 overflow-y-auto">
+                    {tempoPorTarefa.map((item) => (
                       <button
-                        key={a.id}
-                        onClick={() => router.push(a.link)}
-                        className="w-full flex items-start gap-2 text-left hover:bg-surface rounded-xl px-1.5 py-1 -mx-1.5 transition-colors"
+                        key={`${item.tipo}-${item.id}`}
+                        onClick={() => router.push(item.link)}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-surface transition-colors text-left"
                       >
-                        <span className="text-sm shrink-0 mt-0.5">{a.tipo === "tarefa" ? "✔️" : "📅"}</span>
                         <span className="min-w-0 flex-1">
-                          <span className="text-xs text-ink block truncate">{a.descricao}</span>
-                          <span className="text-[11px] text-ink/40 block truncate">{a.itemTitulo}</span>
+                          <span className="block text-sm text-ink truncate">{item.titulo}</span>
+                          {item.clienteNome && <span className="block text-[11px] text-ink/40 truncate">{item.clienteNome}</span>}
                         </span>
-                        <span className="text-[10px] text-ink/30 shrink-0">{formatarQuandoRelativo(a.created_at)}</span>
+                        <span className="text-xs font-bold text-ink/60 shrink-0">{formatarDuracao(item.segundos)}</span>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
             </div>
-          </div>
+          )}
+
+          {aba === "rotina" && (
+            <div>
+              <div className="flex items-center justify-center gap-4 mb-6 rounded-2xl bg-card border border-black/5 py-3">
+                <button onClick={() => mudarDiaRotina(-1)} className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-surface text-ink/50">
+                  ‹
+                </button>
+                <div className="text-center min-w-[140px]">
+                  <p className="text-sm font-bold text-ink">
+                    {hojeRotinaEhHoje ? "Hoje" : dataRotina.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" })}
+                  </p>
+                  {!hojeRotinaEhHoje && <p className="text-[11px] text-ink/40">{dataRotina.toLocaleDateString("pt-BR")}</p>}
+                </div>
+                <button onClick={() => mudarDiaRotina(1)} className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-surface text-ink/50">
+                  ›
+                </button>
+                {!hojeRotinaEhHoje && (
+                  <button
+                    onClick={() => {
+                      const hj = new Date();
+                      hj.setHours(0, 0, 0, 0);
+                      setDataRotina(hj);
+                    }}
+                    className="text-xs font-semibold text-forest hover:text-ink ml-2"
+                  >
+                    Voltar pra hoje
+                  </button>
+                )}
+              </div>
+
+              {loadingRotina ? (
+                <p className="text-sm text-ink/50">Carregando...</p>
+              ) : rotinasDoMembro.length === 0 ? (
+                <div className="rounded-2xl bg-card border border-black/5 p-8 text-center">
+                  <p className="text-sm text-ink/50">Nenhuma tarefa recorrente pra {hojeRotinaEhHoje ? "hoje" : "esse dia"}.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {gruposRotinaMembro.map((bucket) => (
+                    <div key={bucket.grupo ?? "__solto__"} className="rounded-2xl bg-card border border-black/5 p-4">
+                      {bucket.grupo && <p className="text-sm font-bold text-ink mb-2">{bucket.grupo}</p>}
+                      <div className="space-y-1.5">
+                        {bucket.itens.map((item) => (
+                          <div
+                            key={item.id}
+                            className={`flex items-center gap-2.5 rounded-xl px-3 py-2 ${item.concluido ? "bg-mint/40" : "bg-surface/60"}`}
+                          >
+                            <span className={`h-4 w-4 rounded shrink-0 flex items-center justify-center text-[10px] ${item.concluido ? "bg-forest text-white" : "border-2 border-black/15"}`}>
+                              {item.concluido ? "✓" : ""}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className={`block text-sm ${item.concluido ? "text-ink/40 line-through" : "text-ink"}`}>{item.texto}</span>
+                              {!bucket.grupo && <span className="block text-[10px] text-ink/30 mt-0.5">{descreverFrequencia(item)}</span>}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </main>
