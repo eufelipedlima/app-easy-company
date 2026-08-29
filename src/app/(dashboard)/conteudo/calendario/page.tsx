@@ -54,7 +54,7 @@ interface Post {
   hora_publicacao: string | null;
   legenda: string | null;
   objetivo: "atracao" | "educacao" | "conversao" | null;
-  formato: "estatico" | "carrossel" | "video" | null;
+  formato: "estatico" | "carrossel" | "stories" | "video" | null;
   link_video: string | null;
   status_id: string;
   responsavel_id: string | null;
@@ -115,6 +115,7 @@ const OBJETIVO_CONFIG: Record<string, { label: string }> = {
 const FORMATO_CONFIG: Record<string, { label: string }> = {
   estatico: { label: "Estático" },
   carrossel: { label: "Carrossel" },
+  stories: { label: "Stories" },
   video: { label: "Vídeo" },
 };
 

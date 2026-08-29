@@ -100,7 +100,7 @@ const OBJETIVO_CONFIG: Record<string, string> = {
   institucional: "Institucional",
   bastidores: "Bastidores",
 };
-const FORMATO_CONFIG: Record<string, string> = { estatico: "Estático", carrossel: "Carrossel", video: "Vídeo" };
+const FORMATO_CONFIG: Record<string, string> = { estatico: "Estático", carrossel: "Carrossel", stories: "Stories", video: "Vídeo" };
 
 const CORES_AVATAR = [
   "bg-red-400", "bg-orange-400", "bg-amber-500", "bg-lime-500", "bg-emerald-500",

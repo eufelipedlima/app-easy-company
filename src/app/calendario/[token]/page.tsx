@@ -25,7 +25,7 @@ interface Post {
   updated_at: string;
   legenda: string | null;
   objetivo: "atracao" | "educacao" | "conversao" | null;
-  formato: "estatico" | "carrossel" | "video" | null;
+  formato: "estatico" | "carrossel" | "stories" | "video" | null;
   link_video: string | null;
   status_conteudo: { nome: string; cor: string } | null;
   posts_conteudo_midias: Midia[];
@@ -46,6 +46,7 @@ const OBJETIVO_LABEL: Record<string, string> = {
 const FORMATO_LABEL: Record<string, string> = {
   estatico: "Estático",
   carrossel: "Carrossel",
+  stories: "Stories",
   video: "Vídeo",
 };
 
