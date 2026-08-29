@@ -16,7 +16,7 @@ const ABAS = [
   { href: "/configuracoes/redes-sociais", label: "Redes sociais" },
   { href: "/configuracoes/segmentos", label: "Segmentos" },
   { href: "/configuracoes/servicos", label: "Serviços" },
-  { href: "/configuracoes/status-conteudo", label: "Status de conteúdo" },
+  { href: "/configuracoes/status-conteudo", label: "Status" },
   { href: "/configuracoes/grupos-lancamento", label: "Grupos de lançamento" },
   { href: "/configuracoes/doc-categorias", label: "Categorias de Docs" },
 ];

@@ -52,8 +52,8 @@ const SECOES = [
   { href: "/configuracoes/servicos", label: "Serviços", desc: "Serviços vendidos nos contratos", icon: <Wrench size={18} /> },
   {
     href: "/configuracoes/status-conteudo",
-    label: "Status de conteúdo",
-    desc: "Etapas do Calendário de Conteúdo",
+    label: "Status",
+    desc: "Etapas de Tarefas, Projetos e Conteúdo",
     icon: <Calendar size={18} />,
   },
   {

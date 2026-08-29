@@ -97,9 +97,7 @@ export default function StatusConteudoPage() {
 
   return (
     <section>
-      <p className="text-xs text-ink/50 bg-surface rounded-full px-4 py-2 inline-flex items-center gap-1.5 w-fit mb-4">
-        💡 Cada área tem sua própria lista de status, independente das outras — mudar um aqui não afeta os das outras abas.
-      </p>
+      <p className="text-xs text-ink/50 mb-5 max-w-md">Cada área tem sua própria lista — editar uma não muda as outras.</p>
 
       <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 mb-6">
         {AREAS.map((a) => (
