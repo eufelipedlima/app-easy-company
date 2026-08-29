@@ -199,7 +199,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
   const [tarefa, setTarefa] = useState<Tarefa | null>(null);
   const [tituloTarefaMae, setTituloTarefaMae] = useState<string | null>(null);
-  const [itensNav, setItensNav] = useState<{ id: string; titulo: string; status_id: string; eh_pasta: boolean }[]>([]);
+  const [itensNav, setItensNav] = useState<{ id: string; titulo: string; status_id: string; eh_pasta: boolean; tarefa_pai_id: string | null }[]>([]);
   const [tituloNav, setTituloNav] = useState<string | null>(null);
   const [idPaiNav, setIdPaiNav] = useState<string | null>(null);
   const [railColapsado, setRailColapsado] = useState(false);
@@ -361,24 +361,12 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
         setTituloTarefaMae(pai?.titulo ?? null);
         setTituloNav(pai?.titulo ?? null);
         setIdPaiNav(t.tarefa_pai_id);
-        const { data: irmaos } = await supabase
-          .from("tarefas")
-          .select("id, titulo, status_id, eh_pasta")
-          .eq("tarefa_pai_id", t.tarefa_pai_id)
-          .is("excluido_em", null)
-          .order("ordem");
-        setItensNav(irmaos ?? []);
+        setItensNav(await buscarSubarvoreCompleta(supabase, t.tarefa_pai_id));
       } else {
         setTituloTarefaMae(null);
         setTituloNav(t.titulo);
         setIdPaiNav(t.id);
-        const { data: filhos } = await supabase
-          .from("tarefas")
-          .select("id, titulo, status_id, eh_pasta")
-          .eq("tarefa_pai_id", t.id)
-          .is("excluido_em", null)
-          .order("ordem");
-        setItensNav(filhos ?? []);
+        setItensNav(await buscarSubarvoreCompleta(supabase, t.id));
       }
     }
     setLoading(false);
@@ -1033,7 +1021,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                   </button>
                 )}
                 <div className="space-y-0.5">
-                  {itensNav.map((item) => {
+                  {achatarNavSubtarefas(itensNav, idPaiNav ?? "").map(({ item, nivel }) => {
                     const st = statusList.find((s) => s.id === item.status_id);
                     const ativo = item.id === id;
                     return (
@@ -1041,12 +1029,13 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                         key={item.id}
                         onClick={() => !item.eh_pasta && router.push(`/tarefas/${item.id}`)}
                         disabled={item.eh_pasta}
+                        style={{ marginLeft: nivel * 14 }}
                         className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors ${
                           ativo ? "bg-mint text-forest font-bold" : item.eh_pasta ? "text-ink/40 cursor-default" : "text-ink/70 hover:bg-surface"
                         }`}
                       >
                         {item.eh_pasta ? (
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-violet-500">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-amber-500">
                             <path d="M3 6a2 2 0 0 1 2-2h4.5l2 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" />
                           </svg>
                         ) : (
@@ -1410,22 +1399,23 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                       }
                     }}
                     className="input py-1.5 text-sm"
-                    placeholder="Nome da subtarefa..."
+                    placeholder="Nome da nova tarefa ou pasta..."
                   />
                   <button
                     onClick={() => adicionarSubtarefa(id)}
-                    disabled={criandoSubtarefa}
-                    className="shrink-0 text-sm font-semibold text-forest hover:text-ink disabled:opacity-50"
+                    disabled={criandoSubtarefa || !novaSubtarefa.trim()}
+                    title="Cria uma subtarefa comum com esse nome"
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-forest text-white px-3.5 py-1.5 text-xs font-bold hover:brightness-110 transition disabled:opacity-40"
                   >
-                    Adicionar
+                    + Adicionar tarefa
                   </button>
                   <button
-                    onClick={() => adicionarSubtarefa(id, "Nova pasta", true)}
-                    disabled={criandoSubtarefa}
-                    className="shrink-0 text-sm font-semibold text-violet-600 hover:text-violet-800 disabled:opacity-50"
-                    title="Cria uma subtarefa que pode agrupar outras dentro dela"
+                    onClick={() => adicionarSubtarefa(id, novaSubtarefa || "Nova pasta", true)}
+                    disabled={criandoSubtarefa || !novaSubtarefa.trim()}
+                    title="Cria uma pasta com esse nome, pra agrupar outras tarefas dentro dela"
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-amber-100 text-amber-800 px-3.5 py-1.5 text-xs font-bold hover:bg-amber-200 transition disabled:opacity-40"
                   >
-                    📁 Pasta
+                    📁 Adicionar pasta
                   </button>
                 </div>
               </div>
@@ -1715,6 +1705,52 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   );
 }
 
+// Busca a árvore inteira de subtarefas embaixo de uma raiz, descendo em
+// qualquer nível de pasta — usada na barra lateral de navegação, que
+// antes só buscava um nível e por isso não mostrava o que tinha dentro
+// de uma pasta. Busca nível por nível (evita depender de função de banco
+// pra isso).
+async function buscarSubarvoreCompleta(
+  supabase: ReturnType<typeof createClient>,
+  raizId: string
+): Promise<{ id: string; titulo: string; status_id: string; eh_pasta: boolean; tarefa_pai_id: string | null }[]> {
+  let todos: { id: string; titulo: string; status_id: string; eh_pasta: boolean; tarefa_pai_id: string | null }[] = [];
+  let fronteira = [raizId];
+  let seguranca = 0;
+  while (fronteira.length > 0 && seguranca < 12) {
+    seguranca++;
+    const { data } = await supabase
+      .from("tarefas")
+      .select("id, titulo, status_id, eh_pasta, tarefa_pai_id")
+      .in("tarefa_pai_id", fronteira)
+      .is("excluido_em", null)
+      .order("ordem");
+    const novos = data ?? [];
+    if (novos.length === 0) break;
+    todos = todos.concat(novos);
+    fronteira = novos.map((n) => n.id);
+  }
+  return todos;
+}
+
+// Achata a árvore da barra lateral (que já vem com todos os níveis,
+// graças à busca completa acima) numa lista simples com a indentação de
+// cada item — assim uma subtarefa dentro de uma pasta aparece logo
+// abaixo dela, ligeiramente recuada.
+function achatarNavSubtarefas(
+  itens: { id: string; titulo: string; status_id: string; eh_pasta: boolean; tarefa_pai_id: string | null }[],
+  paiId: string,
+  nivel = 0
+): { item: (typeof itens)[number]; nivel: number }[] {
+  const filhos = itens.filter((i) => i.tarefa_pai_id === paiId);
+  let resultado: { item: (typeof itens)[number]; nivel: number }[] = [];
+  for (const filho of filhos) {
+    resultado.push({ item: filho, nivel });
+    resultado = resultado.concat(achatarNavSubtarefas(itens, filho.id, nivel + 1));
+  }
+  return resultado;
+}
+
 function construirArvoreSubtarefas(lista: Subtarefa[], raizId: string): SubtarefaNode[] {
   const mapa = new Map<string, SubtarefaNode>();
   lista.forEach((s) => mapa.set(s.id, { ...s, filhos: [] }));
@@ -1869,7 +1905,7 @@ function NoSubtarefa({
               if (!nomeFilho.trim()) setCriandoFilho(false);
             }}
             className="input py-1 text-xs flex-1 bg-white"
-            placeholder="Nome da subtarefa..."
+            placeholder="Nome da nova tarefa ou pasta..."
           />
           <button
             onClick={() => {
@@ -1877,9 +1913,11 @@ function NoSubtarefa({
               setNomeFilho("");
               setCriandoFilho(false);
             }}
-            className="shrink-0 rounded-full bg-forest text-white px-2.5 py-1 text-[11px] font-bold hover:brightness-110 transition"
+            disabled={!nomeFilho.trim()}
+            title="Cria uma subtarefa comum com esse nome, dentro dessa pasta"
+            className="shrink-0 rounded-full bg-forest text-white px-2.5 py-1 text-[11px] font-bold hover:brightness-110 transition disabled:opacity-40"
           >
-            + Subtarefa
+            + Adicionar tarefa
           </button>
           <button
             onClick={() => {
@@ -1887,10 +1925,11 @@ function NoSubtarefa({
               setNomeFilho("");
               setCriandoFilho(false);
             }}
-            className="shrink-0 rounded-full bg-violet-600 text-white px-2.5 py-1 text-[11px] font-bold hover:brightness-110 transition"
-            title="Criar como pasta"
+            disabled={!nomeFilho.trim()}
+            className="shrink-0 rounded-full bg-amber-100 text-amber-800 px-2.5 py-1 text-[11px] font-bold hover:bg-amber-200 transition disabled:opacity-40"
+            title="Cria uma pasta com esse nome, dentro dessa pasta"
           >
-            📁 Pasta
+            📁 Adicionar pasta
           </button>
         </div>
       )}
