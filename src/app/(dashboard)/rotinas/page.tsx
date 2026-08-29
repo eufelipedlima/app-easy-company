@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Settings2, Plus, X, GripVertical, Trash2 } from "lucide-react";
+import { Settings2, Plus, X, Trash2 } from "lucide-react";
 
 const DIAS_SEMANA_LABEL = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const CORES_AVATAR = [
@@ -35,9 +35,9 @@ function Avatar({ nome, fotoUrl, tamanho = 28 }: { nome: string; fotoUrl?: strin
 }
 
 // ============================================================
-// A lógica central: "essa rotina vale nesse dia?"
+// A lógica central: "essa tarefa vale nesse dia?"
 // ============================================================
-function rotinaAplicavelNaData(rotina: { frequencia: string; dias_semana: number[] | null; dia_mes: number | null }, data: Date): boolean {
+export function rotinaAplicavelNaData(rotina: { frequencia: string; dias_semana: number[] | null; dia_mes: number | null }, data: Date): boolean {
   if (rotina.frequencia === "diaria") return true;
   if (rotina.frequencia === "semanal") return (rotina.dias_semana ?? []).includes(data.getDay());
   if (rotina.frequencia === "mensal") {
@@ -48,9 +48,8 @@ function rotinaAplicavelNaData(rotina: { frequencia: string; dias_semana: number
 }
 
 // Rotina mensal "dia 5" — se cair num sábado ou domingo, empurra pra
-// sexta-feira anterior automaticamente (ninguém costuma estar
-// trabalhando no fim de semana).
-function calcularDiaEfetivoMensal(ano: number, mes: number, diaAlvo: number): number {
+// sexta-feira anterior automaticamente.
+export function calcularDiaEfetivoMensal(ano: number, mes: number, diaAlvo: number): number {
   const ultimoDiaDoMes = new Date(ano, mes + 1, 0).getDate();
   const data = new Date(ano, mes, Math.min(diaAlvo, ultimoDiaDoMes));
   const diaSemana = data.getDay();
@@ -66,25 +65,19 @@ function descreverFrequencia(rotina: { frequencia: string; dias_semana: number[]
   return "";
 }
 
-interface RotinaItem {
+interface Rotina {
   id: string;
   texto: string;
   descricao: string | null;
-  ordem: number;
-  concluidoHoje?: boolean;
-}
-interface Rotina {
-  id: string;
-  nome: string;
-  descricao: string | null;
+  grupo: string | null;
   frequencia: string;
   dias_semana: number[] | null;
   dia_mes: number | null;
   ativo: boolean;
   ordem: number;
-  itens: RotinaItem[];
   cargoIds: string[];
   funcionarioIds: string[];
+  concluidoHoje?: boolean;
 }
 interface Opcao {
   id: string;
@@ -129,7 +122,6 @@ export default function RotinasPage() {
   const ehHoje = dataSelecionada.getTime() === hoje.getTime();
   const dataRefIso = dataSelecionada.toISOString().slice(0, 10);
 
-  // ---------------- Carregamento base (usuário, cargos, funcionários) ----------------
   useEffect(() => {
     async function carregar() {
       const supabase = createClient();
@@ -140,7 +132,7 @@ export default function RotinasPage() {
 
       const { data: func } = await supabase
         .from("funcionarios")
-        .select("id, cargo_id, papeis ( pessoas ( nome ) ), perfis_acesso ( nome )")
+        .select("id, cargo_id, perfis_acesso ( nome )")
         .eq("auth_user_id", user.id)
         .maybeSingle();
       const f = func as unknown as { id: string; cargo_id: string | null; perfis_acesso: { nome: string } | null } | null;
@@ -166,24 +158,20 @@ export default function RotinasPage() {
     carregar();
   }, []);
 
-  // ---------------- Busca todas as rotinas ativas + itens + responsáveis ----------------
   const buscarRotinasCompletas = useCallback(async (): Promise<Rotina[]> => {
     const supabase = createClient();
-    const [{ data: rotinasData }, { data: itensData }, { data: respCargoData }, { data: respFuncData }] = await Promise.all([
-      supabase.from("rotinas").select("id, nome, descricao, frequencia, dias_semana, dia_mes, ativo, ordem").order("ordem"),
-      supabase.from("rotina_itens").select("id, rotina_id, texto, descricao, ordem").order("ordem"),
+    const [{ data: rotinasData }, { data: respCargoData }, { data: respFuncData }] = await Promise.all([
+      supabase.from("rotinas").select("id, texto, descricao, grupo, frequencia, dias_semana, dia_mes, ativo, ordem").order("ordem"),
       supabase.from("rotina_responsaveis_cargo").select("rotina_id, cargo_id"),
       supabase.from("rotina_responsaveis_funcionario").select("rotina_id, funcionario_id"),
     ]);
     return (rotinasData ?? []).map((r) => ({
       ...r,
-      itens: (itensData ?? []).filter((i) => i.rotina_id === r.id).map((i) => ({ id: i.id, texto: i.texto, descricao: i.descricao, ordem: i.ordem })),
       cargoIds: (respCargoData ?? []).filter((c) => c.rotina_id === r.id).map((c) => c.cargo_id),
       funcionarioIds: (respFuncData ?? []).filter((f) => f.rotina_id === r.id).map((f) => f.funcionario_id),
     }));
   }, []);
 
-  // ---------------- Carrega as rotinas do dia selecionado, pra mim ----------------
   const carregarRotinasDoDia = useCallback(async () => {
     if (!meuFuncionarioId) return;
     setLoadingDia(true);
@@ -196,18 +184,15 @@ export default function RotinasPage() {
       .filter((r) => rotinaAplicavelNaData(r, dataSelecionada));
 
     if (minhas.length > 0) {
-      const idsItens = minhas.flatMap((r) => r.itens.map((i) => i.id));
-      const { data: execucoes } =
-        idsItens.length > 0
-          ? await supabase
-              .from("rotina_execucoes")
-              .select("rotina_item_id")
-              .eq("funcionario_id", meuFuncionarioId)
-              .eq("data_referencia", dataRefIso)
-              .in("rotina_item_id", idsItens)
-          : { data: [] };
-      const feitos = new Set((execucoes ?? []).map((e) => e.rotina_item_id));
-      minhas.forEach((r) => r.itens.forEach((i) => (i.concluidoHoje = feitos.has(i.id))));
+      const ids = minhas.map((r) => r.id);
+      const { data: execucoes } = await supabase
+        .from("rotina_execucoes")
+        .select("rotina_id")
+        .eq("funcionario_id", meuFuncionarioId)
+        .eq("data_referencia", dataRefIso)
+        .in("rotina_id", ids);
+      const feitos = new Set((execucoes ?? []).map((e) => e.rotina_id));
+      minhas.forEach((r) => (r.concluidoHoje = feitos.has(r.id)));
     }
 
     setRotinasDoDia(minhas);
@@ -218,20 +203,15 @@ export default function RotinasPage() {
     if (meuFuncionarioId) carregarRotinasDoDia();
   }, [meuFuncionarioId, carregarRotinasDoDia]);
 
-  async function toggleItem(itemId: string, marcado: boolean) {
+  async function toggleRotina(rotinaId: string, marcado: boolean) {
     if (!ehHoje || !meuFuncionarioId) return;
     const supabase = createClient();
     if (marcado) {
-      await supabase.from("rotina_execucoes").insert({ rotina_item_id: itemId, funcionario_id: meuFuncionarioId, data_referencia: dataRefIso });
+      await supabase.from("rotina_execucoes").insert({ rotina_id: rotinaId, funcionario_id: meuFuncionarioId, data_referencia: dataRefIso });
     } else {
-      await supabase
-        .from("rotina_execucoes")
-        .delete()
-        .eq("rotina_item_id", itemId)
-        .eq("funcionario_id", meuFuncionarioId)
-        .eq("data_referencia", dataRefIso);
+      await supabase.from("rotina_execucoes").delete().eq("rotina_id", rotinaId).eq("funcionario_id", meuFuncionarioId).eq("data_referencia", dataRefIso);
     }
-    setRotinasDoDia((atual) => atual.map((r) => ({ ...r, itens: r.itens.map((i) => (i.id === itemId ? { ...i, concluidoHoje: marcado } : i)) })));
+    setRotinasDoDia((atual) => atual.map((r) => (r.id === rotinaId ? { ...r, concluidoHoje: marcado } : r)));
   }
 
   function mudarDia(delta: number) {
@@ -242,7 +222,6 @@ export default function RotinasPage() {
     });
   }
 
-  // ---------------- Painel de administração ----------------
   async function abrirPainelAdmin() {
     setPainelAdminAberto(true);
     setLoadingAdmin(true);
@@ -250,8 +229,8 @@ export default function RotinasPage() {
     setLoadingAdmin(false);
   }
 
-  async function excluirRotina(id: string, nome: string) {
-    if (!window.confirm(`Excluir a rotina "${nome}"? Isso remove os itens e o histórico de conclusões dela.`)) return;
+  async function excluirRotina(id: string, texto: string) {
+    if (!window.confirm(`Excluir a tarefa "${texto}"? Isso remove o histórico de conclusões dela.`)) return;
     const supabase = createClient();
     await supabase.from("rotinas").delete().eq("id", id);
     setTodasRotinas(await buscarRotinasCompletas());
@@ -265,8 +244,20 @@ export default function RotinasPage() {
     carregarRotinasDoDia();
   }
 
-  const totalItens = rotinasDoDia.reduce((s, r) => s + r.itens.length, 0);
-  const totalFeitos = rotinasDoDia.reduce((s, r) => s + r.itens.filter((i) => i.concluidoHoje).length, 0);
+  // Agrupa as tarefas do dia pelo campo "grupo" — quem não tem grupo
+  // aparece solto, sem forçar nenhuma organização.
+  const gruposDoDia: { grupo: string | null; itens: Rotina[] }[] = [];
+  for (const r of rotinasDoDia) {
+    let bucket = gruposDoDia.find((g) => g.grupo === r.grupo);
+    if (!bucket) {
+      bucket = { grupo: r.grupo, itens: [] };
+      gruposDoDia.push(bucket);
+    }
+    bucket.itens.push(r);
+  }
+
+  const totalItens = rotinasDoDia.length;
+  const totalFeitos = rotinasDoDia.filter((r) => r.concluidoHoje).length;
 
   if (carregandoBase) {
     return (
@@ -337,19 +328,15 @@ export default function RotinasPage() {
         <p className="text-sm text-ink/50">Carregando...</p>
       ) : rotinasDoDia.length === 0 ? (
         <div className="rounded-2xl bg-card border border-black/5 p-8 text-center">
-          <p className="text-sm text-ink/50">Nenhuma rotina pra {ehHoje ? "hoje" : "esse dia"}.</p>
+          <p className="text-sm text-ink/50">Nenhuma tarefa pra {ehHoje ? "hoje" : "esse dia"}.</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {rotinasDoDia.map((rotina) => (
-            <div key={rotina.id} className="rounded-2xl bg-card border border-black/5 p-4">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-bold text-ink">{rotina.nome}</p>
-                <span className="text-[10px] font-semibold text-ink/40 bg-surface rounded-full px-2 py-0.5">{descreverFrequencia(rotina)}</span>
-              </div>
-              {rotina.descricao && <p className="text-xs text-ink/50 mb-3">{rotina.descricao}</p>}
+          {gruposDoDia.map((bucket) => (
+            <div key={bucket.grupo ?? "__solto__"} className="rounded-2xl bg-card border border-black/5 p-4">
+              {bucket.grupo && <p className="text-sm font-bold text-ink mb-2">{bucket.grupo}</p>}
               <div className="space-y-1.5">
-                {rotina.itens.map((item) => (
+                {bucket.itens.map((item) => (
                   <label
                     key={item.id}
                     className={`flex items-start gap-2.5 rounded-xl px-3 py-2 transition-colors ${
@@ -360,12 +347,13 @@ export default function RotinasPage() {
                       type="checkbox"
                       checked={!!item.concluidoHoje}
                       disabled={!ehHoje}
-                      onChange={(e) => toggleItem(item.id, e.target.checked)}
+                      onChange={(e) => toggleRotina(item.id, e.target.checked)}
                       className="h-4 w-4 rounded accent-forest mt-0.5 shrink-0 disabled:opacity-50"
                     />
                     <span className="flex-1 min-w-0">
                       <span className={`block text-sm ${item.concluidoHoje ? "text-ink/40 line-through" : "text-ink"}`}>{item.texto}</span>
                       {item.descricao && <span className="block text-xs text-ink/40 mt-0.5">{item.descricao}</span>}
+                      {!bucket.grupo && <span className="block text-[10px] text-ink/30 mt-0.5">{descreverFrequencia(item)}</span>}
                     </span>
                   </label>
                 ))}
@@ -399,6 +387,7 @@ export default function RotinasPage() {
         <ModalRotina
           rotinaId={rotinaEditandoId}
           rotinaExistente={todasRotinas.find((r) => r.id === rotinaEditandoId) ?? null}
+          gruposExistentes={Array.from(new Set(todasRotinas.map((r) => r.grupo).filter(Boolean))) as string[]}
           cargos={cargos}
           funcionarios={funcionarios}
           onClose={() => setModalAberto(false)}
@@ -414,7 +403,7 @@ export default function RotinasPage() {
 }
 
 // ============================================================
-// Painel de administração — lista todas as rotinas cadastradas
+// Painel de administração — lista todas as tarefas recorrentes
 // ============================================================
 function PainelAdminRotinas({
   rotinas,
@@ -434,18 +423,15 @@ function PainelAdminRotinas({
   onClose: () => void;
   onNovaRotina: () => void;
   onEditarRotina: (id: string) => void;
-  onExcluirRotina: (id: string, nome: string) => void;
+  onExcluirRotina: (id: string, texto: string) => void;
   onAlternarAtivo: (rotina: Rotina) => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/30 flex items-start justify-center p-4 overflow-y-auto anim-entrada" onClick={onClose}>
-      <div
-        className="w-full max-w-2xl rounded-3xl bg-white shadow-2xl mt-10 mb-10"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="w-full max-w-2xl rounded-3xl bg-white shadow-2xl mt-10 mb-10" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-5 border-b border-black/5">
           <div>
-            <h2 className="text-lg font-bold text-ink">Gerenciar rotinas</h2>
+            <h2 className="text-lg font-bold text-ink">Gerenciar tarefas recorrentes</h2>
             <p className="text-xs text-ink/50">Só administradores veem essa área.</p>
           </div>
           <div className="flex items-center gap-2">
@@ -453,7 +439,7 @@ function PainelAdminRotinas({
               onClick={onNovaRotina}
               className="rounded-full bg-ink text-white px-4 py-2 text-sm font-semibold hover:bg-forest transition-colors flex items-center gap-1.5"
             >
-              <Plus size={15} /> Nova rotina
+              <Plus size={15} /> Nova tarefa
             </button>
             <button onClick={onClose} className="h-9 w-9 rounded-full flex items-center justify-center text-ink/40 hover:bg-surface hover:text-ink">
               <X size={18} />
@@ -465,7 +451,7 @@ function PainelAdminRotinas({
           {loading ? (
             <p className="text-sm text-ink/50 p-4">Carregando...</p>
           ) : rotinas.length === 0 ? (
-            <p className="text-sm text-ink/50 p-4">Nenhuma rotina cadastrada ainda.</p>
+            <p className="text-sm text-ink/50 p-4">Nenhuma tarefa recorrente cadastrada ainda.</p>
           ) : (
             <div className="space-y-2">
               {rotinas.map((r) => {
@@ -475,10 +461,11 @@ function PainelAdminRotinas({
                   <div key={r.id} className={`rounded-2xl border border-black/5 p-4 ${r.ativo ? "bg-card" : "bg-surface/50 opacity-60"}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-sm font-bold text-ink truncate">{r.nome}</p>
-                        <p className="text-xs text-ink/40 mt-0.5">
-                          {descreverFrequencia(r)} · {r.itens.length} {r.itens.length === 1 ? "item" : "itens"}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          {r.grupo && <span className="text-[10px] font-bold bg-surface text-ink/50 rounded-full px-2 py-0.5 shrink-0">{r.grupo}</span>}
+                          <p className="text-sm font-bold text-ink truncate">{r.texto}</p>
+                        </div>
+                        <p className="text-xs text-ink/40 mt-0.5">{descreverFrequencia(r)}</p>
                         {(nomesCargos.length > 0 || nomesFuncionarios.length > 0) && (
                           <div className="flex flex-wrap gap-1 mt-2">
                             {nomesCargos.map((n) => (
@@ -501,14 +488,11 @@ function PainelAdminRotinas({
                         >
                           {r.ativo ? "Ativa" : "Pausada"}
                         </button>
-                        <button
-                          onClick={() => onEditarRotina(r.id)}
-                          className="text-xs font-semibold text-ink/50 hover:text-ink px-2 py-1"
-                        >
+                        <button onClick={() => onEditarRotina(r.id)} className="text-xs font-semibold text-ink/50 hover:text-ink px-2 py-1">
                           Editar
                         </button>
                         <button
-                          onClick={() => onExcluirRotina(r.id, r.nome)}
+                          onClick={() => onExcluirRotina(r.id, r.texto)}
                           className="h-7 w-7 rounded-full flex items-center justify-center text-ink/30 hover:text-red-600 hover:bg-red-50"
                         >
                           <Trash2 size={14} />
@@ -527,17 +511,12 @@ function PainelAdminRotinas({
 }
 
 // ============================================================
-// Modal de criar/editar rotina
+// Modal de criar/editar uma tarefa recorrente
 // ============================================================
-interface ItemEmEdicao {
-  id: string; // id real (se já existe) ou um id temporário (se novo)
-  texto: string;
-  descricao: string;
-}
-
 function ModalRotina({
   rotinaId,
   rotinaExistente,
+  gruposExistentes,
   cargos,
   funcionarios,
   onClose,
@@ -545,24 +524,22 @@ function ModalRotina({
 }: {
   rotinaId: string | null;
   rotinaExistente: Rotina | null;
+  gruposExistentes: string[];
   cargos: Opcao[];
   funcionarios: FuncionarioOpcao[];
   onClose: () => void;
   onSalvo: () => void;
 }) {
-  const [nome, setNome] = useState(rotinaExistente?.nome ?? "");
+  const [texto, setTexto] = useState(rotinaExistente?.texto ?? "");
   const [descricao, setDescricao] = useState(rotinaExistente?.descricao ?? "");
+  const [grupo, setGrupo] = useState(rotinaExistente?.grupo ?? "");
   const [frequencia, setFrequencia] = useState(rotinaExistente?.frequencia ?? "diaria");
   const [diasSemana, setDiasSemana] = useState<Set<number>>(new Set(rotinaExistente?.dias_semana ?? []));
   const [diaMes, setDiaMes] = useState(rotinaExistente?.dia_mes ? String(rotinaExistente.dia_mes) : "");
-  const [itens, setItens] = useState<ItemEmEdicao[]>(
-    rotinaExistente?.itens.map((i) => ({ id: i.id, texto: i.texto, descricao: i.descricao ?? "" })) ?? []
-  );
   const [cargosSelecionados, setCargosSelecionados] = useState<Set<string>>(new Set(rotinaExistente?.cargoIds ?? []));
   const [funcionariosSelecionados, setFuncionariosSelecionados] = useState<Set<string>>(new Set(rotinaExistente?.funcionarioIds ?? []));
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const indiceArrastado = useRef<number | null>(null);
 
   function alternarConjunto<T>(set: Set<T>, valor: T, setter: (novo: Set<T>) => void) {
     const novo = new Set(set);
@@ -571,34 +548,10 @@ function ModalRotina({
     setter(novo);
   }
 
-  function adicionarItem() {
-    setItens((atual) => [...atual, { id: `novo-${Date.now()}-${Math.random()}`, texto: "", descricao: "" }]);
-  }
-  function removerItem(id: string) {
-    setItens((atual) => atual.filter((i) => i.id !== id));
-  }
-  function mudarItem(id: string, campo: "texto" | "descricao", valor: string) {
-    setItens((atual) => atual.map((i) => (i.id === id ? { ...i, [campo]: valor } : i)));
-  }
-  function onDragStartItem(index: number) {
-    indiceArrastado.current = index;
-  }
-  function onDragOverItem(e: React.DragEvent, index: number) {
-    e.preventDefault();
-    if (indiceArrastado.current === null || indiceArrastado.current === index) return;
-    setItens((atual) => {
-      const novo = [...atual];
-      const [movido] = novo.splice(indiceArrastado.current!, 1);
-      novo.splice(index, 0, movido);
-      indiceArrastado.current = index;
-      return novo;
-    });
-  }
-
   async function salvar() {
     setErro(null);
-    if (!nome.trim()) {
-      setErro("Escreve um nome pra rotina.");
+    if (!texto.trim()) {
+      setErro("Escreve o nome da tarefa.");
       return;
     }
     if (frequencia === "semanal" && diasSemana.size === 0) {
@@ -609,11 +562,6 @@ function ModalRotina({
       setErro("Escolhe o dia do mês.");
       return;
     }
-    const itensValidos = itens.filter((i) => i.texto.trim());
-    if (itensValidos.length === 0) {
-      setErro("Adiciona pelo menos 1 item no checklist.");
-      return;
-    }
     if (cargosSelecionados.size === 0 && funcionariosSelecionados.size === 0) {
       setErro("Escolhe pelo menos um cargo ou uma pessoa responsável.");
       return;
@@ -622,8 +570,9 @@ function ModalRotina({
     setSalvando(true);
     const supabase = createClient();
     const dadosRotina = {
-      nome: nome.trim(),
+      texto: texto.trim(),
       descricao: descricao.trim() || null,
+      grupo: grupo.trim() || null,
       frequencia,
       dias_semana: frequencia === "semanal" ? Array.from(diasSemana) : null,
       dia_mes: frequencia === "mensal" ? Number(diaMes) : null,
@@ -632,24 +581,18 @@ function ModalRotina({
     let idRotina = rotinaId;
     if (idRotina) {
       await supabase.from("rotinas").update(dadosRotina).eq("id", idRotina);
-      // Estratégia simples: substitui tudo (itens e responsáveis) em vez
-      // de tentar calcular a diferença — mais fácil de manter certo.
-      await supabase.from("rotina_itens").delete().eq("rotina_id", idRotina);
       await supabase.from("rotina_responsaveis_cargo").delete().eq("rotina_id", idRotina);
       await supabase.from("rotina_responsaveis_funcionario").delete().eq("rotina_id", idRotina);
     } else {
       const { data: nova, error } = await supabase.from("rotinas").insert(dadosRotina).select("id").single();
       if (error || !nova) {
-        setErro("Erro ao criar a rotina: " + (error?.message ?? ""));
+        setErro("Erro ao criar: " + (error?.message ?? ""));
         setSalvando(false);
         return;
       }
       idRotina = nova.id;
     }
 
-    await supabase.from("rotina_itens").insert(
-      itensValidos.map((i, idx) => ({ rotina_id: idRotina, texto: i.texto.trim(), descricao: i.descricao.trim() || null, ordem: idx }))
-    );
     if (cargosSelecionados.size > 0) {
       await supabase.from("rotina_responsaveis_cargo").insert(Array.from(cargosSelecionados).map((cid) => ({ rotina_id: idRotina, cargo_id: cid })));
     }
@@ -665,9 +608,9 @@ function ModalRotina({
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/30 flex items-start justify-center p-4 overflow-y-auto anim-entrada" onClick={onClose}>
-      <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl mt-10 mb-10 p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl mt-10 mb-10 p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-ink">{rotinaId ? "Editar rotina" : "Nova rotina"}</h2>
+          <h2 className="text-lg font-bold text-ink">{rotinaId ? "Editar tarefa" : "Nova tarefa recorrente"}</h2>
           <button onClick={onClose} className="h-8 w-8 rounded-full flex items-center justify-center text-ink/40 hover:bg-surface hover:text-ink">
             <X size={17} />
           </button>
@@ -675,13 +618,31 @@ function ModalRotina({
 
         <div className="space-y-4">
           <label className="block">
-            <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">Nome</span>
-            <input value={nome} onChange={(e) => setNome(e.target.value)} className="input" placeholder="Ex: Abertura da loja" />
+            <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">Nome da tarefa</span>
+            <input value={texto} onChange={(e) => setTexto(e.target.value)} className="input" placeholder="Ex: Ligar as luzes da loja" />
           </label>
 
           <label className="block">
-            <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">Descrição (opcional)</span>
-            <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="input" placeholder="Detalhe curto sobre essa rotina" />
+            <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">Detalhe (opcional)</span>
+            <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="input" placeholder="Instrução mais longa, se precisar" />
+          </label>
+
+          <label className="block">
+            <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">
+              Grupo (opcional) <span className="normal-case font-normal text-ink/30">— só pra juntar visualmente com outras tarefas parecidas</span>
+            </span>
+            <input
+              value={grupo}
+              onChange={(e) => setGrupo(e.target.value)}
+              className="input"
+              placeholder="Ex: Abertura da loja"
+              list="grupos-rotina"
+            />
+            <datalist id="grupos-rotina">
+              {gruposExistentes.map((g) => (
+                <option key={g} value={g} />
+              ))}
+            </datalist>
           </label>
 
           <label className="block">
@@ -716,67 +677,14 @@ function ModalRotina({
           {frequencia === "mensal" && (
             <label className="block">
               <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">Dia do mês</span>
-              <input
-                type="number"
-                min={1}
-                max={31}
-                value={diaMes}
-                onChange={(e) => setDiaMes(e.target.value)}
-                className="input"
-                placeholder="Ex: 5"
-              />
+              <input type="number" min={1} max={31} value={diaMes} onChange={(e) => setDiaMes(e.target.value)} className="input" placeholder="Ex: 5" />
               <span className="block text-xs text-ink/40 mt-1">Se cair num sábado ou domingo, passa pra sexta-feira anterior automaticamente.</span>
             </label>
           )}
 
           <div>
-            <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Checklist</span>
-            <div className="space-y-1.5">
-              {itens.map((item, index) => (
-                <div
-                  key={item.id}
-                  draggable
-                  onDragStart={() => onDragStartItem(index)}
-                  onDragOver={(e) => onDragOverItem(e, index)}
-                  className="flex items-start gap-2 rounded-xl bg-surface p-2"
-                >
-                  <span className="cursor-grab active:cursor-grabbing text-ink/30 mt-2 shrink-0">
-                    <GripVertical size={14} />
-                  </span>
-                  <div className="flex-1 space-y-1">
-                    <input
-                      value={item.texto}
-                      onChange={(e) => mudarItem(item.id, "texto", e.target.value)}
-                      className="input py-1.5 text-sm bg-white"
-                      placeholder="Nome do item..."
-                    />
-                    <input
-                      value={item.descricao}
-                      onChange={(e) => mudarItem(item.id, "descricao", e.target.value)}
-                      className="input py-1 text-xs bg-white"
-                      placeholder="Instrução opcional..."
-                    />
-                  </div>
-                  <button
-                    onClick={() => removerItem(item.id)}
-                    className="h-7 w-7 rounded-full flex items-center justify-center text-ink/30 hover:text-red-600 hover:bg-red-50 mt-1 shrink-0"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <button
-              onClick={adicionarItem}
-              className="mt-2 text-xs font-semibold text-forest hover:text-ink flex items-center gap-1"
-            >
-              <Plus size={13} /> Adicionar item
-            </button>
-          </div>
-
-          <div>
             <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">
-              Cargos responsáveis <span className="normal-case font-normal text-ink/30">— todo mundo com esse cargo vê essa rotina</span>
+              Cargos responsáveis <span className="normal-case font-normal text-ink/30">— todo mundo com esse cargo vê essa tarefa</span>
             </span>
             <div className="flex flex-wrap gap-1.5">
               {cargos.map((c) => (
@@ -802,13 +710,7 @@ function ModalRotina({
               {funcionarios.map((f) => {
                 const marcado = funcionariosSelecionados.has(f.id);
                 return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => alternarConjunto(funcionariosSelecionados, f.id, setFuncionariosSelecionados)}
-                    className="relative"
-                    title={f.nome}
-                  >
+                  <button key={f.id} type="button" onClick={() => alternarConjunto(funcionariosSelecionados, f.id, setFuncionariosSelecionados)} className="relative" title={f.nome}>
                     <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={32} />
                     {marcado && (
                       <span className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-forest text-white text-[9px] flex items-center justify-center ring-2 ring-white">
@@ -829,7 +731,7 @@ function ModalRotina({
               disabled={salvando}
               className="rounded-full bg-ink text-white px-6 py-2.5 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
             >
-              {salvando ? "Salvando..." : "Salvar rotina"}
+              {salvando ? "Salvando..." : "Salvar"}
             </button>
             <button onClick={onClose} className="text-sm font-semibold text-ink/60 hover:text-ink">
               Cancelar

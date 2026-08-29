@@ -117,9 +117,8 @@ export default function InicioPage() {
       const hojeDate = new Date();
       hojeDate.setHours(0, 0, 0, 0);
       const hojeIso = hojeDate.toISOString().slice(0, 10);
-      const [{ data: rotinasData }, { data: itensData }, { data: respCargoData }, { data: respFuncData }] = await Promise.all([
-        supabase.from("rotinas").select("id, nome, frequencia, dias_semana, dia_mes").eq("ativo", true),
-        supabase.from("rotina_itens").select("id, rotina_id, texto, ordem").order("ordem"),
+      const [{ data: rotinasData }, { data: respCargoData }, { data: respFuncData }] = await Promise.all([
+        supabase.from("rotinas").select("id, texto, grupo, frequencia, dias_semana, dia_mes").eq("ativo", true),
         supabase.from("rotina_responsaveis_cargo").select("rotina_id, cargo_id"),
         supabase.from("rotina_responsaveis_funcionario").select("rotina_id, funcionario_id"),
       ]);
@@ -139,17 +138,23 @@ export default function InicioPage() {
       };
       const minhasRotinas = (rotinasData ?? [])
         .filter((r) => (f.cargo_id && (respCargoData ?? []).some((c) => c.rotina_id === r.id && c.cargo_id === f.cargo_id)) || (respFuncData ?? []).some((rf) => rf.rotina_id === r.id && rf.funcionario_id === f.id))
-        .filter(rotinaAplicavelHoje)
-        .map((r) => ({ id: r.id, nome: r.nome, itens: (itensData ?? []).filter((i) => i.rotina_id === r.id) }));
-      const idsItens = minhasRotinas.flatMap((r) => r.itens.map((i) => i.id));
+        .filter(rotinaAplicavelHoje);
+      const idsRotinas = minhasRotinas.map((r) => r.id);
       const { data: execucoes } =
-        idsItens.length > 0
-          ? await supabase.from("rotina_execucoes").select("rotina_item_id").eq("funcionario_id", f.id).eq("data_referencia", hojeIso).in("rotina_item_id", idsItens)
+        idsRotinas.length > 0
+          ? await supabase.from("rotina_execucoes").select("rotina_id").eq("funcionario_id", f.id).eq("data_referencia", hojeIso).in("rotina_id", idsRotinas)
           : { data: [] };
-      const feitos = new Set((execucoes ?? []).map((e) => e.rotina_item_id));
-      setRotinasHoje(
-        minhasRotinas.map((r) => ({ ...r, itens: r.itens.map((i) => ({ ...i, concluido: feitos.has(i.id) })) }))
-      );
+      const feitos = new Set((execucoes ?? []).map((e) => e.rotina_id));
+
+      // Agrupa pelo campo "grupo" (texto livre) — quem não tem grupo vira
+      // um bloco "solto" só com esse único item.
+      const gruposMap = new Map<string, { id: string; nome: string; itens: { id: string; texto: string; concluido: boolean }[] }>();
+      for (const r of minhasRotinas) {
+        const chave = r.grupo ?? `__solto__${r.id}`;
+        if (!gruposMap.has(chave)) gruposMap.set(chave, { id: chave, nome: r.grupo ?? "", itens: [] });
+        gruposMap.get(chave)!.itens.push({ id: r.id, texto: r.texto, concluido: feitos.has(r.id) });
+      }
+      setRotinasHoje(Array.from(gruposMap.values()));
     }
 
     if (f) {
@@ -313,9 +318,9 @@ export default function InicioPage() {
     const supabase = createClient();
     const hojeIsoReal = new Date().toISOString().slice(0, 10);
     if (marcado) {
-      await supabase.from("rotina_execucoes").insert({ rotina_item_id: itemId, funcionario_id: meuFuncionarioId, data_referencia: hojeIsoReal });
+      await supabase.from("rotina_execucoes").insert({ rotina_id: itemId, funcionario_id: meuFuncionarioId, data_referencia: hojeIsoReal });
     } else {
-      await supabase.from("rotina_execucoes").delete().eq("rotina_item_id", itemId).eq("funcionario_id", meuFuncionarioId).eq("data_referencia", hojeIsoReal);
+      await supabase.from("rotina_execucoes").delete().eq("rotina_id", itemId).eq("funcionario_id", meuFuncionarioId).eq("data_referencia", hojeIsoReal);
     }
     setRotinasHoje((atual) => atual.map((r) => ({ ...r, itens: r.itens.map((i) => (i.id === itemId ? { ...i, concluido: marcado } : i)) })));
   }
@@ -380,6 +385,17 @@ export default function InicioPage() {
             {nome ? `, ${nome}` : ""} 👋
           </h1>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => router.push("/rotinas")}
+              className="relative rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors"
+            >
+              ✅ Rotinas
+              {rotinasHoje.reduce((s, r) => s + r.itens.filter((i) => !i.concluido).length, 0) > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 h-5 min-w-[20px] px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold flex items-center justify-center ring-2 ring-white">
+                  {rotinasHoje.reduce((s, r) => s + r.itens.filter((i) => !i.concluido).length, 0)}
+                </span>
+              )}
+            </button>
             <button
               onClick={() => router.push("/inicio/pauta")}
               className="rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors"
@@ -571,7 +587,7 @@ export default function InicioPage() {
                   <div className="space-y-3">
                     {rotinasHoje.map((r) => (
                       <div key={r.id}>
-                        <p className="text-xs font-bold text-ink/50 mb-1">{r.nome}</p>
+                        {r.nome && <p className="text-xs font-bold text-ink/50 mb-1">{r.nome}</p>}
                         <div className="space-y-0.5">
                           {r.itens.map((item) => (
                             <label
