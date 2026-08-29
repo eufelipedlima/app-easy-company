@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
+import { corDoCliente } from "@/lib/cor-cliente";
 import { IconeTarefa } from "@/components/icones-tarefa";
 import { ListTree } from "lucide-react";
 import { BuscaCliente } from "@/components/busca-cliente";
@@ -194,7 +195,11 @@ function BlocoSemanaPessoa({
                 </span>
               </p>
               {fx.item.clienteNome ? (
-                <p className="text-[10px] font-bold opacity-90 truncate mt-0.5">{fx.item.clienteNome}</p>
+                <span
+                  className={`inline-block max-w-full truncate rounded-full px-1.5 py-0.5 text-[9px] font-bold mt-0.5 ${corDoCliente(fx.item.clienteNome).cor}`}
+                >
+                  {fx.item.clienteNome}
+                </span>
               ) : (
                 <p className="text-[10px] opacity-40 italic truncate mt-0.5">Tarefa interna</p>
               )}
@@ -258,7 +263,11 @@ function BlocoSemanaPessoa({
                       </span>
                     </p>
                     {item.clienteNome ? (
-                      <p className="text-[10px] font-bold opacity-90 truncate mt-0.5">{item.clienteNome}</p>
+                      <span
+                        className={`inline-block max-w-full truncate rounded-full px-1.5 py-0.5 text-[9px] font-bold mt-0.5 ${corDoCliente(item.clienteNome).cor}`}
+                      >
+                        {item.clienteNome}
+                      </span>
                     ) : (
                       <p className="text-[10px] opacity-40 italic truncate mt-0.5">Tarefa interna</p>
                     )}

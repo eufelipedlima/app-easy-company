@@ -8,6 +8,7 @@ import { normalizar } from "@/lib/normalizar";
 import { IconeTarefa, IconeProjeto } from "@/components/icones-tarefa";
 import { EsqueletoLinha } from "@/components/esqueleto";
 import { corDoStatus } from "@/lib/status-conteudo";
+import { corDoCliente } from "@/lib/cor-cliente";
 import { BuscaCliente } from "@/components/busca-cliente";
 import {
   useListaAgrupavel,
@@ -598,7 +599,14 @@ export default function TarefasPage() {
       chave: "cliente",
       label: "Cliente",
       larguraCss: "140px",
-      render: (t) => <span className="text-xs font-semibold text-ink/75 truncate">{t.clientes?.papeis?.pessoas?.nome ?? "Interna"}</span>,
+      render: (t) => {
+        const nomeCli = t.clientes?.papeis?.pessoas?.nome ?? null;
+        return (
+          <span className={`inline-block max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-bold ${corDoCliente(nomeCli).cor}`}>
+            {nomeCli ?? "Interna"}
+          </span>
+        );
+      },
     },
     {
       chave: "prioridade",
@@ -1294,7 +1302,11 @@ function TarefaCardConteudo({
             </div>
           );
         })()}
-      {camposVisiveis.cliente && <p className="text-xs font-bold text-ink/75 truncate mt-0.5">{cliente ?? "Interna"}</p>}
+      {camposVisiveis.cliente && (
+        <span className={`inline-block max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-bold mt-1 ${corDoCliente(cliente).cor}`}>
+          {cliente ?? "Interna"}
+        </span>
+      )}
 
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {tarefa.prioridade && (

@@ -263,6 +263,16 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   const [enviandoComentario, setEnviandoComentario] = useState(false);
   const comentarioRef = useRef<HTMLTextAreaElement>(null);
 
+  // Cresce o campo de comentário conforme o texto ganha mais linhas — em
+  // vez de rolar por dentro de uma caixinha pequena, até um limite (depois
+  // disso passa a rolar normalmente, pra não tomar a tela toda).
+  useLayoutEffect(() => {
+    const el = comentarioRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 240) + "px";
+  }, [novoComentario]);
+
   const carregarTudo = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
@@ -1614,7 +1624,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                       }}
                       rows={2}
                       placeholder="Escreva um comentário... (@ pra mencionar)"
-                      className="input resize-none w-full text-sm"
+                      className="input resize-none w-full text-sm overflow-y-auto transition-[height]"
                     />
                   </div>
                   {mencaoBusca !== null && colegasParaMencao.length > 0 && (
