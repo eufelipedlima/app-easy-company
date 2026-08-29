@@ -690,13 +690,6 @@ export const CalendarioConteudoConteudo = forwardRef<
 
   return (
     <main className={compacto ? "w-full" : "mx-auto max-w-[2000px] px-6 py-6"}>
-      {!compacto && (
-        <div className="mb-4">
-          <h1 className="text-lg font-extrabold text-ink">Conteúdos</h1>
-          <p className="text-xs text-ink/50">Visão centralizada de todos os conteúdos.</p>
-        </div>
-      )}
-
       {erroCarregamento && (
         <div className="rounded-2xl bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 mb-6">
           <p className="font-semibold">Erro ao carregar os posts:</p>
@@ -704,83 +697,14 @@ export const CalendarioConteudoConteudo = forwardRef<
         </div>
       )}
 
-      {!compacto && (
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 shrink-0">
-          <button
-            onClick={() => setVisualizacao("kanban")}
-            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-              visualizacao === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-            }`}
-          >
-            Kanban
-          </button>
-          <button
-            onClick={() => setVisualizacao("calendario")}
-            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-              visualizacao === "calendario" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-            }`}
-          >
-            Calendário
-          </button>
-          <button
-            onClick={() => setVisualizacao("lista")}
-            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-              visualizacao === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-            }`}
-          >
-            Lista
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {visualizacao === "lista" && (
-            <BotaoExibirLista estado={estadoListaConteudo} colunas={colunasListaConteudo} opcoesAgrupamento={opcoesAgrupamentoConteudo} />
-          )}
-          <button
-            onClick={() => setLinkPublicoAberto(true)}
-            className="rounded-full border-2 border-ink/15 text-ink px-3.5 py-1.5 text-xs font-semibold hover:bg-surface transition-colors"
-          >
-            🔗 Link público
-          </button>
-          <div className="relative">
-            <button
-              onClick={() => setCriarDropdownAberto((v) => !v)}
-              className="rounded-full bg-ink text-white px-4 py-1.5 text-xs font-semibold hover:bg-forest transition-colors flex items-center gap-1.5"
-            >
-              + Criar {criarDropdownAberto ? "▴" : "▾"}
-            </button>
-            {criarDropdownAberto && (
-              <div
-                className="absolute z-20 top-full right-0 mt-2 w-56 rounded-2xl bg-white border border-black/10 shadow-lg py-1.5"
-                onMouseLeave={() => setCriarDropdownAberto(false)}
-              >
-                <button
-                  onClick={() => {
-                    setCriarDropdownAberto(false);
-                    criarPostRapido(hojeISO);
-                  }}
-                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-ink hover:bg-surface flex items-center gap-2"
-                >
-                  📄 Novo post
-                </button>
-                <button
-                  onClick={() => {
-                    setCriarDropdownAberto(false);
-                    setPlanejamentoModalAberto(true);
-                  }}
-                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-ink hover:bg-surface flex items-center gap-2"
-                >
-                  🗓️ Novo planejamento
-                </button>
-              </div>
-            )}
+      <div className={compacto ? "flex flex-wrap items-center gap-2 mb-6 pb-3 border-b border-black/5" : "flex flex-wrap items-start justify-between gap-4 mb-6"}>
+        {!compacto && (
+          <div>
+            <h1 className="text-lg font-extrabold text-ink">Conteúdos</h1>
+            <p className="text-xs text-ink/50">Visão centralizada de todos os conteúdos.</p>
           </div>
-        </div>
-      </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2 mb-6 pb-3 border-b border-black/5">
+        )}
+        <div className="flex flex-wrap items-center gap-2">
         {visualizacao === "kanban" && (
           <div className="relative">
             <button
@@ -1041,6 +965,83 @@ export const CalendarioConteudoConteudo = forwardRef<
           )}
         </div>
       </div>
+      </div>
+
+      {!compacto && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 shrink-0">
+            <button
+              onClick={() => setVisualizacao("kanban")}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                visualizacao === "kanban" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Kanban
+            </button>
+            <button
+              onClick={() => setVisualizacao("calendario")}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                visualizacao === "calendario" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Calendário
+            </button>
+            <button
+              onClick={() => setVisualizacao("lista")}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                visualizacao === "lista" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Lista
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {visualizacao === "lista" && (
+              <BotaoExibirLista estado={estadoListaConteudo} colunas={colunasListaConteudo} opcoesAgrupamento={opcoesAgrupamentoConteudo} />
+            )}
+            <button
+              onClick={() => setLinkPublicoAberto(true)}
+              className="rounded-full border-2 border-ink/15 text-ink px-3.5 py-1.5 text-xs font-semibold hover:bg-surface transition-colors"
+            >
+              🔗 Link público
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => setCriarDropdownAberto((v) => !v)}
+                className="rounded-full bg-ink text-white px-4 py-1.5 text-xs font-semibold hover:bg-forest transition-colors flex items-center gap-1.5"
+              >
+                + Criar {criarDropdownAberto ? "▴" : "▾"}
+              </button>
+              {criarDropdownAberto && (
+                <div
+                  className="absolute z-20 top-full right-0 mt-2 w-56 rounded-2xl bg-white border border-black/10 shadow-lg py-1.5"
+                  onMouseLeave={() => setCriarDropdownAberto(false)}
+                >
+                  <button
+                    onClick={() => {
+                      setCriarDropdownAberto(false);
+                      criarPostRapido(hojeISO);
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm font-semibold text-ink hover:bg-surface flex items-center gap-2"
+                  >
+                    📄 Novo post
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCriarDropdownAberto(false);
+                      setPlanejamentoModalAberto(true);
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm font-semibold text-ink hover:bg-surface flex items-center gap-2"
+                  >
+                    🗓️ Novo planejamento
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {visualizacao === "calendario" && (
         <div className="flex items-center gap-3 mb-4">
