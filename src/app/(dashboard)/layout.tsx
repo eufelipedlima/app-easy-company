@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { tocarSomCaixaEntrada, tocarSomMensagemPrivada, tocarSomMensagemGrupo } from "@/lib/sons";
 import { BarraCronometro } from "@/components/barra-cronometro";
-import { Users, Users2, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle, UserCircle, Inbox, ListChecks, Home, Menu, X, GraduationCap } from "lucide-react";
+import { Users, Users2, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle, UserCircle, Inbox, ListChecks, Home, Menu, X, GraduationCap, FolderKanban } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -59,6 +59,12 @@ const MENU: Grupo[] = [
     icon: <ListChecks size={18} />,
     areaSlug: "tarefas",
     href: "/tarefas",
+  },
+  {
+    label: "Projetos",
+    icon: <FolderKanban size={18} />,
+    areaSlug: "tarefas",
+    href: "/projetos",
   },
   {
     label: "Contratos",

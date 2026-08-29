@@ -171,7 +171,7 @@ function diasAtraso(prazo: string | null): number | null {
   return diffDias > 0 ? diffDias : null;
 }
 
-export default function TarefasPage() {
+export function TarefasPageConteudo({ escopo = "tudo" }: { escopo?: "tudo" | "projetos" }) {
   const router = useRouter();
   const [statusList, setStatusList] = useState<StatusItem[]>([]);
   const [clientes, setClientes] = useState<Opcao[]>([]);
@@ -185,14 +185,17 @@ export default function TarefasPage() {
   const [progressoProjetos, setProgressoProjetos] = useState<Record<string, { total: number; completos: number }>>({});
   const [responsaveisPorTarefa, setResponsaveisPorTarefa] = useState<Record<string, Responsavel[]>>({});
   const [clienteFiltroId, setClienteFiltroId] = useState("");
-  const [filtroTipo, setFiltroTipo] = useState<"tudo" | "tarefas" | "projetos">("tudo");
+  const [filtroTipo, setFiltroTipo] = useState<"tudo" | "tarefas" | "projetos">(escopo === "projetos" ? "projetos" : "tudo");
   const [novaAberta, setNovaAberta] = useState(false);
   const [loading, setLoading] = useState(true);
   const [camposVisiveis, setCamposVisiveis] = useState<CamposVisiveisTarefa>(CAMPOS_PADRAO);
   const [painelCamposAberto, setPainelCamposAberto] = useState(false);
   const [painelFiltroAberto, setPainelFiltroAberto] = useState(false);
   const [visualizacao, setVisualizacao] = useState<"kanban" | "lista" | "semana" | "mes">("kanban");
-  const estadoListaTarefas = useListaAgrupavel("tarefas-geral", ["status", "responsavel", "vencimento", "cliente", "prioridade"]);
+  const estadoListaTarefas = useListaAgrupavel(
+    escopo === "projetos" ? "projetos-geral" : "tarefas-geral",
+    ["status", "responsavel", "vencimento", "cliente", "prioridade"]
+  );
   const [filtroStatusIds, setFiltroStatusIds] = useState<string[]>([]);
   const [filtroResponsavelId, setFiltroResponsavelId] = useState<string | null>(null);
   const [filtroPrioridade, setFiltroPrioridade] = useState("");
@@ -335,17 +338,42 @@ export default function TarefasPage() {
   const carregarTarefas = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
+
+    // Quando é a aba Tarefas (não a de Projetos), os projetos em si somem
+    // daqui — foram pra página própria. No lugar deles, entram as etapas
+    // (subtarefas) de cada projeto, misturadas com as tarefas avulsas —
+    // assim o dia a dia continua todo num lugar só, sem precisar abrir
+    // cada projeto pra ver o que falta fazer.
+    let idsProjetosAtivos: string[] = [];
+    if (escopo === "tudo") {
+      const { data: projetosData } = await supabase
+        .from("tarefas")
+        .select("id")
+        .eq("eh_projeto", true)
+        .eq("arquivada", false)
+        .is("excluido_em", null);
+      idsProjetosAtivos = (projetosData ?? []).map((p) => p.id);
+    }
+
     let query = supabase
       .from("tarefas")
       .select(
         `id, titulo, descricao, cliente_id, status_id, prioridade, data_inicio, prazo, eh_projeto,
          clientes ( papeis ( pessoas ( nome ) ) )`
       )
-      .is("tarefa_pai_id", null)
       .eq("arquivada", false)
       .eq("eh_modelo_projeto", false)
       .is("excluido_em", null)
       .order("created_at", { ascending: false });
+
+    if (escopo === "projetos") {
+      query = query.is("tarefa_pai_id", null).eq("eh_projeto", true);
+    } else if (idsProjetosAtivos.length > 0) {
+      query = query.or(`and(tarefa_pai_id.is.null,eh_projeto.eq.false),tarefa_pai_id.in.(${idsProjetosAtivos.join(",")})`);
+    } else {
+      query = query.is("tarefa_pai_id", null).eq("eh_projeto", false);
+    }
+
     if (clienteFiltroId === "internas") query = query.is("cliente_id", null);
     else if (clienteFiltroId) query = query.eq("cliente_id", clienteFiltroId);
     const { data, error } = await query;
@@ -440,7 +468,7 @@ export default function TarefasPage() {
       setContagemComentarios({});
       setResponsaveisPorTarefa({});
     }
-  }, [clienteFiltroId]);
+  }, [clienteFiltroId, escopo]);
 
   useEffect(() => {
     carregarStatus();
@@ -665,8 +693,10 @@ export default function TarefasPage() {
     <main className="mx-auto max-w-[2000px] px-6 py-6">
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-extrabold text-ink mb-1">Tarefas e Projetos</h1>
-          <p className="text-sm text-ink/60">Demandas da equipe, por cliente ou internas.</p>
+          <h1 className="text-2xl font-extrabold text-ink mb-1">{escopo === "projetos" ? "Projetos" : "Tarefas"}</h1>
+          <p className="text-sm text-ink/60">
+            {escopo === "projetos" ? "Projetos da equipe — cada um com suas etapas." : "Demandas da equipe, por cliente ou internas."}
+          </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <div className="relative">
@@ -825,46 +855,23 @@ export default function TarefasPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1">
+          {escopo === "projetos" ? (
+            souAdmin && (
+              <button
+                onClick={() => setNovoProjetoAberto(true)}
+                className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors"
+              >
+                + Novo projeto
+              </button>
+            )
+          ) : (
             <button
-              onClick={() => setFiltroTipo("tudo")}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                filtroTipo === "tudo" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-              }`}
+              onClick={() => setNovaAberta(true)}
+              className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors"
             >
-              Tudo
-            </button>
-            <button
-              onClick={() => setFiltroTipo("tarefas")}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                filtroTipo === "tarefas" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-              }`}
-            >
-              ✔️ Tarefas
-            </button>
-            <button
-              onClick={() => setFiltroTipo("projetos")}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
-                filtroTipo === "projetos" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
-              }`}
-            >
-              📋 Projetos
-            </button>
-          </div>
-          {souAdmin && (
-            <button
-              onClick={() => setNovoProjetoAberto(true)}
-              className="rounded-full border-2 border-ink/15 text-ink px-5 py-2 text-sm font-semibold hover:bg-surface transition-colors"
-            >
-              + Novo projeto
+              + Nova tarefa
             </button>
           )}
-          <button
-            onClick={() => setNovaAberta(true)}
-            className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors"
-          >
-            + Nova tarefa
-          </button>
         </div>
       </div>
 
@@ -2173,4 +2180,8 @@ function NovoProjetoModal({
       </div>
     </div>
   );
+}
+
+export default function TarefasPage() {
+  return <TarefasPageConteudo escopo="tudo" />;
 }
