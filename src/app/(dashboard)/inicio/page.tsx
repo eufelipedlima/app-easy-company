@@ -313,17 +313,31 @@ export default function InicioPage() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-mint/20 via-white to-white px-8 py-8">
       <div className="max-w-[1400px] mx-auto anim-entrada">
-        <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center justify-between mb-1 flex-wrap gap-3">
           <h1 className="text-xl font-extrabold text-ink">
             {saudacao()}
             {nome ? `, ${nome}` : ""} 👋
           </h1>
-          <button
-            onClick={() => router.push("/inicio/pauta")}
-            className="rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors"
-          >
-            📋 Pauta
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => router.push("/inicio/pauta")}
+              className="rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors"
+            >
+              📋 Pauta
+            </button>
+            <button
+              onClick={() => router.push("/caixa-de-entrada")}
+              className="rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors"
+            >
+              📥 Caixa de entrada
+            </button>
+            <button
+              onClick={() => router.push("/chat")}
+              className="rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors"
+            >
+              💬 Chat
+            </button>
+          </div>
         </div>
         <p className="text-xs text-ink/50 italic mb-6">
           &ldquo;{frase[0]}&rdquo; <span className="not-italic text-ink/30">— {frase[1]}</span>
@@ -346,9 +360,14 @@ export default function InicioPage() {
         ) : (
           <div className="space-y-6">
             <div className="rounded-2xl bg-white border border-black/5 shadow-sm p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-lg">📌</span>
-                <h2 className="text-sm font-bold text-ink">Tarefas e conteúdos da agência</h2>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📌</span>
+                  <h2 className="text-sm font-bold text-ink">Tarefas e conteúdos da agência</h2>
+                </div>
+                <button onClick={() => router.push("/tarefas")} className="text-xs font-semibold text-forest hover:text-ink">
+                  Ver tudo →
+                </button>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 mb-5">

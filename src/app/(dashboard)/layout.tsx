@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { tocarSomCaixaEntrada, tocarSomMensagemPrivada, tocarSomMensagemGrupo } from "@/lib/sons";
 import { BarraCronometro } from "@/components/barra-cronometro";
-import { Users, Users2, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, CalendarDays, Share2, ShieldCheck, MessageCircle, UserCircle, Inbox, ListChecks, Home, Menu, X, GraduationCap, FolderKanban } from "lucide-react";
+import { Users, Users2, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, Share2, ShieldCheck, UserCircle, ListChecks, Home, Menu, X, GraduationCap, FolderKanban } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -27,21 +27,6 @@ const MENU: Grupo[] = [
     label: "Início",
     icon: <Home size={18} />,
     href: "/inicio",
-  },
-  {
-    label: "Chat",
-    icon: <MessageCircle size={18} />,
-    href: "/chat",
-  },
-  {
-    label: "Pauta",
-    icon: <CalendarDays size={18} />,
-    href: "/inicio/pauta",
-  },
-  {
-    label: "Caixa de Entrada",
-    icon: <Inbox size={18} />,
-    href: "/caixa-de-entrada",
   },
   {
     label: "Central de Clientes",
