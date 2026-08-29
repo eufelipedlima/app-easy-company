@@ -17,7 +17,6 @@ import {
   type ColunaLista,
   type OpcaoAgrupamento,
 } from "@/components/lista-agrupavel";
-import { Filter } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -190,7 +189,7 @@ export function TarefasPageConteudo({ escopo = "tudo" }: { escopo?: "tudo" | "pr
   const [loading, setLoading] = useState(true);
   const [camposVisiveis, setCamposVisiveis] = useState<CamposVisiveisTarefa>(CAMPOS_PADRAO);
   const [painelCamposAberto, setPainelCamposAberto] = useState(false);
-  const [painelFiltroAberto, setPainelFiltroAberto] = useState(false);
+  const [filtroDropdownAberto, setFiltroDropdownAberto] = useState<null | "cliente" | "status" | "responsavel" | "prioridade">(null);
   const [visualizacao, setVisualizacao] = useState<"kanban" | "lista" | "semana" | "mes">("kanban");
   const estadoListaTarefas = useListaAgrupavel(
     escopo === "projetos" ? "projetos-geral" : "tarefas-geral",
@@ -702,84 +701,156 @@ export function TarefasPageConteudo({ escopo = "tudo" }: { escopo?: "tudo" | "pr
             {escopo === "projetos" ? "Projetos da equipe — cada um com suas etapas." : "Demandas da equipe, por cliente ou internas."}
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           <div className="relative">
             <button
-              onClick={() => setPainelFiltroAberto((v) => !v)}
-              className={`rounded-full h-10 px-4 flex items-center gap-1.5 border-2 text-sm font-semibold transition-colors ${
-                filtrosAtivos ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/50 hover:text-ink hover:bg-surface"
+              onClick={() => setFiltroDropdownAberto(filtroDropdownAberto === "cliente" ? null : "cliente")}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors flex items-center gap-1 h-10 ${
+                clienteFiltroId ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/60 hover:bg-surface"
               }`}
             >
-              <Filter size={15} /> Filtro
+              🏢 Cliente
+              {clienteFiltroId && (
+                <span className="max-w-[110px] truncate">
+                  · {clienteFiltroId === "internas" ? "Internas" : clientes.find((c) => c.id === clienteFiltroId)?.nome}
+                </span>
+              )}
             </button>
-            {painelFiltroAberto && (
+            {filtroDropdownAberto === "cliente" && (
               <div
-                className="absolute z-20 right-0 mt-1 w-72 rounded-2xl bg-white border border-black/10 shadow-lg p-4 space-y-4"
-                onMouseLeave={() => setPainelFiltroAberto(false)}
+                className="absolute z-20 top-full left-0 mt-1 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+                onMouseLeave={() => setFiltroDropdownAberto(null)}
               >
-                <FiltroCliente clientes={clientes} valorId={clienteFiltroId} onMudar={setClienteFiltroId} />
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Status</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {statusList.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => alternarFiltroStatus(s.id)}
-                        className={`rounded-full px-2.5 py-1 text-xs font-semibold border transition-colors ${
-                          filtroStatusIds.includes(s.id) ? corDoStatus(s.cor).cor + " border-transparent" : "border-black/10 text-ink/50"
-                        }`}
-                      >
-                        {s.nome}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Responsável</p>
-                  <div className="flex flex-wrap gap-2">
-                    {funcionariosComAcesso.map((f) => (
-                      <button
-                        key={f.id}
-                        onClick={() => mudarFiltroResponsavel(filtroResponsavelId === f.id ? null : f.id)}
-                        className="relative"
-                        title={f.nome}
-                      >
-                        <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={30} />
-                        {filtroResponsavelId === f.id && (
-                          <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-forest text-white text-[8px] flex items-center justify-center ring-2 ring-white">
-                            ✓
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <label className="block">
-                  <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-1">Prioridade</span>
-                  <select value={filtroPrioridade} onChange={(e) => setFiltroPrioridade(e.target.value)} className="input py-1.5 text-sm">
-                    <option value="">Todas</option>
-                    <option value="baixa">Baixa</option>
-                    <option value="media">Média</option>
-                    <option value="alta">Alta</option>
-                  </select>
-                </label>
-                <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={filtroSoAtrasadas}
-                    onChange={(e) => setFiltroSoAtrasadas(e.target.checked)}
-                    className="h-4 w-4 rounded accent-red-600"
-                  />
-                  Só atrasadas
-                </label>
-                {filtrosAtivos && (
-                  <button onClick={limparFiltros} className="text-xs font-semibold text-ink/50 hover:text-red-600">
-                    Limpar filtros
-                  </button>
-                )}
+                <FiltroCliente
+                  clientes={clientes}
+                  valorId={clienteFiltroId}
+                  onMudar={(v) => {
+                    setClienteFiltroId(v);
+                    setFiltroDropdownAberto(null);
+                  }}
+                />
               </div>
             )}
           </div>
+
+          <div className="relative">
+            <button
+              onClick={() => setFiltroDropdownAberto(filtroDropdownAberto === "status" ? null : "status")}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors flex items-center gap-1 h-10 ${
+                filtroStatusIds.length > 0 ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/60 hover:bg-surface"
+              }`}
+            >
+              📌 Status {filtroStatusIds.length > 0 && `· ${filtroStatusIds.length}`}
+            </button>
+            {filtroDropdownAberto === "status" && (
+              <div
+                className="absolute z-20 top-full left-0 mt-1 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+                onMouseLeave={() => setFiltroDropdownAberto(null)}
+              >
+                <div className="flex flex-wrap gap-1.5">
+                  {statusList.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => alternarFiltroStatus(s.id)}
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold border transition-colors ${
+                        filtroStatusIds.includes(s.id) ? corDoStatus(s.cor).cor + " border-transparent" : "border-black/10 text-ink/50 hover:bg-surface"
+                      }`}
+                    >
+                      {s.nome}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
+            <button
+              onClick={() => setFiltroDropdownAberto(filtroDropdownAberto === "responsavel" ? null : "responsavel")}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors flex items-center gap-1 h-10 ${
+                filtroResponsavelId ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/60 hover:bg-surface"
+              }`}
+            >
+              👤 Responsável {filtroResponsavelId && `· ${funcionariosComAcesso.find((f) => f.id === filtroResponsavelId)?.nome ?? ""}`}
+            </button>
+            {filtroDropdownAberto === "responsavel" && (
+              <div
+                className="absolute z-20 top-full left-0 mt-1 w-56 rounded-2xl bg-white border border-black/10 shadow-lg p-3"
+                onMouseLeave={() => setFiltroDropdownAberto(null)}
+              >
+                <div className="flex flex-wrap gap-2">
+                  {funcionariosComAcesso.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => {
+                        mudarFiltroResponsavel(filtroResponsavelId === f.id ? null : f.id);
+                        setFiltroDropdownAberto(null);
+                      }}
+                      className="relative"
+                      title={f.nome}
+                    >
+                      <Avatar nome={f.nome} fotoUrl={f.fotoUrl} tamanho={30} />
+                      {filtroResponsavelId === f.id && (
+                        <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-forest text-white text-[8px] flex items-center justify-center ring-2 ring-white">
+                          ✓
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
+            <button
+              onClick={() => setFiltroDropdownAberto(filtroDropdownAberto === "prioridade" ? null : "prioridade")}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors flex items-center gap-1 h-10 ${
+                filtroPrioridade ? "border-forest text-forest bg-mint" : "border-black/10 text-ink/60 hover:bg-surface"
+              }`}
+            >
+              🚩 Prioridade {filtroPrioridade && `· ${filtroPrioridade === "alta" ? "Alta" : filtroPrioridade === "media" ? "Média" : "Baixa"}`}
+            </button>
+            {filtroDropdownAberto === "prioridade" && (
+              <div
+                className="absolute z-20 top-full left-0 mt-1 w-40 rounded-2xl bg-white border border-black/10 shadow-lg py-1.5"
+                onMouseLeave={() => setFiltroDropdownAberto(null)}
+              >
+                {[
+                  { v: "", l: "Todas" },
+                  { v: "baixa", l: "Baixa" },
+                  { v: "media", l: "Média" },
+                  { v: "alta", l: "Alta" },
+                ].map((op) => (
+                  <button
+                    key={op.v}
+                    onClick={() => {
+                      setFiltroPrioridade(op.v);
+                      setFiltroDropdownAberto(null);
+                    }}
+                    className="w-full text-left px-4 py-2 text-xs text-ink hover:bg-surface"
+                  >
+                    {op.l}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => setFiltroSoAtrasadas((v) => !v)}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors h-10 ${
+              filtroSoAtrasadas ? "border-red-400 text-red-600 bg-red-50" : "border-black/10 text-ink/60 hover:bg-surface"
+            }`}
+          >
+            ⏰ Só atrasadas
+          </button>
+
+          {filtrosAtivos && (
+            <button onClick={limparFiltros} className="text-xs font-semibold text-ink/50 hover:text-red-600 shrink-0">
+              Limpar
+            </button>
+          )}
 
           {visualizacao === "lista" && (
             <BotaoExibirLista estado={estadoListaTarefas} colunas={colunasListaTarefas} opcoesAgrupamento={opcoesAgrupamentoTarefas} />
