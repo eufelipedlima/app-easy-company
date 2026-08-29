@@ -12,9 +12,7 @@ import { RichTextEditor } from "@/components/rich-text-editor";
 import { Cronometro, formatarDuracaoLonga } from "@/components/cronometro";
 import { Eye, Download, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { iconeHistorico, comValoresDestacados, segundosPorPessoaDoHistorico } from "@/lib/historico-visual";
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { DndContext, PointerSensor, useSensor, useSensors, useDraggable, useDroppable, type DragEndEvent } from "@dnd-kit/core";
 
 function extrairMencoes(html: string): Set<string> {
   const ids = new Set<string>();
@@ -785,6 +783,31 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     await Promise.all(novosIrmaos.map((s, i) => supabase.from("tarefas").update({ ordem: i }).eq("id", s.id)));
   }
 
+  // Verifica se "possivelAncestralId" é o próprio item ou algum ancestral
+  // dele — usado pra impedir arrastar uma pasta pra dentro de si mesma ou
+  // de uma subpasta sua (o que criaria um loop sem saída).
+  function ehDescendenteOuIgual(itemId: string, possivelAncestralId: string): boolean {
+    if (itemId === possivelAncestralId) return true;
+    const item = subtarefas.find((s) => s.id === itemId);
+    if (!item || !item.tarefa_pai_id) return false;
+    return ehDescendenteOuIgual(item.tarefa_pai_id, possivelAncestralId);
+  }
+
+  // Move uma subtarefa pra dentro de outro pai (outra pasta, ou de volta
+  // pra raiz) — arrastar e soltar direto em cima de uma pasta chama essa
+  // função, em vez de só reordenar entre irmãos.
+  async function moverSubtarefaParaPai(idMovido: string, novoPaiId: string) {
+    const sub = subtarefas.find((s) => s.id === idMovido);
+    if (!sub || sub.tarefa_pai_id === novoPaiId || ehDescendenteOuIgual(novoPaiId, idMovido)) return;
+    const novosIrmaos = subtarefas.filter((s) => s.tarefa_pai_id === novoPaiId && s.id !== idMovido);
+    const novaOrdem = novosIrmaos.length;
+    setSubtarefas((atual) => atual.map((s) => (s.id === idMovido ? { ...s, tarefa_pai_id: novoPaiId, ordem: novaOrdem } : s)));
+    const supabase = createClient();
+    await supabase.from("tarefas").update({ tarefa_pai_id: novoPaiId, ordem: novaOrdem }).eq("id", idMovido);
+    registrarHistorico(`moveu "${sub.titulo}" ${novoPaiId === id ? "pra raiz" : "pra dentro de outra pasta"}`);
+    if (novoPaiId !== id) setPastasAbertas((atual) => new Set(atual).add(novoPaiId));
+  }
+
   async function salvarCampoSubtarefa(subId: string, campo: Record<string, string | null>) {
     setSubtarefas((atual) => atual.map((s) => (s.id === subId ? { ...s, ...campo } : s)));
     const supabase = createClient();
@@ -1326,62 +1349,54 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
               className="w-full flex items-center gap-2 mb-1 text-left"
             >
               <span className={`text-xs text-ink/40 transition-transform ${secaoSubtarefasAberta ? "rotate-90" : ""}`}>▸</span>
-              <span className="text-sm font-bold text-ink">Subtarefas</span>
-              <span className="text-xs font-semibold text-ink/40 bg-surface rounded-full px-2 py-0.5">{subtarefas.length}</span>
+              <span className="text-xs font-bold uppercase tracking-wide text-ink/40">Subtarefas</span>
+              <span className="text-[11px] font-semibold text-ink/40 bg-surface rounded-full px-2 py-0.5">{subtarefas.length}</span>
             </button>
             {secaoSubtarefasAberta && (
               <div className="mt-2">
                 {subtarefas.length > 0 && (
-                  <div className="grid grid-cols-[1fr_110px_150px_110px] gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/40">
+                  <div className="grid grid-cols-[1fr_90px_130px_95px] gap-2 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/35">
                     <span>Nome</span>
-                    <span>Responsáveis</span>
+                    <span>Resp.</span>
                     <span>Vencimento</span>
                     <span>Status</span>
                   </div>
                 )}
-                <div className="space-y-1.5 mb-2">
+                <div className="space-y-0.5 mb-2">
                   <DndContext
                     sensors={dndSensors}
-                    collisionDetection={closestCenter}
                     onDragEnd={(e: DragEndEvent) => {
                       const { active, over } = e;
                       if (!over || active.id === over.id) return;
-                      const raizes = construirArvoreSubtarefas(subtarefas, id);
-                      const indexAntigo = raizes.findIndex((n) => n.id === active.id);
-                      const indexNovo = raizes.findIndex((n) => n.id === over.id);
-                      if (indexAntigo === -1 || indexNovo === -1) return;
-                      reordenarSubtarefas(id, indexAntigo, indexNovo);
+                      moverSubtarefaParaPai(String(active.id), String(over.id));
                     }}
                   >
-                    <SortableContext items={construirArvoreSubtarefas(subtarefas, id).map((n) => n.id)} strategy={verticalListSortingStrategy}>
-                      {construirArvoreSubtarefas(subtarefas, id).map((no) => (
-                        <NoSubtarefa
-                          key={no.id}
-                          no={no}
-                          nivel={0}
-                          pastasAbertas={pastasAbertas}
-                          onTogglePasta={(nid) =>
-                            setPastasAbertas((atual) => {
-                              const novo = new Set(atual);
-                              if (novo.has(nid)) novo.delete(nid);
-                              else novo.add(nid);
-                              return novo;
-                            })
-                          }
-                          statusList={statusList}
-                          funcionariosComAcesso={funcionariosComAcesso}
-                          responsaveisPorSubtarefa={responsaveisPorSubtarefa}
-                          onAbrir={(nid) => router.push(`/tarefas/${nid}`)}
-                          onSalvarNome={(nid, novoNome) => salvarCampoSubtarefa(nid, { titulo: novoNome })}
-                          onSalvarPrazo={(nid, novoPrazo) => salvarCampoSubtarefa(nid, { prazo: novoPrazo || null })}
-                          onSalvarStatus={(nid, novoStatusId) => salvarCampoSubtarefa(nid, { status_id: novoStatusId })}
-                          onToggleResponsavel={(nid, funcionarioId) => toggleResponsavelSubtarefa(nid, funcionarioId)}
-                          onAdicionarFilho={(nid, nomeNovo, ehPasta) => adicionarSubtarefa(nid, nomeNovo, ehPasta)}
-                          onReordenar={reordenarSubtarefas}
-                          dndSensors={dndSensors}
-                        />
-                      ))}
-                    </SortableContext>
+                    {achatarArvoreVisivel(construirArvoreSubtarefas(subtarefas, id), pastasAbertas).map(({ no, nivel }) => (
+                      <NoSubtarefa
+                        key={no.id}
+                        no={no}
+                        nivel={nivel}
+                        pastasAbertas={pastasAbertas}
+                        onTogglePasta={(nid) =>
+                          setPastasAbertas((atual) => {
+                            const novo = new Set(atual);
+                            if (novo.has(nid)) novo.delete(nid);
+                            else novo.add(nid);
+                            return novo;
+                          })
+                        }
+                        statusList={statusList}
+                        funcionariosComAcesso={funcionariosComAcesso}
+                        responsaveisPorSubtarefa={responsaveisPorSubtarefa}
+                        onAbrir={(nid) => router.push(`/tarefas/${nid}`)}
+                        onSalvarNome={(nid, novoNome) => salvarCampoSubtarefa(nid, { titulo: novoNome })}
+                        onSalvarPrazo={(nid, novoPrazo) => salvarCampoSubtarefa(nid, { prazo: novoPrazo || null })}
+                        onSalvarStatus={(nid, novoStatusId) => salvarCampoSubtarefa(nid, { status_id: novoStatusId })}
+                        onToggleResponsavel={(nid, funcionarioId) => toggleResponsavelSubtarefa(nid, funcionarioId)}
+                        onAdicionarFilho={(nid, nomeNovo, ehPasta) => adicionarSubtarefa(nid, nomeNovo, ehPasta)}
+                      />
+                    ))}
+                    <RaizDroppable raizId={id} />
                   </DndContext>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1394,7 +1409,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                         adicionarSubtarefa(id);
                       }
                     }}
-                    className="input text-sm"
+                    className="input py-1.5 text-sm"
                     placeholder="Nome da subtarefa..."
                   />
                   <button
@@ -1715,6 +1730,30 @@ function construirArvoreSubtarefas(lista: Subtarefa[], raizId: string): Subtaref
   return raizes;
 }
 
+// "Achata" a árvore numa lista simples, na ordem visual (respeitando quais
+// pastas estão abertas) — é o que permite ter uma ÚNICA área de
+// arrastar/soltar cobrindo todos os níveis de uma vez, em vez de uma zona
+// separada por pasta (que impedia soltar um item dentro de outra pasta).
+function achatarArvoreVisivel(nos: SubtarefaNode[], pastasAbertas: Set<string>, nivel = 0): { no: SubtarefaNode; nivel: number }[] {
+  let resultado: { no: SubtarefaNode; nivel: number }[] = [];
+  for (const no of nos) {
+    resultado.push({ no, nivel });
+    if (no.filhos.length > 0 && pastasAbertas.has(no.id)) {
+      resultado = resultado.concat(achatarArvoreVisivel(no.filhos, pastasAbertas, nivel + 1));
+    }
+  }
+  return resultado;
+}
+
+// Zona invisível no rodapé da lista — soltar um item aqui tira ele de
+// qualquer pasta e devolve pro nível principal da tarefa/projeto.
+function RaizDroppable({ raizId }: { raizId: string }) {
+  const { setNodeRef, isOver } = useDroppable({ id: raizId });
+  return (
+    <div ref={setNodeRef} className={`h-3 rounded-lg transition-colors ${isOver ? "bg-forest/10 ring-1 ring-forest/30" : ""}`} />
+  );
+}
+
 function NoSubtarefa({
   no,
   nivel,
@@ -1729,8 +1768,6 @@ function NoSubtarefa({
   onSalvarStatus,
   onToggleResponsavel,
   onAdicionarFilho,
-  onReordenar,
-  dndSensors,
 }: {
   no: SubtarefaNode;
   nivel: number;
@@ -1745,8 +1782,6 @@ function NoSubtarefa({
   onSalvarStatus: (id: string, v: string) => void;
   onToggleResponsavel: (id: string, funcionarioId: string) => void;
   onAdicionarFilho: (id: string, nome: string, ehPasta?: boolean) => void;
-  onReordenar: (paiId: string, indexAntigo: number, indexNovo: number) => void;
-  dndSensors: ReturnType<typeof useSensors>;
 }) {
   const temFilhos = no.filhos.length > 0;
   const ehPastaVisual = no.eh_pasta || temFilhos;
@@ -1754,19 +1789,24 @@ function NoSubtarefa({
   const aberto = pastasAbertas.has(no.id);
   const [criandoFilho, setCriandoFilho] = useState(false);
   const [nomeFilho, setNomeFilho] = useState("");
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: no.id });
-  const dragStyle = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id: no.id });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: no.id });
 
   return (
-    <div ref={setNodeRef} style={{ marginLeft: nivel * 20, ...dragStyle }}>
-      <div className="flex items-center gap-1">
+    <div ref={setDropRef} style={{ marginLeft: nivel * 18, opacity: isDragging ? 0.4 : 1 }}>
+      <div
+        ref={setDragRef}
+        className={`flex items-center gap-1 rounded-lg transition-colors ${
+          isOver && ehPastaVisual ? "bg-violet-100 ring-2 ring-violet-300" : isOver ? "bg-forest/10 ring-1 ring-forest/30" : ""
+        }`}
+      >
         <button
           {...attributes}
           {...listeners}
-          className="shrink-0 h-6 w-4 flex items-center justify-center text-ink/25 hover:text-ink/60 cursor-grab active:cursor-grabbing touch-none"
-          title="Arrastar pra reordenar"
+          className="shrink-0 h-5 w-3.5 flex items-center justify-center text-ink/25 hover:text-ink/60 cursor-grab active:cursor-grabbing touch-none"
+          title="Arrastar — solte em cima de uma pasta pra mover pra dentro dela"
         >
-          <svg width="9" height="15" viewBox="0 0 10 16" fill="currentColor">
+          <svg width="8" height="13" viewBox="0 0 10 16" fill="currentColor">
             <circle cx="2.5" cy="2.5" r="1.5" />
             <circle cx="7.5" cy="2.5" r="1.5" />
             <circle cx="2.5" cy="8" r="1.5" />
@@ -1777,7 +1817,7 @@ function NoSubtarefa({
         </button>
         <button
           onClick={() => (temFilhos ? onTogglePasta(no.id) : ehPastaVisual ? setCriandoFilho(true) : onTogglePasta(no.id))}
-          className={`h-5 w-5 shrink-0 rounded-md flex items-center justify-center text-ink/40 hover:bg-black/10 hover:text-ink text-[10px] ${!ehPastaVisual && "invisible"}`}
+          className={`h-4 w-4 shrink-0 rounded-md flex items-center justify-center text-ink/40 hover:bg-black/10 hover:text-ink text-[9px] ${!ehPastaVisual && "invisible"}`}
           title={temFilhos ? (aberto ? "Recolher" : "Expandir") : "Nenhuma subtarefa ainda"}
         >
           {temFilhos ? (aberto ? "▾" : "▸") : ""}
@@ -1786,6 +1826,7 @@ function NoSubtarefa({
           <LinhaSubtarefaEditavel
             sub={no}
             comFilhos={ehPastaVisual}
+            qtdFilhos={no.filhos.length}
             pastaCompleta={pastaCompleta}
             statusList={statusList}
             funcionariosComAcesso={funcionariosComAcesso}
@@ -1800,7 +1841,7 @@ function NoSubtarefa({
         {ehPastaVisual && (
           <button
             onClick={() => setCriandoFilho(true)}
-            className="shrink-0 h-6 w-6 rounded-full bg-violet-100 text-violet-700 hover:bg-violet-200 flex items-center justify-center text-xs font-bold"
+            className="shrink-0 h-5 w-5 rounded-full bg-violet-100 text-violet-700 hover:bg-violet-200 flex items-center justify-center text-xs font-bold"
             title="Adicionar subtarefa dentro dessa pasta"
           >
             +
@@ -1809,8 +1850,8 @@ function NoSubtarefa({
       </div>
       {criandoFilho && (
         <div
-          className="flex items-center gap-2 mt-1.5 p-2 rounded-xl bg-violet-50 border-2 border-violet-200"
-          style={{ marginLeft: 24 }}
+          className="flex items-center gap-2 mt-1 p-1.5 rounded-xl bg-violet-50 border-2 border-violet-200"
+          style={{ marginLeft: 22 }}
         >
           <input
             autoFocus
@@ -1827,7 +1868,7 @@ function NoSubtarefa({
             onBlur={() => {
               if (!nomeFilho.trim()) setCriandoFilho(false);
             }}
-            className="input py-1.5 text-sm flex-1 bg-white"
+            className="input py-1 text-xs flex-1 bg-white"
             placeholder="Nome da subtarefa..."
           />
           <button
@@ -1836,7 +1877,7 @@ function NoSubtarefa({
               setNomeFilho("");
               setCriandoFilho(false);
             }}
-            className="shrink-0 rounded-full bg-forest text-white px-3 py-1.5 text-xs font-bold hover:brightness-110 transition"
+            className="shrink-0 rounded-full bg-forest text-white px-2.5 py-1 text-[11px] font-bold hover:brightness-110 transition"
           >
             + Subtarefa
           </button>
@@ -1846,50 +1887,11 @@ function NoSubtarefa({
               setNomeFilho("");
               setCriandoFilho(false);
             }}
-            className="shrink-0 rounded-full bg-violet-600 text-white px-3 py-1.5 text-xs font-bold hover:brightness-110 transition"
+            className="shrink-0 rounded-full bg-violet-600 text-white px-2.5 py-1 text-[11px] font-bold hover:brightness-110 transition"
             title="Criar como pasta"
           >
             📁 Pasta
           </button>
-        </div>
-      )}
-      {aberto && temFilhos && (
-        <div className="mt-1 space-y-1">
-          <DndContext
-            sensors={dndSensors}
-            collisionDetection={closestCenter}
-            onDragEnd={(e: DragEndEvent) => {
-              const { active, over } = e;
-              if (!over || active.id === over.id) return;
-              const indexAntigo = no.filhos.findIndex((f) => f.id === active.id);
-              const indexNovo = no.filhos.findIndex((f) => f.id === over.id);
-              if (indexAntigo === -1 || indexNovo === -1) return;
-              onReordenar(no.id, indexAntigo, indexNovo);
-            }}
-          >
-            <SortableContext items={no.filhos.map((f) => f.id)} strategy={verticalListSortingStrategy}>
-              {no.filhos.map((filho) => (
-                <NoSubtarefa
-                  key={filho.id}
-                  no={filho}
-                  nivel={nivel + 1}
-                  pastasAbertas={pastasAbertas}
-                  onTogglePasta={onTogglePasta}
-                  statusList={statusList}
-                  funcionariosComAcesso={funcionariosComAcesso}
-                  responsaveisPorSubtarefa={responsaveisPorSubtarefa}
-                  onAbrir={onAbrir}
-                  onSalvarNome={onSalvarNome}
-                  onSalvarPrazo={onSalvarPrazo}
-                  onSalvarStatus={onSalvarStatus}
-                  onToggleResponsavel={onToggleResponsavel}
-                  onAdicionarFilho={onAdicionarFilho}
-                  onReordenar={onReordenar}
-                  dndSensors={dndSensors}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
         </div>
       )}
     </div>
@@ -1899,6 +1901,7 @@ function NoSubtarefa({
 function LinhaSubtarefaEditavel({
   sub,
   comFilhos,
+  qtdFilhos,
   pastaCompleta,
   statusList,
   funcionariosComAcesso,
@@ -1911,6 +1914,7 @@ function LinhaSubtarefaEditavel({
 }: {
   sub: Subtarefa;
   comFilhos?: boolean;
+  qtdFilhos?: number;
   pastaCompleta?: boolean;
   statusList: StatusItem[];
   funcionariosComAcesso: Responsavel[];
@@ -1930,16 +1934,16 @@ function LinhaSubtarefaEditavel({
     return (
       <div
         onClick={onAbrir}
-        className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2 cursor-pointer transition-colors ${
-          pastaCompleta ? "bg-emerald-50 hover:bg-emerald-100" : "bg-violet-50 hover:bg-violet-100"
+        className={`w-full flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer transition-colors ${
+          pastaCompleta ? "bg-emerald-50 hover:bg-emerald-100" : "bg-amber-50 hover:bg-amber-100"
         }`}
       >
         <svg
-          width="16"
-          height="16"
+          width="14"
+          height="14"
           viewBox="0 0 24 24"
           fill="currentColor"
-          className={`shrink-0 ${pastaCompleta ? "text-emerald-500" : "text-violet-500"}`}
+          className={`shrink-0 ${pastaCompleta ? "text-emerald-500" : "text-amber-500"}`}
         >
           <path d="M3 6a2 2 0 0 1 2-2h4.5l2 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" />
         </svg>
@@ -1954,7 +1958,7 @@ function LinhaSubtarefaEditavel({
             }}
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
             onClick={(e) => e.stopPropagation()}
-            className="input py-1 text-sm flex-1"
+            className="input py-0.5 text-xs flex-1"
           />
         ) : (
           <button
@@ -1962,10 +1966,15 @@ function LinhaSubtarefaEditavel({
               e.stopPropagation();
               setCampoEditando("nome");
             }}
-            className="text-sm font-bold text-violet-800 flex-1 text-left"
+            className={`text-xs font-bold flex-1 text-left ${pastaCompleta ? "text-emerald-800" : "text-amber-900"}`}
           >
             {sub.titulo}
           </button>
+        )}
+        {!!qtdFilhos && (
+          <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 shrink-0 ${pastaCompleta ? "bg-emerald-200/60 text-emerald-800" : "bg-amber-200/60 text-amber-800"}`}>
+            {qtdFilhos}
+          </span>
         )}
       </div>
     );
@@ -1974,24 +1983,24 @@ function LinhaSubtarefaEditavel({
   return (
     <div
       onClick={() => campoEditando === null && onAbrir()}
-      className={`group/row w-full grid grid-cols-[1fr_110px_150px_110px] items-center gap-2 rounded-xl px-3 py-2.5 transition-colors cursor-pointer ${
+      className={`group/row w-full grid grid-cols-[1fr_90px_130px_95px] items-center gap-2 rounded-lg px-2 py-1.5 transition-colors cursor-pointer ${
         pastaCompleta ? "bg-emerald-50 hover:bg-emerald-100" : "bg-surface hover:bg-surface/70"
       }`}
     >
-      <div className="flex items-center gap-2.5 min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
         {comFilhos ? (
           <svg
-            width="16"
-            height="16"
+            width="14"
+            height="14"
             viewBox="0 0 24 24"
             fill="currentColor"
-            className={`shrink-0 ${pastaCompleta ? "text-emerald-500" : "text-violet-500"}`}
+            className={`shrink-0 ${pastaCompleta ? "text-emerald-500" : "text-amber-500"}`}
           >
             <path d="M3 6a2 2 0 0 1 2-2h4.5l2 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" />
           </svg>
         ) : (
           <span
-            className={`h-3.5 w-3.5 rounded-full border-2 shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot.replace("bg-", "border-")} ${
+            className={`h-3 w-3 rounded-full border-2 shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot.replace("bg-", "border-")} ${
               statusSub?.cor === "verde" ? corDoStatus(statusSub.cor).dot : ""
             }`}
           />
@@ -2009,11 +2018,11 @@ function LinhaSubtarefaEditavel({
               if (e.key === "Enter") e.currentTarget.blur();
               if (e.key === "Escape") setCampoEditando(null);
             }}
-            className="input py-1 text-sm flex-1"
+            className="input py-0.5 text-xs flex-1"
           />
         ) : (
           <>
-            <span className="text-sm text-ink truncate flex-1">{sub.titulo}</span>
+            <span className="text-xs text-ink truncate flex-1">{sub.titulo}</span>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -2022,7 +2031,7 @@ function LinhaSubtarefaEditavel({
               className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs shrink-0"
               title="Editar nome"
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
             </button>
           </>
         )}
@@ -2049,8 +2058,8 @@ function LinhaSubtarefaEditavel({
           </div>
         ) : (
           <button onClick={() => setCampoEditando("responsavel")} className="flex items-center gap-1 group/resp">
-            {responsaveis.length > 0 ? <AvatarStack pessoas={responsaveis} tamanho={20} /> : <span className="text-xs text-ink/30">—</span>}
-            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
+            {responsaveis.length > 0 ? <AvatarStack pessoas={responsaveis} tamanho={18} /> : <span className="text-xs text-ink/30">—</span>}
+            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
           </button>
         )}
       </div>
@@ -2065,15 +2074,15 @@ function LinhaSubtarefaEditavel({
               onSalvarPrazo(e.target.value);
               setCampoEditando(null);
             }}
-            className="input py-1 text-xs"
+            className="input py-0.5 text-[11px]"
           />
         ) : (
           <button onClick={() => setCampoEditando("prazo")} className="flex items-center gap-1">
-            <span className={`text-xs ${atraso ? "text-red-600 font-bold" : "text-ink/50"}`}>
+            <span className={`text-[11px] ${atraso ? "text-red-600 font-bold" : "text-ink/50"}`}>
               {sub.prazo ? formatarDataCurta(sub.prazo) : "—"}
               {atraso && ` · ${atraso}d`}
             </span>
-            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
+            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
           </button>
         )}
       </div>
@@ -2097,10 +2106,10 @@ function LinhaSubtarefaEditavel({
           </div>
         ) : (
           <button onClick={() => setCampoEditando("status")} className="flex items-center gap-1">
-            <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
+            <span className={`text-[9px] font-semibold rounded-full px-1.5 py-0.5 w-fit ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
               {statusSub?.nome ?? "—"}
             </span>
-            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
+            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
           </button>
         )}
       </div>

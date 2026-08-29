@@ -1095,7 +1095,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
             })()}
 
           <div className="rounded-2xl bg-white p-4 shadow-sm mb-6 space-y-3">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div>
                 <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40 mb-1">Status</span>
                 <div className="relative">
@@ -1170,22 +1170,9 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                   ))}
                 </select>
               </div>
-
-              <div>
-                <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40 mb-1">Hora</span>
-                <input
-                  type="time"
-                  value={horaPublicacao}
-                  onChange={(e) => {
-                    setHoraPublicacao(e.target.value);
-                    salvarCampo({ hora_publicacao: e.target.value || null }, "mudou o horário de publicação");
-                  }}
-                  className="input py-1.5 text-sm"
-                />
-              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-black/5">
+            <div className="grid grid-cols-3 gap-3 pt-3 border-t border-black/5">
               <div>
                 <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40 mb-1">Início</span>
                 <input
@@ -1216,6 +1203,18 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                       true,
                       "data_publicacao"
                     );
+                  }}
+                  className="input py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-ink/40 mb-1">Hora</span>
+                <input
+                  type="time"
+                  value={horaPublicacao}
+                  onChange={(e) => {
+                    setHoraPublicacao(e.target.value);
+                    salvarCampo({ hora_publicacao: e.target.value || null }, "mudou o horário de publicação");
                   }}
                   className="input py-1.5 text-sm"
                 />
@@ -1450,19 +1449,19 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
           </div>
 
           <div className="rounded-2xl bg-white p-4 shadow-sm">
-            <span className="block text-sm font-bold text-ink mb-2">Sub-conteúdos</span>
+            <span className="block text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Sub-conteúdos</span>
             <p className="text-xs text-ink/40 mb-3">
               Use isso pra agrupar vários posts dentro de um "pacote" — por exemplo, um post "Conteúdo de Setembro" com um sub-conteúdo pra cada publicação do mês.
             </p>
             {subConteudos.length > 0 && (
-              <div className="grid grid-cols-[1fr_110px_90px_110px] gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink/40">
+              <div className="grid grid-cols-[1fr_90px_80px_95px] gap-2 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ink/35">
                 <span>Nome</span>
-                <span>Responsáveis</span>
+                <span>Resp.</span>
                 <span>Data</span>
                 <span>Status</span>
               </div>
             )}
-            <div className="space-y-1.5 mb-2">
+            <div className="space-y-0.5 mb-2">
               <DndContext
                 sensors={dndSensors}
                 collisionDetection={closestCenter}
@@ -1808,14 +1807,14 @@ function LinhaSubConteudoArrastavel({ id, children }: { id: string; children: Re
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   return (
-    <div ref={setNodeRef} style={style} className="flex items-center gap-1.5">
+    <div ref={setNodeRef} style={style} className="flex items-center gap-1">
       <button
         {...attributes}
         {...listeners}
-        className="shrink-0 h-6 w-4 flex items-center justify-center text-ink/25 hover:text-ink/60 cursor-grab active:cursor-grabbing touch-none"
+        className="shrink-0 h-5 w-3.5 flex items-center justify-center text-ink/25 hover:text-ink/60 cursor-grab active:cursor-grabbing touch-none"
         title="Arrastar pra reordenar"
       >
-        <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
+        <svg width="8" height="13" viewBox="0 0 10 16" fill="currentColor">
           <circle cx="2.5" cy="2.5" r="1.5" />
           <circle cx="7.5" cy="2.5" r="1.5" />
           <circle cx="2.5" cy="8" r="1.5" />
@@ -1857,7 +1856,7 @@ function LinhaSubConteudoEditavel({
   return (
     <div
       onClick={() => campoEditando === null && onAbrir()}
-      className="group/row w-full grid grid-cols-[1fr_110px_90px_110px] items-center gap-2 rounded-xl bg-surface px-3 py-2.5 hover:bg-surface/70 transition-colors cursor-pointer"
+      className="group/row w-full grid grid-cols-[1fr_90px_80px_95px] items-center gap-2 rounded-lg bg-surface px-2 py-1.5 hover:bg-surface/70 transition-colors cursor-pointer"
     >
       <div className="flex items-center gap-2 min-w-0">
         <span className={`h-2 w-2 rounded-full shrink-0 ${corDoStatus(statusSub?.cor ?? "cinza").dot}`} />
@@ -1875,11 +1874,11 @@ function LinhaSubConteudoEditavel({
               if (e.key === "Escape") setCampoEditando(null);
             }}
             onClick={(e) => e.stopPropagation()}
-            className="input py-1 text-sm flex-1"
+            className="input py-0.5 text-xs flex-1"
           />
         ) : (
           <>
-            <span className="text-sm text-ink truncate flex-1">{sub.titulo || "Sem título"}</span>
+            <span className="text-xs text-ink truncate flex-1">{sub.titulo || "Sem título"}</span>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -1888,7 +1887,7 @@ function LinhaSubConteudoEditavel({
               className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs shrink-0"
               title="Editar nome"
             >
-              ✏️
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
             </button>
           </>
         )}
@@ -1918,8 +1917,8 @@ function LinhaSubConteudoEditavel({
           </div>
         ) : (
           <button onClick={() => setCampoEditando("responsavel")} className="flex items-center gap-1">
-            {responsaveis.length > 0 ? <AvatarStack pessoas={responsaveis} tamanho={20} /> : <span className="text-xs text-ink/30">—</span>}
-            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs">✏️</span>
+            {responsaveis.length > 0 ? <AvatarStack pessoas={responsaveis} tamanho={18} /> : <span className="text-xs text-ink/30">—</span>}
+            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
           </button>
         )}
       </div>
@@ -1934,12 +1933,12 @@ function LinhaSubConteudoEditavel({
               onSalvarData(e.target.value);
               setCampoEditando(null);
             }}
-            className="input py-1 text-xs"
+            className="input py-0.5 text-[11px]"
           />
         ) : (
           <button onClick={() => setCampoEditando("data")} className="flex items-center gap-1">
-            <span className="text-xs text-ink/50">{formatarDataCurta(sub.data_publicacao)}</span>
-            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs">✏️</span>
+            <span className="text-[11px] text-ink/50">{formatarDataCurta(sub.data_publicacao)}</span>
+            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
           </button>
         )}
       </div>
@@ -1966,10 +1965,10 @@ function LinhaSubConteudoEditavel({
           </div>
         ) : (
           <button onClick={() => setCampoEditando("status")} className="flex items-center gap-1">
-            <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 w-fit ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
+            <span className={`text-[9px] font-semibold rounded-full px-1.5 py-0.5 w-fit ${corDoStatus(statusSub?.cor ?? "cinza").cor}`}>
               {statusSub?.nome ?? "—"}
             </span>
-            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink text-xs">✏️</span>
+            <span className="opacity-0 group-hover/row:opacity-100 text-ink/30 hover:text-ink"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span>
           </button>
         )}
       </div>
