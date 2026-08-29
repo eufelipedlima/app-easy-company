@@ -216,6 +216,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     });
   }
   const [statusList, setStatusList] = useState<StatusItem[]>([]);
+  const [statusListSubtarefas, setStatusListSubtarefas] = useState<StatusItem[]>([]);
   const [clientes, setClientes] = useState<Opcao[]>([]);
   const [funcionariosComAcesso, setFuncionariosComAcesso] = useState<Responsavel[]>([]);
   const [colegas, setColegas] = useState<Opcao[]>([]);
@@ -277,14 +278,26 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       data: { user },
     } = await supabase.auth.getUser();
 
-    const [{ data: t }, { data: statusData }, { data: clientesData }, { data: funcData }] = await Promise.all([
+    const [{ data: t }, { data: clientesData }, { data: funcData }, { data: statusSubData }] = await Promise.all([
       supabase.from("tarefas").select("*").eq("id", id).maybeSingle(),
-      supabase.from("status_conteudo").select("id, nome, cor, ordem").order("ordem"),
       supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )"),
       supabase.from("funcionarios").select("id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )"),
+      // Subtarefas/etapas são sempre tarefas comuns (aparecem misturadas
+      // na aba Tarefas), então usam a lista de status de "tarefas" —
+      // independente de a tarefa/projeto principal ser um projeto ou não.
+      supabase.from("status_conteudo").select("id, nome, cor, ordem").eq("area", "tarefas").order("ordem"),
     ]);
 
+    // O campo de status da própria tarefa/projeto principal usa a área
+    // certa: "projetos" se for um projeto, "tarefas" se não for.
+    const { data: statusData } = await supabase
+      .from("status_conteudo")
+      .select("id, nome, cor, ordem")
+      .eq("area", t?.eh_projeto ? "projetos" : "tarefas")
+      .order("ordem");
+
     setStatusList(statusData ?? []);
+    setStatusListSubtarefas(statusSubData ?? []);
     const listaClientes = ((clientesData ?? []) as unknown as { id: string; papeis: { pessoas: { nome: string } | null } | null }[])
       .map((c) => ({ id: c.id, nome: c.papeis?.pessoas?.nome ?? "—" }))
       .sort((a, b) => a.nome.localeCompare(b.nome));
@@ -749,7 +762,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       titulo: nomeFinal.trim(),
       tarefa_pai_id: paiId,
       cliente_id: tarefa.cliente_id,
-      status_id: statusList[0]?.id,
+      status_id: statusListSubtarefas[0]?.id ?? statusList[0]?.id,
       eh_pasta: ehPasta ?? false,
       ordem: irmaos.length,
     });
@@ -1022,7 +1035,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                 )}
                 <div className="space-y-0.5">
                   {achatarNavSubtarefas(itensNav, idPaiNav ?? "").map(({ item, nivel }) => {
-                    const st = statusList.find((s) => s.id === item.status_id);
+                    const st = statusListSubtarefas.find((s) => s.id === item.status_id);
                     const ativo = item.id === id;
                     return (
                       <button
@@ -1076,7 +1089,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
               const itensDeTrabalho = subtarefas.filter((s) => !s.eh_pasta);
               const total = itensDeTrabalho.length;
               if (total === 0) return null;
-              const completos = itensDeTrabalho.filter((s) => statusList.find((st) => st.id === s.status_id)?.cor === "verde").length;
+              const completos = itensDeTrabalho.filter((s) => statusListSubtarefas.find((st) => st.id === s.status_id)?.cor === "verde").length;
               const pct = Math.round((completos / total) * 100);
               return (
                 <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
@@ -1374,7 +1387,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                             return novo;
                           })
                         }
-                        statusList={statusList}
+                        statusList={statusListSubtarefas}
                         funcionariosComAcesso={funcionariosComAcesso}
                         responsaveisPorSubtarefa={responsaveisPorSubtarefa}
                         onAbrir={(nid) => router.push(`/tarefas/${nid}`)}

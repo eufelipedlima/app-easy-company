@@ -282,7 +282,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
 
     const [{ data: p }, { data: statusData }, { data: clientesData }, { data: funcData }] = await Promise.all([
       supabase.from("posts_conteudo").select("*").eq("id", id).maybeSingle(),
-      supabase.from("status_conteudo").select("id, nome, cor, ordem").order("ordem"),
+      supabase.from("status_conteudo").select("id, nome, cor, ordem").eq("area", "conteudo").order("ordem"),
       supabase.from("clientes").select("id, papeis ( pessoas ( nome ) )"),
       supabase.from("funcionarios").select("id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )"),
     ]);

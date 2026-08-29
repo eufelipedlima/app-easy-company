@@ -484,7 +484,7 @@ export const CalendarioConteudoConteudo = forwardRef<
 
   const carregarStatus = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from("status_conteudo").select("id, nome, cor, ordem").order("ordem");
+    const { data } = await supabase.from("status_conteudo").select("id, nome, cor, ordem").eq("area", "conteudo").order("ordem");
     setStatusList(data ?? []);
   }, []);
 
@@ -2663,7 +2663,7 @@ function NovoPlanejamentoModal({
     setSaving(true);
     setErro(null);
     const supabase = createClient();
-    const { data: statusList } = await supabase.from("status_conteudo").select("id").order("ordem").limit(1);
+    const { data: statusList } = await supabase.from("status_conteudo").select("id").eq("area", "conteudo").order("ordem").limit(1);
     const {
       data: { user },
     } = await supabase.auth.getUser();

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { FolderTree, Pencil, Trash2 } from "lucide-react";
 
 interface Modelo {
   id: string;
@@ -15,6 +16,7 @@ export default function ModelosProjetoPage() {
   const [modelos, setModelos] = useState<Modelo[]>([]);
   const [loading, setLoading] = useState(true);
   const [criando, setCriando] = useState(false);
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -43,7 +45,7 @@ export default function ModelosProjetoPage() {
   async function criarModelo() {
     setCriando(true);
     const supabase = createClient();
-    const { data: statusList } = await supabase.from("status_conteudo").select("id").order("ordem").limit(1);
+    const { data: statusList } = await supabase.from("status_conteudo").select("id").eq("area", "tarefas").order("ordem").limit(1);
     const { data: modelo, error } = await supabase
       .from("tarefas")
       .insert({ titulo: "Novo modelo de projeto", eh_modelo_projeto: true, status_id: statusList?.[0]?.id })
@@ -51,6 +53,21 @@ export default function ModelosProjetoPage() {
       .single();
     setCriando(false);
     if (!error && modelo) router.push(`/tarefas/${modelo.id}`);
+  }
+
+  async function excluirModelo(modeloId: string, titulo: string) {
+    if (!window.confirm(`Excluir o modelo "${titulo}"? Isso também remove as etapas salvas dentro dele.`)) return;
+    setExcluindoId(modeloId);
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const agora = new Date().toISOString();
+    const { data: etapas } = await supabase.from("tarefas").select("id").eq("tarefa_pai_id", modeloId).is("excluido_em", null);
+    const ids = [modeloId, ...(etapas ?? []).map((e) => e.id)];
+    await supabase.from("tarefas").update({ excluido_em: agora, excluido_por: user?.id ?? null }).in("id", ids);
+    setExcluindoId(null);
+    carregar();
   }
 
   return (
@@ -76,14 +93,30 @@ export default function ModelosProjetoPage() {
       ) : (
         <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
           {modelos.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => router.push(`/tarefas/${m.id}`)}
-              className="w-full flex items-center justify-between gap-3 px-5 py-4 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors text-left"
-            >
-              <p className="text-sm font-bold text-ink truncate">🗂️ {m.titulo}</p>
-              <span className="text-xs text-ink/40 shrink-0">{m.qtdEtapas} subtarefas</span>
-            </button>
+            <div key={m.id} className="flex items-center justify-between gap-3 px-5 py-4 border-b border-black/5 last:border-0 hover:bg-surface/60 transition-colors">
+              <button onClick={() => router.push(`/tarefas/${m.id}`)} className="flex items-center gap-2.5 min-w-0 flex-1 text-left">
+                <FolderTree size={16} className="text-ink/40 shrink-0" />
+                <p className="text-sm font-bold text-ink truncate">{m.titulo}</p>
+                <span className="text-xs text-ink/40 shrink-0">{m.qtdEtapas} subtarefas</span>
+              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => router.push(`/tarefas/${m.id}`)}
+                  title="Editar modelo"
+                  className="h-8 w-8 rounded-full flex items-center justify-center text-ink/40 hover:text-ink hover:bg-black/5 transition-colors"
+                >
+                  <Pencil size={15} />
+                </button>
+                <button
+                  onClick={() => excluirModelo(m.id, m.titulo)}
+                  disabled={excluindoId === m.id}
+                  title="Excluir modelo"
+                  className="h-8 w-8 rounded-full flex items-center justify-center text-ink/40 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       )}

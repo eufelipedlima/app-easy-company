@@ -594,7 +594,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
     const tituloNovo = window.prompt("Nome da tarefa:");
     if (!tituloNovo || !tituloNovo.trim()) return;
     const supabase = createClient();
-    const { data: statusList } = await supabase.from("status_conteudo").select("id").order("ordem").limit(1);
+    const { data: statusList } = await supabase.from("status_conteudo").select("id").eq("area", "tarefas").order("ordem").limit(1);
     const { data: nova } = await supabase
       .from("tarefas")
       .insert({ titulo: tituloNovo.trim(), cliente_id: id, status_id: statusList?.[0]?.id })
@@ -613,7 +613,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
     const tituloNovo = window.prompt("Nome do conteúdo:");
     if (!tituloNovo || !tituloNovo.trim()) return;
     const supabase = createClient();
-    const { data: statusList } = await supabase.from("status_conteudo").select("id").order("ordem").limit(1);
+    const { data: statusList } = await supabase.from("status_conteudo").select("id").eq("area", "conteudo").order("ordem").limit(1);
     const hoje = new Date().toISOString().slice(0, 10);
     const { data: novo } = await supabase
       .from("posts_conteudo")

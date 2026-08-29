@@ -274,9 +274,13 @@ export function TarefasPageConteudo({ escopo = "tudo" }: { escopo?: "tudo" | "pr
 
   const carregarStatus = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from("status_conteudo").select("id, nome, cor, ordem").order("ordem");
+    const { data } = await supabase
+      .from("status_conteudo")
+      .select("id, nome, cor, ordem")
+      .eq("area", escopo === "projetos" ? "projetos" : "tarefas")
+      .order("ordem");
     setStatusList(data ?? []);
-  }, []);
+  }, [escopo]);
 
   const carregarClientes = useCallback(async () => {
     const supabase = createClient();
@@ -1974,6 +1978,7 @@ function NovoProjetoModal({
   const [modelos, setModelos] = useState<ModeloProjeto[]>([]);
   const [modeloId, setModeloId] = useState("");
   const [titulo, setTitulo] = useState("");
+  const [statusPadraoEtapaId, setStatusPadraoEtapaId] = useState("");
   const [clienteSelecionado, setClienteSelecionado] = useState<Opcao | null>(null);
   const [carregandoModelos, setCarregandoModelos] = useState(true);
   const [ehInterna, setEhInterna] = useState(false);
@@ -2025,6 +2030,15 @@ function NovoProjetoModal({
 
   useEffect(() => {
     carregarModelos();
+    // Etapas de projeto são tarefas normais (aparecem misturadas na aba
+    // Tarefas), então usam a lista de status de "tarefas" — não a de
+    // "projetos", que é só pro projeto em si.
+    async function carregarStatusEtapa() {
+      const supabase = createClient();
+      const { data } = await supabase.from("status_conteudo").select("id").eq("area", "tarefas").order("ordem").limit(1);
+      setStatusPadraoEtapaId(data?.[0]?.id ?? "");
+    }
+    carregarStatusEtapa();
   }, [carregarModelos]);
 
   const modeloSelecionado = modelos.find((m) => m.id === modeloId) ?? null;
@@ -2069,7 +2083,7 @@ function NovoProjetoModal({
               titulo: et.titulo,
               tarefa_pai_id: paiIdNovo,
               cliente_id: clienteSelecionado?.id ?? null,
-              status_id: statusPadraoId,
+              status_id: statusPadraoEtapaId || statusPadraoId,
               eh_pasta: et.eh_pasta,
             })
             .select("id")

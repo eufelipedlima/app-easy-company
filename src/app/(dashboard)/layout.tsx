@@ -441,12 +441,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {menuVisivel.map((grupo) => {
             if (grupo.href) {
               const ativo = pathname?.startsWith(grupo.href);
-              const badge =
-                grupo.label === "Chat" && chatNaoLidas > 0
-                  ? chatNaoLidas
-                  : grupo.label === "Caixa de Entrada" && caixaEntradaNaoLidas > 0
-                  ? caixaEntradaNaoLidas
-                  : null;
+              const badge = grupo.label === "Início" && chatNaoLidas + caixaEntradaNaoLidas > 0 ? chatNaoLidas + caixaEntradaNaoLidas : null;
               return (
                 <Link
                   key={grupo.label}

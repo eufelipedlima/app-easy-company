@@ -84,7 +84,9 @@ export default function InicioPage() {
   const [loading, setLoading] = useState(true);
   const [itens, setItens] = useState<ItemAgenda[]>([]);
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
+  const [totalNaoLidasCaixa, setTotalNaoLidasCaixa] = useState(0);
   const [canaisChat, setCanaisChat] = useState<CanalChat[]>([]);
+  const [totalNaoLidasChat, setTotalNaoLidasChat] = useState(0);
   const [abaTarefas, setAbaTarefas] = useState<
     "urgentes" | "atraso" | "semana" | "hoje" | "inicia_amanha" | "inicia_hoje" | "proximas"
   >("atraso");
@@ -189,6 +191,12 @@ export default function InicioPage() {
       .order("created_at", { ascending: false })
       .limit(5);
     setNotificacoes(notifData ?? []);
+    const { count: totalNaoLidas } = await supabase
+      .from("notificacoes")
+      .select("id", { count: "exact", head: true })
+      .eq("destinatario_id", user.id)
+      .eq("lida", false);
+    setTotalNaoLidasCaixa(totalNaoLidas ?? 0);
 
     const { data: participacoes } = await supabase
       .from("chat_participantes")
@@ -250,6 +258,7 @@ export default function InicioPage() {
     );
 
     canaisComInfo.sort((a, b) => b.naoLidas - a.naoLidas);
+    setTotalNaoLidasChat(canaisComInfo.reduce((s, c) => s + c.naoLidas, 0));
     setCanaisChat(canaisComInfo.slice(0, 5));
 
     setLoading(false);
@@ -327,15 +336,25 @@ export default function InicioPage() {
             </button>
             <button
               onClick={() => router.push("/caixa-de-entrada")}
-              className="rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors"
+              className="relative rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors"
             >
               📥 Caixa de entrada
+              {totalNaoLidasCaixa > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 h-5 min-w-[20px] px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold flex items-center justify-center ring-2 ring-white">
+                  {totalNaoLidasCaixa > 99 ? "99+" : totalNaoLidasCaixa}
+                </span>
+              )}
             </button>
             <button
               onClick={() => router.push("/chat")}
-              className="rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors"
+              className="relative rounded-full bg-ink text-white px-4 py-2 text-xs font-bold hover:bg-forest transition-colors"
             >
               💬 Chat
+              {totalNaoLidasChat > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 h-5 min-w-[20px] px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold flex items-center justify-center ring-2 ring-white">
+                  {totalNaoLidasChat > 99 ? "99+" : totalNaoLidasChat}
+                </span>
+              )}
             </button>
           </div>
         </div>
