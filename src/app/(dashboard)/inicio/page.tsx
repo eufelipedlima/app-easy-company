@@ -85,7 +85,8 @@ export default function InicioPage() {
   const [itens, setItens] = useState<ItemAgenda[]>([]);
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
   const [totalNaoLidasCaixa, setTotalNaoLidasCaixa] = useState(0);
-  const [canaisChat, setCanaisChat] = useState<CanalChat[]>([]);
+  const [rotinasHoje, setRotinasHoje] = useState<{ id: string; nome: string; itens: { id: string; texto: string; concluido: boolean }[] }[]>([]);
+  const [meuFuncionarioId, setMeuFuncionarioId] = useState<string | null>(null);
   const [totalNaoLidasChat, setTotalNaoLidasChat] = useState(0);
   const [abaTarefas, setAbaTarefas] = useState<
     "urgentes" | "atraso" | "semana" | "hoje" | "inicia_amanha" | "inicia_hoje" | "proximas"
@@ -104,12 +105,52 @@ export default function InicioPage() {
 
     const { data: funcionario } = await supabase
       .from("funcionarios")
-      .select("id, papeis ( pessoas ( nome, apelido ) )")
+      .select("id, cargo_id, papeis ( pessoas ( nome, apelido ) )")
       .eq("auth_user_id", user.id)
       .maybeSingle();
 
-    const f = funcionario as unknown as { id: string; papeis: { pessoas: { nome: string; apelido: string | null } | null } | null } | null;
+    const f = funcionario as unknown as { id: string; cargo_id: string | null; papeis: { pessoas: { nome: string; apelido: string | null } | null } | null } | null;
     setNome(f?.papeis?.pessoas?.apelido || f?.papeis?.pessoas?.nome || "");
+    setMeuFuncionarioId(f?.id ?? null);
+
+    if (f) {
+      const hojeDate = new Date();
+      hojeDate.setHours(0, 0, 0, 0);
+      const hojeIso = hojeDate.toISOString().slice(0, 10);
+      const [{ data: rotinasData }, { data: itensData }, { data: respCargoData }, { data: respFuncData }] = await Promise.all([
+        supabase.from("rotinas").select("id, nome, frequencia, dias_semana, dia_mes").eq("ativo", true),
+        supabase.from("rotina_itens").select("id, rotina_id, texto, ordem").order("ordem"),
+        supabase.from("rotina_responsaveis_cargo").select("rotina_id, cargo_id"),
+        supabase.from("rotina_responsaveis_funcionario").select("rotina_id, funcionario_id"),
+      ]);
+      const rotinaAplicavelHoje = (r: { frequencia: string; dias_semana: number[] | null; dia_mes: number | null }) => {
+        if (r.frequencia === "diaria") return true;
+        if (r.frequencia === "semanal") return (r.dias_semana ?? []).includes(hojeDate.getDay());
+        if (r.frequencia === "mensal") {
+          if (!r.dia_mes) return false;
+          const ultimoDia = new Date(hojeDate.getFullYear(), hojeDate.getMonth() + 1, 0).getDate();
+          const alvo = new Date(hojeDate.getFullYear(), hojeDate.getMonth(), Math.min(r.dia_mes, ultimoDia));
+          const dSemana = alvo.getDay();
+          if (dSemana === 0) alvo.setDate(alvo.getDate() - 2);
+          else if (dSemana === 6) alvo.setDate(alvo.getDate() - 1);
+          return hojeDate.getDate() === alvo.getDate();
+        }
+        return false;
+      };
+      const minhasRotinas = (rotinasData ?? [])
+        .filter((r) => (f.cargo_id && (respCargoData ?? []).some((c) => c.rotina_id === r.id && c.cargo_id === f.cargo_id)) || (respFuncData ?? []).some((rf) => rf.rotina_id === r.id && rf.funcionario_id === f.id))
+        .filter(rotinaAplicavelHoje)
+        .map((r) => ({ id: r.id, nome: r.nome, itens: (itensData ?? []).filter((i) => i.rotina_id === r.id) }));
+      const idsItens = minhasRotinas.flatMap((r) => r.itens.map((i) => i.id));
+      const { data: execucoes } =
+        idsItens.length > 0
+          ? await supabase.from("rotina_execucoes").select("rotina_item_id").eq("funcionario_id", f.id).eq("data_referencia", hojeIso).in("rotina_item_id", idsItens)
+          : { data: [] };
+      const feitos = new Set((execucoes ?? []).map((e) => e.rotina_item_id));
+      setRotinasHoje(
+        minhasRotinas.map((r) => ({ ...r, itens: r.itens.map((i) => ({ ...i, concluido: feitos.has(i.id) })) }))
+      );
+    }
 
     if (f) {
       const [{ data: tarefasResp }, { data: postsResp }] = await Promise.all([
@@ -259,7 +300,6 @@ export default function InicioPage() {
 
     canaisComInfo.sort((a, b) => b.naoLidas - a.naoLidas);
     setTotalNaoLidasChat(canaisComInfo.reduce((s, c) => s + c.naoLidas, 0));
-    setCanaisChat(canaisComInfo.slice(0, 5));
 
     setLoading(false);
   }, []);
@@ -267,6 +307,18 @@ export default function InicioPage() {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  async function toggleItemRotina(itemId: string, marcado: boolean) {
+    if (!meuFuncionarioId) return;
+    const supabase = createClient();
+    const hojeIsoReal = new Date().toISOString().slice(0, 10);
+    if (marcado) {
+      await supabase.from("rotina_execucoes").insert({ rotina_item_id: itemId, funcionario_id: meuFuncionarioId, data_referencia: hojeIsoReal });
+    } else {
+      await supabase.from("rotina_execucoes").delete().eq("rotina_item_id", itemId).eq("funcionario_id", meuFuncionarioId).eq("data_referencia", hojeIsoReal);
+    }
+    setRotinasHoje((atual) => atual.map((r) => ({ ...r, itens: r.itens.map((i) => (i.id === itemId ? { ...i, concluido: marcado } : i)) })));
+  }
 
   const hojeISO = toISODateLocal(new Date());
   const amanha = new Date();
@@ -506,31 +558,41 @@ export default function InicioPage() {
               <div className="rounded-3xl bg-white border border-black/5 shadow-sm p-6 hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">💬</span>
-                    <h2 className="text-sm font-bold text-ink">Chat</h2>
+                    <span className="text-lg">✅</span>
+                    <h2 className="text-sm font-bold text-ink">Rotinas de hoje</h2>
                   </div>
-                  <button onClick={() => router.push("/chat")} className="text-xs font-semibold text-forest hover:text-ink">
-                    Abrir chat →
+                  <button onClick={() => router.push("/rotinas")} className="text-xs font-semibold text-forest hover:text-ink">
+                    Ver tudo →
                   </button>
                 </div>
-                {canaisChat.length === 0 ? (
-                  <EstadoVazio emoji="💬" titulo="Nenhuma conversa ainda" />
+                {rotinasHoje.length === 0 ? (
+                  <EstadoVazio emoji="✅" titulo="Nenhuma rotina pra hoje" />
                 ) : (
-                  <div className="space-y-1">
-                    {canaisChat.map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => router.push(`/chat?canal=${c.id}`)}
-                        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl hover:bg-surface transition-colors text-left"
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-[13px] font-semibold text-ink truncate">{c.nome}</span>
-                          {c.ultimaMensagem && <span className="block text-[11px] text-ink/50 truncate">{c.ultimaMensagem}</span>}
-                        </span>
-                        {c.naoLidas > 0 && (
-                          <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">{c.naoLidas}</span>
-                        )}
-                      </button>
+                  <div className="space-y-3">
+                    {rotinasHoje.map((r) => (
+                      <div key={r.id}>
+                        <p className="text-xs font-bold text-ink/50 mb-1">{r.nome}</p>
+                        <div className="space-y-0.5">
+                          {r.itens.map((item) => (
+                            <label
+                              key={item.id}
+                              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl cursor-pointer hover:bg-surface transition-colors ${
+                                item.concluido ? "bg-mint/40" : ""
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={item.concluido}
+                                onChange={(e) => toggleItemRotina(item.id, e.target.checked)}
+                                className="h-4 w-4 rounded accent-forest shrink-0"
+                              />
+                              <span className={`text-[13px] flex-1 truncate ${item.concluido ? "text-ink/40 line-through" : "text-ink"}`}>
+                                {item.texto}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
