@@ -319,7 +319,7 @@ export default function MembroDetalhePage({ params }: { params: Promise<{ id: st
     const supabase = createClient();
     const dataIso = dataRotina.toISOString().slice(0, 10);
     const [{ data: rotinasData }, { data: respCargoData }, { data: respFuncData }] = await Promise.all([
-      supabase.from("rotinas").select("id, texto, grupo, frequencia, dias_semana, dia_mes").eq("ativo", true),
+      supabase.from("rotinas").select("id, texto, grupo, frequencia, dias_semana, dia_mes, criado_em").eq("ativo", true),
       supabase.from("rotina_responsaveis_cargo").select("rotina_id, cargo_id"),
       supabase.from("rotina_responsaveis_funcionario").select("rotina_id, funcionario_id"),
     ]);

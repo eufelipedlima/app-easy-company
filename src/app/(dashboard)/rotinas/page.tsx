@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Settings2, Plus, X, Trash2 } from "lucide-react";
+import { Plus, X, Trash2 } from "lucide-react";
 
 const DIAS_SEMANA_LABEL = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const CORES_AVATAR = [
@@ -37,7 +37,18 @@ function Avatar({ nome, fotoUrl, tamanho = 28 }: { nome: string; fotoUrl?: strin
 // ============================================================
 // A lógica central: "essa tarefa vale nesse dia?"
 // ============================================================
-export function rotinaAplicavelNaData(rotina: { frequencia: string; dias_semana: number[] | null; dia_mes: number | null }, data: Date): boolean {
+export function rotinaAplicavelNaData(
+  rotina: { frequencia: string; dias_semana: number[] | null; dia_mes: number | null; criado_em?: string },
+  data: Date
+): boolean {
+  // Nunca aparece em dias anteriores a quando a tarefa foi cadastrada —
+  // sem isso, uma tarefa criada hoje "apareceria" retroativamente em
+  // dias passados também.
+  if (rotina.criado_em) {
+    const criada = new Date(rotina.criado_em);
+    criada.setHours(0, 0, 0, 0);
+    if (data.getTime() < criada.getTime()) return false;
+  }
   if (rotina.frequencia === "diaria") return true;
   if (rotina.frequencia === "semanal") return (rotina.dias_semana ?? []).includes(data.getDay());
   if (rotina.frequencia === "mensal") {
@@ -75,6 +86,7 @@ interface Rotina {
   dia_mes: number | null;
   ativo: boolean;
   ordem: number;
+  criado_em: string;
   cargoIds: string[];
   funcionarioIds: string[];
   concluidoHoje?: boolean;
@@ -111,11 +123,12 @@ export default function RotinasPage() {
   const [rotinasDoDia, setRotinasDoDia] = useState<Rotina[]>([]);
   const [loadingDia, setLoadingDia] = useState(true);
 
-  const [painelAdminAberto, setPainelAdminAberto] = useState(false);
   const [todasRotinas, setTodasRotinas] = useState<Rotina[]>([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
   const [rotinaEditandoId, setRotinaEditandoId] = useState<string | null>(null);
+  const [aba, setAba] = useState<"minhas" | "todas">("minhas");
+  const [agrupamentoAdmin, setAgrupamentoAdmin] = useState<"nenhum" | "pessoa" | "cargo">("nenhum");
 
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
@@ -161,7 +174,7 @@ export default function RotinasPage() {
   const buscarRotinasCompletas = useCallback(async (): Promise<Rotina[]> => {
     const supabase = createClient();
     const [{ data: rotinasData }, { data: respCargoData }, { data: respFuncData }] = await Promise.all([
-      supabase.from("rotinas").select("id, texto, descricao, grupo, frequencia, dias_semana, dia_mes, ativo, ordem").order("ordem"),
+      supabase.from("rotinas").select("id, texto, descricao, grupo, frequencia, dias_semana, dia_mes, ativo, ordem, criado_em").order("ordem"),
       supabase.from("rotina_responsaveis_cargo").select("rotina_id, cargo_id"),
       supabase.from("rotina_responsaveis_funcionario").select("rotina_id, funcionario_id"),
     ]);
@@ -222,25 +235,28 @@ export default function RotinasPage() {
     });
   }
 
-  async function abrirPainelAdmin() {
-    setPainelAdminAberto(true);
+  const carregarTodasRotinas = useCallback(async () => {
     setLoadingAdmin(true);
     setTodasRotinas(await buscarRotinasCompletas());
     setLoadingAdmin(false);
-  }
+  }, [buscarRotinasCompletas]);
+
+  useEffect(() => {
+    if (aba === "todas" && souAdmin) carregarTodasRotinas();
+  }, [aba, souAdmin, carregarTodasRotinas]);
 
   async function excluirRotina(id: string, texto: string) {
     if (!window.confirm(`Excluir a tarefa "${texto}"? Isso remove o histórico de conclusões dela.`)) return;
     const supabase = createClient();
     await supabase.from("rotinas").delete().eq("id", id);
-    setTodasRotinas(await buscarRotinasCompletas());
+    carregarTodasRotinas();
     carregarRotinasDoDia();
   }
 
   async function alternarAtivo(rotina: Rotina) {
     const supabase = createClient();
     await supabase.from("rotinas").update({ ativo: !rotina.ativo }).eq("id", rotina.id);
-    setTodasRotinas(await buscarRotinasCompletas());
+    carregarTodasRotinas();
     carregarRotinasDoDia();
   }
 
@@ -269,118 +285,250 @@ export default function RotinasPage() {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-8">
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-extrabold text-ink mb-1">Rotinas</h1>
-          <p className="text-sm text-ink/60">Suas tarefas recorrentes — diárias, semanais ou mensais.</p>
-        </div>
-        {souAdmin && (
-          <button
-            onClick={abrirPainelAdmin}
-            className="rounded-full border-2 border-black/10 text-ink px-4 py-2 text-sm font-semibold hover:bg-surface transition-colors flex items-center gap-1.5 shrink-0"
-          >
-            <Settings2 size={15} /> Gerenciar
-          </button>
-        )}
+      <div className="mb-6">
+        <h1 className="text-2xl font-extrabold text-ink mb-1">Rotinas</h1>
+        <p className="text-sm text-ink/60">Tarefas recorrentes — diárias, semanais ou mensais.</p>
       </div>
 
-      <div className="flex items-center justify-center gap-4 mb-6 rounded-2xl bg-card border border-black/5 py-3">
-        <button onClick={() => mudarDia(-1)} className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-surface text-ink/50">
-          ‹
-        </button>
-        <div className="text-center min-w-[140px]">
-          <p className="text-sm font-bold text-ink">{formatarDataExibicao(dataSelecionada, ehHoje)}</p>
-          {!ehHoje && <p className="text-[11px] text-ink/40">{dataSelecionada.toLocaleDateString("pt-BR")}</p>}
+      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+        <div className="flex items-center gap-6 border-b-2 border-black/5 flex-1">
+          <button
+            onClick={() => setAba("minhas")}
+            className={`relative pb-2.5 text-sm font-bold transition-colors ${aba === "minhas" ? "text-ink" : "text-ink/40 hover:text-ink/70"}`}
+          >
+            Minhas rotinas
+            {aba === "minhas" && <span className="absolute left-0 right-0 -bottom-0.5 h-[3px] rounded-full bg-ink" />}
+          </button>
+          {souAdmin && (
+            <button
+              onClick={() => setAba("todas")}
+              className={`relative pb-2.5 text-sm font-bold transition-colors ${aba === "todas" ? "text-ink" : "text-ink/40 hover:text-ink/70"}`}
+            >
+              Todas as rotinas
+              {aba === "todas" && <span className="absolute left-0 right-0 -bottom-0.5 h-[3px] rounded-full bg-ink" />}
+            </button>
+          )}
         </div>
-        <button onClick={() => mudarDia(1)} className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-surface text-ink/50">
-          ›
-        </button>
-        {!ehHoje && (
+        {souAdmin && aba === "todas" && (
           <button
             onClick={() => {
-              const h = new Date();
-              h.setHours(0, 0, 0, 0);
-              setDataSelecionada(h);
+              setRotinaEditandoId(null);
+              setModalAberto(true);
             }}
-            className="text-xs font-semibold text-forest hover:text-ink ml-2"
+            className="rounded-full bg-ink text-white px-4 py-2 text-sm font-semibold hover:bg-forest transition-colors flex items-center gap-1.5 shrink-0"
           >
-            Voltar pra hoje
+            <Plus size={15} /> Adicionar rotina
           </button>
         )}
       </div>
 
-      {!ehHoje && (
-        <p className="text-xs text-ink/40 text-center mb-4">Só é possível marcar/desmarcar no dia de hoje — dias passados ficam só de consulta.</p>
-      )}
-
-      {totalItens > 0 && (
-        <div className="mb-4 flex items-center gap-2">
-          <span className="h-1.5 flex-1 rounded-full bg-black/5 overflow-hidden">
-            <span className={`block h-full rounded-full ${totalFeitos === totalItens ? "bg-forest" : "bg-amber-500"}`} style={{ width: `${(totalFeitos / totalItens) * 100}%` }} />
-          </span>
-          <span className="text-xs font-bold text-ink/50 shrink-0">
-            {totalFeitos}/{totalItens}
-          </span>
-        </div>
-      )}
-
-      {loadingDia ? (
-        <p className="text-sm text-ink/50">Carregando...</p>
-      ) : rotinasDoDia.length === 0 ? (
-        <div className="rounded-2xl bg-card border border-black/5 p-8 text-center">
-          <p className="text-sm text-ink/50">Nenhuma tarefa pra {ehHoje ? "hoje" : "esse dia"}.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {gruposDoDia.map((bucket) => (
-            <div key={bucket.grupo ?? "__solto__"} className="rounded-2xl bg-card border border-black/5 p-4">
-              {bucket.grupo && <p className="text-sm font-bold text-ink mb-2">{bucket.grupo}</p>}
-              <div className="space-y-1.5">
-                {bucket.itens.map((item) => (
-                  <label
-                    key={item.id}
-                    className={`flex items-start gap-2.5 rounded-xl px-3 py-2 transition-colors ${
-                      ehHoje ? "cursor-pointer hover:bg-surface" : "cursor-default"
-                    } ${item.concluidoHoje ? "bg-mint/40" : ""}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!!item.concluidoHoje}
-                      disabled={!ehHoje}
-                      onChange={(e) => toggleRotina(item.id, e.target.checked)}
-                      className="h-4 w-4 rounded accent-forest mt-0.5 shrink-0 disabled:opacity-50"
-                    />
-                    <span className="flex-1 min-w-0">
-                      <span className={`block text-sm ${item.concluidoHoje ? "text-ink/40 line-through" : "text-ink"}`}>{item.texto}</span>
-                      {item.descricao && <span className="block text-xs text-ink/40 mt-0.5">{item.descricao}</span>}
-                      {!bucket.grupo && <span className="block text-[10px] text-ink/30 mt-0.5">{descreverFrequencia(item)}</span>}
-                    </span>
-                  </label>
-                ))}
-              </div>
+      {aba === "minhas" && (
+        <>
+          <div className="flex items-center justify-center gap-4 mb-6 rounded-2xl bg-card border border-black/5 py-3">
+            <button onClick={() => mudarDia(-1)} className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-surface text-ink/50">
+              ‹
+            </button>
+            <div className="text-center min-w-[140px]">
+              <p className="text-sm font-bold text-ink">{formatarDataExibicao(dataSelecionada, ehHoje)}</p>
+              {!ehHoje && <p className="text-[11px] text-ink/40">{dataSelecionada.toLocaleDateString("pt-BR")}</p>}
             </div>
-          ))}
-        </div>
+            <button onClick={() => mudarDia(1)} className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-surface text-ink/50">
+              ›
+            </button>
+            {!ehHoje && (
+              <button
+                onClick={() => {
+                  const h = new Date();
+                  h.setHours(0, 0, 0, 0);
+                  setDataSelecionada(h);
+                }}
+                className="text-xs font-semibold text-forest hover:text-ink ml-2"
+              >
+                Voltar pra hoje
+              </button>
+            )}
+          </div>
+
+          {!ehHoje && (
+            <p className="text-xs text-ink/40 text-center mb-4">Só é possível marcar/desmarcar no dia de hoje — dias passados ficam só de consulta.</p>
+          )}
+
+          {totalItens > 0 && (
+            <div className="mb-4 flex items-center gap-2">
+              <span className="h-1.5 flex-1 rounded-full bg-black/5 overflow-hidden">
+                <span
+                  className={`block h-full rounded-full ${totalFeitos === totalItens ? "bg-forest" : "bg-amber-500"}`}
+                  style={{ width: `${(totalFeitos / totalItens) * 100}%` }}
+                />
+              </span>
+              <span className="text-xs font-bold text-ink/50 shrink-0">
+                {totalFeitos}/{totalItens}
+              </span>
+            </div>
+          )}
+
+          {loadingDia ? (
+            <p className="text-sm text-ink/50">Carregando...</p>
+          ) : rotinasDoDia.length === 0 ? (
+            <div className="rounded-2xl bg-card border border-black/5 p-8 text-center">
+              <p className="text-sm text-ink/50">Nenhuma tarefa pra {ehHoje ? "hoje" : "esse dia"}.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {gruposDoDia.map((bucket) => (
+                <div key={bucket.grupo ?? "__solto__"} className="rounded-2xl bg-card border border-black/5 p-4">
+                  {bucket.grupo && <p className="text-sm font-bold text-ink mb-2">{bucket.grupo}</p>}
+                  <div className="space-y-1.5">
+                    {bucket.itens.map((item) => (
+                      <label
+                        key={item.id}
+                        className={`flex items-start gap-2.5 rounded-xl px-3 py-2 transition-colors ${
+                          ehHoje ? "cursor-pointer hover:bg-surface" : "cursor-default"
+                        } ${item.concluidoHoje ? "bg-mint/40" : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!item.concluidoHoje}
+                          disabled={!ehHoje}
+                          onChange={(e) => toggleRotina(item.id, e.target.checked)}
+                          className="h-4 w-4 rounded accent-forest mt-0.5 shrink-0 disabled:opacity-50"
+                        />
+                        <span className="flex-1 min-w-0">
+                          <span className={`block text-sm ${item.concluidoHoje ? "text-ink/40 line-through" : "text-ink"}`}>{item.texto}</span>
+                          {item.descricao && <span className="block text-xs text-ink/40 mt-0.5">{item.descricao}</span>}
+                          {!bucket.grupo && <span className="block text-[10px] text-ink/30 mt-0.5">{descreverFrequencia(item)}</span>}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {painelAdminAberto && (
-        <PainelAdminRotinas
-          rotinas={todasRotinas}
-          loading={loadingAdmin}
-          cargos={cargos}
-          funcionarios={funcionarios}
-          onClose={() => setPainelAdminAberto(false)}
-          onNovaRotina={() => {
-            setRotinaEditandoId(null);
-            setModalAberto(true);
-          }}
-          onEditarRotina={(id) => {
-            setRotinaEditandoId(id);
-            setModalAberto(true);
-          }}
-          onExcluirRotina={excluirRotina}
-          onAlternarAtivo={alternarAtivo}
-        />
+      {aba === "todas" && souAdmin && (
+        <div>
+          <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1 mb-4">
+            <button
+              onClick={() => setAgrupamentoAdmin("nenhum")}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                agrupamentoAdmin === "nenhum" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Lista simples
+            </button>
+            <button
+              onClick={() => setAgrupamentoAdmin("pessoa")}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                agrupamentoAdmin === "pessoa" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Por pessoa
+            </button>
+            <button
+              onClick={() => setAgrupamentoAdmin("cargo")}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                agrupamentoAdmin === "cargo" ? "bg-ink text-white shadow-sm" : "text-ink/50 hover:text-ink"
+              }`}
+            >
+              Por cargo
+            </button>
+          </div>
+
+          {loadingAdmin ? (
+            <p className="text-sm text-ink/50">Carregando...</p>
+          ) : todasRotinas.length === 0 ? (
+            <p className="text-sm text-ink/50">Nenhuma tarefa recorrente cadastrada ainda.</p>
+          ) : agrupamentoAdmin === "nenhum" ? (
+            <ListaRotinasFlat
+              rotinas={todasRotinas}
+              cargos={cargos}
+              funcionarios={funcionarios}
+              onEditar={(rid) => {
+                setRotinaEditandoId(rid);
+                setModalAberto(true);
+              }}
+              onExcluir={excluirRotina}
+              onAlternarAtivo={alternarAtivo}
+            />
+          ) : agrupamentoAdmin === "pessoa" ? (
+            <div className="space-y-4">
+              {funcionarios.map((func) => {
+                const dela = todasRotinas.filter(
+                  (r) => (func.cargoId && r.cargoIds.includes(func.cargoId)) || r.funcionarioIds.includes(func.id)
+                );
+                if (dela.length === 0) return null;
+                return (
+                  <div key={func.id} className="rounded-2xl bg-card border border-black/5 p-4">
+                    <div className="flex items-center gap-2.5 mb-3">
+                      <Avatar nome={func.nome} fotoUrl={func.fotoUrl} tamanho={28} />
+                      <p className="text-sm font-bold text-ink">{func.nome}</p>
+                    </div>
+                    <ListaRotinasFlat
+                      rotinas={dela}
+                      cargos={cargos}
+                      funcionarios={funcionarios}
+                      compacta
+                      onEditar={(rid) => {
+                        setRotinaEditandoId(rid);
+                        setModalAberto(true);
+                      }}
+                      onExcluir={excluirRotina}
+                      onAlternarAtivo={alternarAtivo}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {cargos.map((cargo) => {
+                const doCargo = todasRotinas.filter((r) => r.cargoIds.includes(cargo.id));
+                if (doCargo.length === 0) return null;
+                return (
+                  <div key={cargo.id} className="rounded-2xl bg-card border border-black/5 p-4">
+                    <p className="text-sm font-bold text-ink mb-3">{cargo.nome}</p>
+                    <ListaRotinasFlat
+                      rotinas={doCargo}
+                      cargos={cargos}
+                      funcionarios={funcionarios}
+                      compacta
+                      onEditar={(rid) => {
+                        setRotinaEditandoId(rid);
+                        setModalAberto(true);
+                      }}
+                      onExcluir={excluirRotina}
+                      onAlternarAtivo={alternarAtivo}
+                    />
+                  </div>
+                );
+              })}
+              {(() => {
+                const soPessoas = todasRotinas.filter((r) => r.cargoIds.length === 0 && r.funcionarioIds.length > 0);
+                if (soPessoas.length === 0) return null;
+                return (
+                  <div className="rounded-2xl bg-card border border-black/5 p-4">
+                    <p className="text-sm font-bold text-ink mb-3">Pessoas específicas (sem cargo definido)</p>
+                    <ListaRotinasFlat
+                      rotinas={soPessoas}
+                      cargos={cargos}
+                      funcionarios={funcionarios}
+                      compacta
+                      onEditar={(rid) => {
+                        setRotinaEditandoId(rid);
+                        setModalAberto(true);
+                      }}
+                      onExcluir={excluirRotina}
+                      onAlternarAtivo={alternarAtivo}
+                    />
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
       )}
 
       {modalAberto && (
@@ -393,7 +541,7 @@ export default function RotinasPage() {
           onClose={() => setModalAberto(false)}
           onSalvo={async () => {
             setModalAberto(false);
-            setTodasRotinas(await buscarRotinasCompletas());
+            carregarTodasRotinas();
             carregarRotinasDoDia();
           }}
         />
@@ -403,109 +551,78 @@ export default function RotinasPage() {
 }
 
 // ============================================================
-// Painel de administração — lista todas as tarefas recorrentes
+// Lista simples de rotinas (reaproveitada nas 3 formas de agrupar)
 // ============================================================
-function PainelAdminRotinas({
+function ListaRotinasFlat({
   rotinas,
-  loading,
   cargos,
   funcionarios,
-  onClose,
-  onNovaRotina,
-  onEditarRotina,
-  onExcluirRotina,
+  compacta,
+  onEditar,
+  onExcluir,
   onAlternarAtivo,
 }: {
   rotinas: Rotina[];
-  loading: boolean;
   cargos: Opcao[];
   funcionarios: FuncionarioOpcao[];
-  onClose: () => void;
-  onNovaRotina: () => void;
-  onEditarRotina: (id: string) => void;
-  onExcluirRotina: (id: string, texto: string) => void;
+  compacta?: boolean;
+  onEditar: (id: string) => void;
+  onExcluir: (id: string, texto: string) => void;
   onAlternarAtivo: (rotina: Rotina) => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/30 flex items-start justify-center p-4 overflow-y-auto anim-entrada" onClick={onClose}>
-      <div className="w-full max-w-2xl rounded-3xl bg-white shadow-2xl mt-10 mb-10" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-5 border-b border-black/5">
-          <div>
-            <h2 className="text-lg font-bold text-ink">Gerenciar tarefas recorrentes</h2>
-            <p className="text-xs text-ink/50">Só administradores veem essa área.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onNovaRotina}
-              className="rounded-full bg-ink text-white px-4 py-2 text-sm font-semibold hover:bg-forest transition-colors flex items-center gap-1.5"
-            >
-              <Plus size={15} /> Nova tarefa
-            </button>
-            <button onClick={onClose} className="h-9 w-9 rounded-full flex items-center justify-center text-ink/40 hover:bg-surface hover:text-ink">
-              <X size={18} />
-            </button>
-          </div>
-        </div>
-
-        <div className="p-4">
-          {loading ? (
-            <p className="text-sm text-ink/50 p-4">Carregando...</p>
-          ) : rotinas.length === 0 ? (
-            <p className="text-sm text-ink/50 p-4">Nenhuma tarefa recorrente cadastrada ainda.</p>
-          ) : (
-            <div className="space-y-2">
-              {rotinas.map((r) => {
-                const nomesCargos = r.cargoIds.map((cid) => cargos.find((c) => c.id === cid)?.nome).filter(Boolean);
-                const nomesFuncionarios = r.funcionarioIds.map((fid) => funcionarios.find((f) => f.id === fid)?.nome).filter(Boolean);
-                return (
-                  <div key={r.id} className={`rounded-2xl border border-black/5 p-4 ${r.ativo ? "bg-card" : "bg-surface/50 opacity-60"}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          {r.grupo && <span className="text-[10px] font-bold bg-surface text-ink/50 rounded-full px-2 py-0.5 shrink-0">{r.grupo}</span>}
-                          <p className="text-sm font-bold text-ink truncate">{r.texto}</p>
-                        </div>
-                        <p className="text-xs text-ink/40 mt-0.5">{descreverFrequencia(r)}</p>
-                        {(nomesCargos.length > 0 || nomesFuncionarios.length > 0) && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {nomesCargos.map((n) => (
-                              <span key={n} className="text-[10px] font-bold bg-mint text-forest rounded-full px-2 py-0.5">
-                                {n}
-                              </span>
-                            ))}
-                            {nomesFuncionarios.map((n) => (
-                              <span key={n} className="text-[10px] font-bold bg-surface text-ink/60 rounded-full px-2 py-0.5">
-                                {n}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => onAlternarAtivo(r)}
-                          className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${r.ativo ? "bg-mint text-forest" : "bg-black/5 text-ink/40"}`}
-                        >
-                          {r.ativo ? "Ativa" : "Pausada"}
-                        </button>
-                        <button onClick={() => onEditarRotina(r.id)} className="text-xs font-semibold text-ink/50 hover:text-ink px-2 py-1">
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => onExcluirRotina(r.id, r.texto)}
-                          className="h-7 w-7 rounded-full flex items-center justify-center text-ink/30 hover:text-red-600 hover:bg-red-50"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
+    <div className={compacta ? "space-y-1.5" : "space-y-2"}>
+      {rotinas.map((r) => {
+        const nomesCargos = r.cargoIds.map((cid) => cargos.find((c) => c.id === cid)?.nome).filter(Boolean);
+        const nomesFuncionarios = r.funcionarioIds.map((fid) => funcionarios.find((f) => f.id === fid)?.nome).filter(Boolean);
+        return (
+          <div
+            key={r.id}
+            className={`rounded-2xl border border-black/5 ${compacta ? "p-3" : "p-4"} ${r.ativo ? "bg-card" : "bg-surface/50 opacity-60"}`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  {r.grupo && <span className="text-[10px] font-bold bg-surface text-ink/50 rounded-full px-2 py-0.5 shrink-0">{r.grupo}</span>}
+                  <p className="text-sm font-bold text-ink truncate">{r.texto}</p>
+                </div>
+                <p className="text-xs text-ink/40 mt-0.5">{descreverFrequencia(r)}</p>
+                {!compacta && (nomesCargos.length > 0 || nomesFuncionarios.length > 0) && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {nomesCargos.map((n) => (
+                      <span key={n} className="text-[10px] font-bold bg-mint text-forest rounded-full px-2 py-0.5">
+                        {n}
+                      </span>
+                    ))}
+                    {nomesFuncionarios.map((n) => (
+                      <span key={n} className="text-[10px] font-bold bg-surface text-ink/60 rounded-full px-2 py-0.5">
+                        {n}
+                      </span>
+                    ))}
                   </div>
-                );
-              })}
+                )}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => onAlternarAtivo(r)}
+                  className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${r.ativo ? "bg-mint text-forest" : "bg-black/5 text-ink/40"}`}
+                >
+                  {r.ativo ? "Ativa" : "Pausada"}
+                </button>
+                <button onClick={() => onEditar(r.id)} className="text-xs font-semibold text-ink/50 hover:text-ink px-2 py-1">
+                  Editar
+                </button>
+                <button
+                  onClick={() => onExcluir(r.id, r.texto)}
+                  className="h-7 w-7 rounded-full flex items-center justify-center text-ink/30 hover:text-red-600 hover:bg-red-50"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -607,8 +724,8 @@ function ModalRotina({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/30 flex items-start justify-center p-4 overflow-y-auto anim-entrada" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl mt-10 mb-10 p-6" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4 anim-entrada" onClick={onClose}>
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-ink">{rotinaId ? "Editar tarefa" : "Nova tarefa recorrente"}</h2>
           <button onClick={onClose} className="h-8 w-8 rounded-full flex items-center justify-center text-ink/40 hover:bg-surface hover:text-ink">

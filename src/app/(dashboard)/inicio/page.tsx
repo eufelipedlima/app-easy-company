@@ -118,11 +118,14 @@ export default function InicioPage() {
       hojeDate.setHours(0, 0, 0, 0);
       const hojeIso = hojeDate.toISOString().slice(0, 10);
       const [{ data: rotinasData }, { data: respCargoData }, { data: respFuncData }] = await Promise.all([
-        supabase.from("rotinas").select("id, texto, grupo, frequencia, dias_semana, dia_mes").eq("ativo", true),
+        supabase.from("rotinas").select("id, texto, grupo, frequencia, dias_semana, dia_mes, criado_em").eq("ativo", true),
         supabase.from("rotina_responsaveis_cargo").select("rotina_id, cargo_id"),
         supabase.from("rotina_responsaveis_funcionario").select("rotina_id, funcionario_id"),
       ]);
-      const rotinaAplicavelHoje = (r: { frequencia: string; dias_semana: number[] | null; dia_mes: number | null }) => {
+      const rotinaAplicavelHoje = (r: { frequencia: string; dias_semana: number[] | null; dia_mes: number | null; criado_em: string }) => {
+        const criada = new Date(r.criado_em);
+        criada.setHours(0, 0, 0, 0);
+        if (hojeDate.getTime() < criada.getTime()) return false;
         if (r.frequencia === "diaria") return true;
         if (r.frequencia === "semanal") return (r.dias_semana ?? []).includes(hojeDate.getDay());
         if (r.frequencia === "mensal") {
