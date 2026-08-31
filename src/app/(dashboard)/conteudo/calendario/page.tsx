@@ -259,7 +259,7 @@ export const CalendarioConteudoConteudo = forwardRef<
   const [loadingKanban, setLoadingKanban] = useState(false);
   const [mesKanban, setMesKanban] = useState(hoje.getMonth());
   const [anoKanban, setAnoKanban] = useState(hoje.getFullYear());
-  const [todosOsMesesKanban, setTodosOsMesesKanban] = useState(false);
+  const [todosOsMesesKanban, setTodosOsMesesKanban] = useState(true);
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
   const kanbanWheelCleanupRef = useRef<(() => void) | null>(null);
 
