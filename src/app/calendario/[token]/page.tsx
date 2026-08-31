@@ -197,7 +197,7 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
           </p>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 mb-6">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-6">
           <button
             onClick={() => {
               const d = new Date(ano, mes - 1, 1);
@@ -227,9 +227,20 @@ export default function CalendarioPublicoPage({ params }: { params: Promise<{ to
           >
             →
           </button>
-          <h2 className="text-base sm:text-lg font-bold text-ink ml-1 sm:ml-2 truncate">
+          <h2 className="text-base sm:text-lg font-bold text-ink ml-1 sm:ml-2 truncate flex-1">
             {MESES[mes]} {ano}
           </h2>
+          {!loading && postsPendentes.length > 0 && (
+            <button
+              onClick={() => setPostAberto(postsPendentes[0])}
+              className="inline-flex items-center gap-1.5 rounded-full text-forest text-xs sm:text-sm font-semibold px-3 sm:px-4 py-1.5 hover:bg-white active:bg-white transition-colors shrink-0"
+            >
+              Aprovar conteúdos
+              <span className="rounded-full bg-forest text-white text-[10px] font-bold h-4 min-w-4 px-1 flex items-center justify-center">
+                {postsPendentes.length}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Grade mensal — só em telas maiores. Numa tela de celular, 7 colunas ficam pequenas
@@ -539,33 +550,33 @@ function PostPublicoModal({
           <div className={`shrink-0 sm:w-[320px] border-t sm:border-t-0 sm:border-l border-black/5 sm:overflow-y-auto p-4 sm:p-5 ${comentarioAberto ? "" : "sm:flex-1 sm:max-w-none"}`}>
             {post.titulo && <h3 className="text-lg sm:text-xl font-extrabold text-ink mb-2 leading-snug">{post.titulo}</h3>}
 
-            <div className="flex flex-wrap items-center gap-1.5 mb-4">
-              <span className="rounded-full bg-surface text-ink/60 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide">Post</span>
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <span className="rounded-full bg-surface text-ink/60 px-3 py-1.5 text-xs font-bold uppercase tracking-wide">Post</span>
               {post.formato && (
-                <span className="rounded-full bg-surface text-ink/60 px-2.5 py-1 text-[11px] font-semibold">{FORMATO_LABEL[post.formato]}</span>
+                <span className="rounded-full bg-surface text-ink/60 px-3 py-1.5 text-xs font-semibold">{FORMATO_LABEL[post.formato]}</span>
               )}
-              <span className="rounded-full bg-surface text-ink/60 px-2.5 py-1 text-[11px] font-semibold">
+              <span className="rounded-full bg-surface text-ink/60 px-3 py-1.5 text-xs font-semibold">
                 {formatarData(post.data_publicacao)}
                 {post.hora_publicacao && ` · ${post.hora_publicacao.slice(0, 5)}`}
               </span>
-              <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${corDoStatus(post.status_conteudo?.cor ?? "cinza").cor}`}>
+              <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${corDoStatus(post.status_conteudo?.cor ?? "cinza").cor}`}>
                 {post.status_conteudo?.nome ?? "—"}
               </span>
             </div>
 
             {jaAprovado && (
-              <div className="rounded-xl bg-mint text-forest text-xs font-semibold px-3 py-2 mb-4">
+              <div className="rounded-xl bg-mint text-forest text-sm font-semibold px-3 py-2.5 mb-4">
                 ✓ Conteúdo aprovado em {formatarData(post.updated_at.slice(0, 10))} às{" "}
                 {new Date(post.updated_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
               </div>
             )}
 
-            {post.objetivo && <p className="text-xs text-ink/40 mb-3">Objetivo: {OBJETIVO_LABEL[post.objetivo]}</p>}
+            {post.objetivo && <p className="text-sm text-ink/40 mb-3">Objetivo: {OBJETIVO_LABEL[post.objetivo]}</p>}
 
             {post.legenda && (
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wide text-ink/40 mb-1.5">Legenda</p>
-                <p className="text-sm text-ink/80 whitespace-pre-wrap leading-relaxed">{post.legenda}</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-1.5">Legenda</p>
+                <p className="text-[15px] text-ink/80 whitespace-pre-wrap leading-relaxed">{post.legenda}</p>
               </div>
             )}
           </div>
@@ -655,7 +666,7 @@ function PostPublicoModal({
                 <button
                   onClick={() => enviar("aprovar")}
                   disabled={enviando !== null}
-                  className="flex-1 rounded-full bg-forest text-white py-3.5 text-base font-bold hover:brightness-110 active:brightness-110 transition disabled:opacity-50 shadow-md"
+                  className="flex-1 rounded-full bg-forest text-white py-3 text-sm font-bold hover:brightness-110 active:brightness-110 transition disabled:opacity-50 shadow-md"
                 >
                   ✓ Aprovar
                 </button>
@@ -665,7 +676,7 @@ function PostPublicoModal({
                     setComentarioAberto(true);
                   }}
                   disabled={enviando !== null}
-                  className="flex-1 rounded-full border-2 border-ink/20 text-ink py-3.5 text-base font-bold hover:bg-surface active:bg-surface transition disabled:opacity-50"
+                  className="flex-1 rounded-full border-2 border-ink/20 text-ink py-3 text-sm font-bold hover:bg-surface active:bg-surface transition disabled:opacity-50"
                 >
                   ✏ Solicitar ajuste
                 </button>
@@ -685,21 +696,21 @@ function PostPublicoModal({
         )}
 
         {totalNav > 0 && (
-          <div className="flex items-center justify-between px-4 sm:px-5 py-2 border-t border-black/5 shrink-0 text-xs bg-white">
+          <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-t border-black/5 shrink-0 bg-mint">
             <button
               onClick={() => irPara(-1)}
               disabled={idxAtual <= 0}
-              className="text-ink/50 hover:text-ink disabled:opacity-20 font-semibold py-1.5"
+              className="flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-xs font-bold text-forest shadow-sm hover:brightness-95 active:brightness-95 transition disabled:opacity-30 disabled:shadow-none"
             >
               ← Anterior
             </button>
-            <span className="text-ink/40 text-xs">
-              {idxAtual >= 0 ? String(idxAtual + 1).padStart(2, "0") : "—"} / {String(totalNav).padStart(2, "0")}
+            <span className="text-forest text-xs font-bold">
+              {idxAtual >= 0 ? String(idxAtual + 1).padStart(2, "0") : "—"} / {String(totalNav).padStart(2, "0")} conteúdos
             </span>
             <button
               onClick={() => irPara(1)}
               disabled={idxAtual < 0 || idxAtual >= totalNav - 1}
-              className="text-ink/50 hover:text-ink disabled:opacity-20 font-semibold py-1.5"
+              className="flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-xs font-bold text-forest shadow-sm hover:brightness-95 active:brightness-95 transition disabled:opacity-30 disabled:shadow-none"
             >
               Próximo →
             </button>
