@@ -51,6 +51,7 @@ const ICONE_NOTIFICACAO: Record<string, string> = {
   atribuicao_conteudo: "👤",
   mudanca_tarefa: "✏️",
   mudanca_conteudo: "✏️",
+  reacao_chat: "👍",
 };
 
 const FRASES = [

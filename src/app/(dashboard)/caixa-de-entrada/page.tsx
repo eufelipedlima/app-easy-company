@@ -27,6 +27,7 @@ const ICONE_POR_TIPO: Record<string, { emoji: string; cor: string }> = {
   atribuicao_conteudo: { emoji: "👤", cor: "bg-violet-100 text-violet-700" },
   mudanca_tarefa: { emoji: "✏️", cor: "bg-indigo-100 text-indigo-700" },
   mudanca_conteudo: { emoji: "✏️", cor: "bg-indigo-100 text-indigo-700" },
+  reacao_chat: { emoji: "👍", cor: "bg-pink-100 text-pink-700" },
 };
 
 const CORES_AVATAR = [

@@ -29,6 +29,7 @@ interface Reacao {
   mensagem_id: string;
   autor_id: string;
   emoji: string;
+  created_at: string;
 }
 
 interface Mensagem {
@@ -93,6 +94,17 @@ function formatarDiaSeparador(iso: string) {
   if (data.toDateString() === hoje.toDateString()) return "Hoje";
   if (data.toDateString() === ontem.toDateString()) return "Ontem";
   return data.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+}
+
+function formatarDataHoraCompleta(iso: string) {
+  const data = new Date(iso);
+  const hoje = new Date();
+  const ontem = new Date();
+  ontem.setDate(ontem.getDate() - 1);
+  const hora = data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  if (data.toDateString() === hoje.toDateString()) return `hoje às ${hora}`;
+  if (data.toDateString() === ontem.toDateString()) return `ontem às ${hora}`;
+  return `${data.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })} às ${hora}`;
 }
 
 const CORES_AVATAR = [
@@ -520,7 +532,7 @@ export default function ChatPage() {
     if (idsMensagens.length > 0) {
       const { data: reacoesData } = await supabase
         .from("chat_mensagens_reacoes")
-        .select("id, mensagem_id, autor_id, emoji")
+        .select("id, mensagem_id, autor_id, emoji, created_at")
         .in("mensagem_id", idsMensagens);
       setReacoes(reacoesData ?? []);
     } else {
@@ -742,14 +754,29 @@ export default function ChatPage() {
       await supabase.from("chat_mensagens_reacoes").delete().eq("id", existente.id);
     } else {
       const idTemp = `temp-${Date.now()}`;
-      setReacoes((atual) => [...atual, { id: idTemp, mensagem_id: mensagemId, autor_id: meuId, emoji }]);
+      setReacoes((atual) => [...atual, { id: idTemp, mensagem_id: mensagemId, autor_id: meuId, emoji, created_at: new Date().toISOString() }]);
       const { data } = await supabase
         .from("chat_mensagens_reacoes")
         .insert({ mensagem_id: mensagemId, autor_id: meuId, emoji })
-        .select("id")
+        .select("id, created_at")
         .single();
       if (data) {
-        setReacoes((atual) => atual.map((r) => (r.id === idTemp ? { ...r, id: data.id } : r)));
+        setReacoes((atual) => atual.map((r) => (r.id === idTemp ? { ...r, id: data.id, created_at: data.created_at } : r)));
+      }
+
+      // Notifica o autor da mensagem, se não for eu reagindo na minha própria
+      const mensagemOriginal = mensagens.find((m) => m.id === mensagemId);
+      if (mensagemOriginal && mensagemOriginal.autor_id !== meuId) {
+        await supabase.from("notificacoes").insert({
+          destinatario_id: mensagemOriginal.autor_id,
+          tipo: "reacao_chat",
+          titulo: `${meuNome} reagiu ${emoji} à sua mensagem`,
+          descricao: mensagemOriginal.texto.slice(0, 120),
+          link: canalAtivoId ? `/chat?canal=${canalAtivoId}` : "/chat",
+          autor_id: meuId,
+          autor_nome: meuNome,
+          autor_foto_url: meuFotoUrl,
+        });
       }
     }
     setSeletorReacaoAberto(null);
@@ -1017,9 +1044,9 @@ export default function ChatPage() {
                 const todosOsNomes = [meuNome, ...colegas.map((c) => c.nome)];
                 const original = m.resposta_a_id ? mensagens.find((x) => x.id === m.resposta_a_id) : null;
                 const reacoesDaMensagem = reacoes.filter((r) => r.mensagem_id === m.id);
-                const reacoesAgrupadas = new Map<string, string[]>();
+                const reacoesAgrupadas = new Map<string, Reacao[]>();
                 for (const r of reacoesDaMensagem) {
-                  reacoesAgrupadas.set(r.emoji, [...(reacoesAgrupadas.get(r.emoji) ?? []), r.autor_id]);
+                  reacoesAgrupadas.set(r.emoji, [...(reacoesAgrupadas.get(r.emoji) ?? []), r]);
                 }
 
                 return (
@@ -1074,19 +1101,26 @@ export default function ChatPage() {
 
                         {reacoesAgrupadas.size > 0 && (
                           <div className="flex flex-wrap items-center gap-1 mt-1.5">
-                            {[...reacoesAgrupadas.entries()].map(([emoji, autores]) => (
-                              <button
-                                key={emoji}
-                                onClick={() => alternarReacao(m.id, emoji)}
-                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border transition-colors ${
-                                  autores.includes(meuId ?? "")
-                                    ? "bg-mint border-forest/30 text-forest font-semibold"
-                                    : "bg-surface border-black/5 text-ink/60 hover:border-black/20"
-                                }`}
-                              >
-                                {emoji} {autores.length}
-                              </button>
-                            ))}
+                            {[...reacoesAgrupadas.entries()].map(([emoji, listaReacoes]) => {
+                              const autores = listaReacoes.map((r) => r.autor_id);
+                              const dica = listaReacoes
+                                .map((r) => `${r.autor_id === meuId ? "Você" : nomeDoParticipante(r.autor_id)} reagiu em ${formatarDataHoraCompleta(r.created_at)}`)
+                                .join("\n");
+                              return (
+                                <button
+                                  key={emoji}
+                                  onClick={() => alternarReacao(m.id, emoji)}
+                                  title={dica}
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border transition-colors ${
+                                    autores.includes(meuId ?? "")
+                                      ? "bg-mint border-forest/30 text-forest font-semibold"
+                                      : "bg-surface border-black/5 text-ink/60 hover:border-black/20"
+                                  }`}
+                                >
+                                  {emoji} {autores.length}
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
