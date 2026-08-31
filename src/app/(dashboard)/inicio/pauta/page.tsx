@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { corDoStatus } from "@/lib/status-conteudo";
@@ -49,6 +49,24 @@ function toISODateLocal(d: Date) {
 }
 function formatarDataCurta(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+function diffDias(isoA: string, isoB: string): number {
+  const a = new Date(isoA + "T00:00:00");
+  const b = new Date(isoB + "T00:00:00");
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+function somarDias(iso: string, n: number): string {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return toISODateLocal(d);
+}
+
+interface EstadoArraste {
+  itemId: string;
+  modo: "mover" | "inicio" | "fim";
+  diaAncora: string;
+  inicioOriginal: string;
+  fimOriginal: string;
 }
 
 const CORES_AVATAR = [
@@ -112,6 +130,9 @@ function BlocoSemanaPessoa({
   funcionarios,
   onAbrirItem,
   onNovaTarefa,
+  onIniciarArraste,
+  itemArrastandoId,
+  diaAlvoArraste,
 }: {
   dias: Date[];
   pessoaId: string;
@@ -124,6 +145,9 @@ function BlocoSemanaPessoa({
   funcionarios: Responsavel[];
   onAbrirItem: (link: string) => void;
   onNovaTarefa: (dataISO: string, pessoaId: string) => void;
+  onIniciarArraste: (e: React.MouseEvent, item: ItemPauta, modo: "mover" | "inicio" | "fim") => void;
+  itemArrastandoId: string | null;
+  diaAlvoArraste: string | null;
 }) {
   function toISO(d: Date) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -131,18 +155,22 @@ function BlocoSemanaPessoa({
   const { faixas, qtdLanes } = calcularFaixas(dias, pessoaId);
   const linhasGrid = `auto ${qtdLanes > 0 ? `repeat(${qtdLanes}, auto) ` : ""}minmax(0, 1fr)`;
   const compacto = visualizacao === "mes";
+  const diasISO = dias.map(toISO);
 
   return (
-    <div className="grid grid-cols-7" style={{ gridTemplateRows: linhasGrid }}>
+    <div className="grid grid-cols-7" style={{ gridTemplateRows: linhasGrid }} data-semana-grid data-dias={JSON.stringify(diasISO)}>
       {dias.map((dia, i) => {
         const iso = toISO(dia);
         const doMesAtivo = visualizacao === "semana" || dia.getMonth() === mes;
-        const corFundo = iso === hojeISO ? "bg-mint/20" : !doMesAtivo ? "bg-surface/40" : "";
+        const ehAlvo = diaAlvoArraste === iso;
+        const corFundo = ehAlvo ? "bg-forest/10" : iso === hojeISO ? "bg-mint/20" : !doMesAtivo ? "bg-surface/40" : "";
         return (
           <div
             key={`cab-${iso}`}
             style={{ gridColumn: i + 1, gridRow: 1 }}
-            className={`p-2 pb-1.5 group/cel ${corFundo} ${i > 0 ? "border-l border-black/5" : ""}`}
+            className={`p-2 pb-1.5 group/cel transition-colors ${corFundo} ${i > 0 ? "border-l border-black/5" : ""} ${
+              ehAlvo ? "ring-2 ring-inset ring-forest/40" : ""
+            }`}
           >
             <div className="flex items-center justify-between px-0.5">
               <span
@@ -168,27 +196,47 @@ function BlocoSemanaPessoa({
           const respItem = fx.item.responsavelIds
             .map((rid) => funcionarios.find((fu) => fu.id === rid))
             .filter((fu): fu is Responsavel => !!fu);
+          const arrastandoEsse = itemArrastandoId === fx.item.id;
           if (compacto) {
             return (
-              <button
+              <div
                 key={`${fx.item.tipo}-${fx.item.id}`}
                 onClick={() => onAbrirItem(fx.item.link)}
+                onMouseDown={(e) => onIniciarArraste(e, fx.item, "mover")}
                 style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 2 }}
-                className={`mx-0.5 mb-1 rounded-lg px-1.5 py-1 text-left text-[11px] font-medium truncate overflow-hidden ${corDoStatus(fx.item.statusCor).cor}`}
+                className={`relative mx-0.5 mb-1 rounded-lg px-1.5 py-1 text-left text-[11px] font-medium truncate overflow-hidden cursor-grab active:cursor-grabbing select-none ${corDoStatus(
+                  fx.item.statusCor
+                ).cor} ${arrastandoEsse ? "opacity-40" : ""}`}
               >
+                <span
+                  onMouseDown={(e) => onIniciarArraste(e, fx.item, "inicio")}
+                  className="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-black/10"
+                />
                 <span className="inline-flex items-center gap-1">
                   <IconeTarefa tamanho={12} /> {fx.item.titulo}
                 </span>
-              </button>
+                <span
+                  onMouseDown={(e) => onIniciarArraste(e, fx.item, "fim")}
+                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-black/10"
+                />
+              </div>
             );
           }
           return (
-            <button
+            <div
               key={`${fx.item.tipo}-${fx.item.id}`}
               onClick={() => onAbrirItem(fx.item.link)}
+              onMouseDown={(e) => onIniciarArraste(e, fx.item, "mover")}
               style={{ gridColumn: `${fx.colStart} / span ${fx.colSpan}`, gridRow: fx.lane + 2 }}
-              className={`mx-2 mb-1.5 rounded-lg px-2 py-1.5 text-left overflow-hidden ${corDoStatus(fx.item.statusCor).cor}`}
+              className={`relative mx-2 mb-1.5 rounded-lg px-2 py-1.5 overflow-hidden cursor-grab active:cursor-grabbing select-none ${corDoStatus(
+                fx.item.statusCor
+              ).cor} ${arrastandoEsse ? "opacity-40" : ""}`}
             >
+              <span
+                onMouseDown={(e) => onIniciarArraste(e, fx.item, "inicio")}
+                title="Arrastar pra mudar a data de início"
+                className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-black/15 rounded-l-lg"
+              />
               <p className="text-xs font-bold truncate">
                 <span className="inline-flex items-center gap-1">
                   <IconeTarefa tamanho={12} /> {fx.item.titulo}
@@ -216,7 +264,12 @@ function BlocoSemanaPessoa({
                   <AvatarStack pessoas={respItem} tamanho={16} />
                 </div>
               )}
-            </button>
+              <span
+                onMouseDown={(e) => onIniciarArraste(e, fx.item, "fim")}
+                title="Arrastar pra mudar o prazo"
+                className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-black/15 rounded-r-lg"
+              />
+            </div>
           );
         })}
 
@@ -226,36 +279,46 @@ function BlocoSemanaPessoa({
           (it) => !idsEmFaixa.has(`${it.tipo}-${it.id}-${pessoaId}`)
         );
         const doMesAtivo = visualizacao === "semana" || dia.getMonth() === mes;
-        const corFundo = iso === hojeISO ? "bg-mint/20" : !doMesAtivo ? "bg-surface/40" : "";
+        const ehAlvo = diaAlvoArraste === iso;
+        const corFundo = ehAlvo ? "bg-forest/10" : iso === hojeISO ? "bg-mint/20" : !doMesAtivo ? "bg-surface/40" : "";
         return (
           <div
             key={`itens-${iso}`}
             style={{ gridColumn: i + 1, gridRow: qtdLanes + 2 }}
-            className={`p-2 pt-0.5 ${corFundo} ${i > 0 ? "border-l border-black/5" : ""}`}
+            className={`p-2 pt-0.5 transition-colors ${corFundo} ${i > 0 ? "border-l border-black/5" : ""} ${
+              ehAlvo ? "ring-2 ring-inset ring-forest/40" : ""
+            }`}
           >
             <div className="space-y-1">
               {itensCelula.slice(0, compacto ? 3 : undefined).map((item) => {
                 const respItem = item.responsavelIds
                   .map((rid) => funcionarios.find((fu) => fu.id === rid))
                   .filter((fu): fu is Responsavel => !!fu);
+                const arrastandoEsse = itemArrastandoId === item.id;
                 if (compacto) {
                   return (
-                    <button
+                    <div
                       key={`${item.tipo}-${item.id}`}
                       onClick={() => onAbrirItem(item.link)}
-                      className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate ${corDoStatus(item.statusCor).cor}`}
+                      onMouseDown={(e) => onIniciarArraste(e, item, "mover")}
+                      className={`w-full text-left rounded-lg px-1.5 py-1 text-[11px] font-medium truncate cursor-grab active:cursor-grabbing select-none ${corDoStatus(
+                        item.statusCor
+                      ).cor} ${arrastandoEsse ? "opacity-40" : ""}`}
                     >
                       <span className="inline-flex items-center gap-1">
                         <IconeTarefa tamanho={12} /> {item.titulo}
                       </span>
-                    </button>
+                    </div>
                   );
                 }
                 return (
-                  <button
+                  <div
                     key={`${item.tipo}-${item.id}`}
                     onClick={() => onAbrirItem(item.link)}
-                    className={`w-full text-left rounded-lg px-2 py-1.5 ${corDoStatus(item.statusCor).cor}`}
+                    onMouseDown={(e) => onIniciarArraste(e, item, "mover")}
+                    className={`w-full text-left rounded-lg px-2 py-1.5 cursor-grab active:cursor-grabbing select-none ${corDoStatus(item.statusCor).cor} ${
+                      arrastandoEsse ? "opacity-40" : ""
+                    }`}
                   >
                     <p className="text-xs font-bold truncate">
                       <span className="inline-flex items-center gap-1">
@@ -284,7 +347,7 @@ function BlocoSemanaPessoa({
                         <AvatarStack pessoas={respItem} tamanho={16} />
                       </div>
                     )}
-                  </button>
+                  </div>
                 );
               })}
               {compacto && itensCelula.length > 3 && <p className="text-[10px] text-ink/40 px-1">+{itensCelula.length - 3} mais</p>}
@@ -315,6 +378,93 @@ export default function PautaPage() {
   const [itens, setItens] = useState<ItemPauta[]>([]);
   const [statusList, setStatusList] = useState<{ id: string; nome: string; cor: string }[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // ---------------- Arrastar tarefas na pauta (mover / redimensionar) ----------------
+  const [arraste, setArraste] = useState<EstadoArraste | null>(null);
+  const [diaAlvo, setDiaAlvo] = useState<string | null>(null);
+  const diaAlvoRef = useRef<string | null>(null);
+  const movimentoRef = useRef(false);
+  const suprimirCliqueRef = useRef(false);
+
+  function iniciarArraste(e: React.MouseEvent, item: ItemPauta, modo: "mover" | "inicio" | "fim") {
+    e.preventDefault();
+    e.stopPropagation();
+    const inicioOriginal = item.dataInicio ?? item.dataFim ?? item.dataExibicao;
+    const fimOriginal = item.dataFim ?? item.dataInicio ?? item.dataExibicao;
+    setArraste({ itemId: item.id, modo, diaAncora: inicioOriginal, inicioOriginal, fimOriginal });
+  }
+
+  const confirmarArraste = useCallback(
+    async (a: EstadoArraste, diaFinal: string) => {
+      let novoInicio = a.inicioOriginal;
+      let novoFim = a.fimOriginal;
+      if (a.modo === "mover") {
+        const delta = diffDias(a.diaAncora, diaFinal);
+        novoInicio = somarDias(a.inicioOriginal, delta);
+        novoFim = somarDias(a.fimOriginal, delta);
+      } else if (a.modo === "inicio") {
+        novoInicio = diaFinal > a.fimOriginal ? a.fimOriginal : diaFinal;
+      } else {
+        novoFim = diaFinal < a.inicioOriginal ? a.inicioOriginal : diaFinal;
+      }
+      if (novoInicio === a.inicioOriginal && novoFim === a.fimOriginal) return;
+
+      setItens((atual) =>
+        atual.map((it) => (it.id === a.itemId ? { ...it, dataInicio: novoInicio, dataFim: novoFim, dataExibicao: novoInicio } : it))
+      );
+
+      const supabase = createClient();
+      await supabase.from("tarefas").update({ data_inicio: novoInicio, prazo: novoFim }).eq("id", a.itemId);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const descricao =
+          a.modo === "mover"
+            ? `moveu a tarefa para ${formatarDataCurta(novoInicio)}${novoInicio !== novoFim ? ` – ${formatarDataCurta(novoFim)}` : ""}`
+            : a.modo === "inicio"
+            ? `mudou a data de início para ${formatarDataCurta(novoInicio)}`
+            : `mudou o prazo para ${formatarDataCurta(novoFim)}`;
+        await supabase.from("tarefas_historico").insert({ tarefa_id: a.itemId, autor_id: user.id, descricao });
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!arraste) return;
+    function onMove(e: MouseEvent) {
+      movimentoRef.current = true;
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const grid = (el as HTMLElement | null)?.closest("[data-semana-grid]") as HTMLElement | null;
+      if (!grid) return;
+      const dias: string[] = JSON.parse(grid.dataset.dias || "[]");
+      const rect = grid.getBoundingClientRect();
+      const idx = Math.min(6, Math.max(0, Math.floor(((e.clientX - rect.left) / rect.width) * 7)));
+      diaAlvoRef.current = dias[idx] ?? null;
+      setDiaAlvo(dias[idx] ?? null);
+    }
+    function onUp() {
+      if (movimentoRef.current && diaAlvoRef.current && arraste) {
+        confirmarArraste(arraste, diaAlvoRef.current);
+        suprimirCliqueRef.current = true;
+        setTimeout(() => {
+          suprimirCliqueRef.current = false;
+        }, 80);
+      }
+      setArraste(null);
+      setDiaAlvo(null);
+      diaAlvoRef.current = null;
+      movimentoRef.current = false;
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [arraste, confirmarArraste]);
+
   const hoje = new Date();
   const [inicioSemana, setInicioSemana] = useState(() => {
     const d = new Date();
@@ -697,8 +847,14 @@ export default function PautaPage() {
                         itensPorPessoaEDia={itensPorPessoaEDia}
                         idsEmFaixa={idsEmFaixa}
                         funcionarios={funcionarios}
-                        onAbrirItem={(link) => router.push(link)}
+                        onAbrirItem={(link) => {
+                          if (suprimirCliqueRef.current) return;
+                          router.push(link);
+                        }}
                         onNovaTarefa={(dataISO, pessoaId) => setNovaTarefaPendente({ dataISO, funcionarioId: pessoaId === "_todos" ? null : pessoaId })}
+                        onIniciarArraste={iniciarArraste}
+                        itemArrastandoId={arraste?.itemId ?? null}
+                        diaAlvoArraste={diaAlvo}
                       />
                     );
                   })}
