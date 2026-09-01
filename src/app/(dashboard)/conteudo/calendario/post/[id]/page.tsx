@@ -7,6 +7,8 @@ import { comLinks } from "@/lib/linkify";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { RichTextEditor } from "@/components/rich-text-editor";
+import { CaixaComentario, AnexosComentario } from "@/components/caixa-comentario";
+import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { BuscaCliente } from "@/components/busca-cliente";
 import { Cronometro, formatarDuracaoLonga } from "@/components/cronometro";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -31,12 +33,19 @@ interface Responsavel {
   fotoUrl: string | null;
   authUserId: string | null;
 }
+interface AnexoComentarioItem {
+  id: string;
+  arquivo_path: string;
+  arquivo_nome: string | null;
+  arquivo_tipo: string | null;
+}
 interface Comentario {
   id: string;
   autor_id: string | null;
   texto: string;
   created_at: string;
   doCliente?: boolean;
+  anexos: AnexoComentarioItem[];
 }
 interface HistoricoItem {
   id: string;
@@ -258,20 +267,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const [novoComentario, setNovoComentario] = useState("");
-  const [mencaoBusca, setMencaoBusca] = useState<string | null>(null);
-  const [indiceMencaoComentario, setIndiceMencaoComentario] = useState(0);
   const [enviandoComentario, setEnviandoComentario] = useState(false);
-  const comentarioRef = useRef<HTMLTextAreaElement>(null);
-
-  // Cresce o campo de comentário conforme o texto ganha mais linhas — em
-  // vez de rolar por dentro de uma caixinha pequena, até um limite (depois
-  // disso passa a rolar normalmente, pra não tomar a tela toda).
-  useLayoutEffect(() => {
-    const el = comentarioRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 240) + "px";
-  }, [novoComentario]);
 
   const carregarTudo = useCallback(async () => {
     setLoading(true);
@@ -471,16 +467,21 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   const carregarComentarios = useCallback(async () => {
     const supabase = createClient();
     const [{ data: internos }, { data: doCliente }] = await Promise.all([
-      supabase.from("posts_conteudo_comentarios_internos").select("id, autor_id, texto, created_at").eq("post_id", id).order("created_at"),
+      supabase
+        .from("posts_conteudo_comentarios_internos")
+        .select("id, autor_id, texto, created_at, anexos:posts_conteudo_comentarios_internos_anexos ( id, arquivo_path, arquivo_nome, arquivo_tipo )")
+        .eq("post_id", id)
+        .order("created_at"),
       supabase.from("posts_conteudo_comentarios").select("id, texto, created_at, autor").eq("post_id", id).order("created_at"),
     ]);
-    const listaInternos: Comentario[] = (internos ?? []).map((c) => ({ ...c, doCliente: false }));
+    const listaInternos: Comentario[] = ((internos as unknown as Omit<Comentario, "doCliente">[]) ?? []).map((c) => ({ ...c, doCliente: false }));
     const listaCliente: Comentario[] = ((doCliente ?? []) as { id: string; texto: string; created_at: string; autor: string }[]).map((c) => ({
       id: `cliente-${c.id}`,
       autor_id: null,
       texto: c.texto,
       created_at: c.created_at,
       doCliente: c.autor === "cliente",
+      anexos: [],
     }));
     const todos = [...listaInternos, ...listaCliente].sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
     setComentarios(todos);
@@ -873,15 +874,36 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     return authUserId === meuId ? meuNome : funcionariosComAcesso.find((f) => f.authUserId === authUserId)?.nome ?? "Alguém";
   }
 
-  async function enviarComentario() {
-    if (!novoComentario.trim() || !meuId) return;
+  async function enviarComentario(arquivos: File[]) {
+    if ((!novoComentario.replace(/<[^>]*>/g, "").trim() && arquivos.length === 0) || !meuId) return;
     setEnviandoComentario(true);
     const supabase = createClient();
-    const texto = novoComentario.trim();
-    const { error } = await supabase.from("posts_conteudo_comentarios_internos").insert({ post_id: id, autor_id: meuId, texto });
-    if (!error) {
+    const texto = novoComentario;
+    const { data: comentarioInserido, error } = await supabase
+      .from("posts_conteudo_comentarios_internos")
+      .insert({ post_id: id, autor_id: meuId, texto })
+      .select("id")
+      .single();
+    if (!error && comentarioInserido) {
+      for (const arquivo of arquivos) {
+        const caminho = `${id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${sanearNomeArquivo(arquivo.name)}`;
+        const { error: erroUpload } = await supabase.storage.from("conteudo-comentarios-anexos").upload(caminho, arquivo);
+        if (!erroUpload) {
+          await supabase.from("posts_conteudo_comentarios_internos_anexos").insert({
+            comentario_id: comentarioInserido.id,
+            arquivo_path: caminho,
+            arquivo_nome: arquivo.name,
+            arquivo_tipo: arquivo.type,
+            tamanho_bytes: arquivo.size,
+          });
+        }
+      }
+
       setNovoComentario("");
-      const mencionados = colegas.filter((c) => texto.includes(`@${c.nome}`));
+      const mencionados = colegas.filter((c) => {
+        const authId = funcionariosComAcesso.find((f) => f.id === c.id)?.authUserId;
+        return authId && texto.includes(`data-mencao-id="${authId}"`);
+      });
       if (mencionados.length > 0) {
         await supabase.from("notificacoes").insert(
           mencionados
@@ -889,7 +911,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
               destinatario_id: funcionariosComAcesso.find((f) => f.id === c.id)?.authUserId ?? null,
               tipo: "mencao_conteudo",
               titulo: `${meuNome} te mencionou num conteúdo`,
-              descricao: post?.titulo || texto.slice(0, 120),
+              descricao: post?.titulo || "Novo comentário",
               link: `/conteudo/calendario/post/${id}`,
               autor_id: meuId,
               autor_nome: meuNome,
@@ -910,7 +932,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
             destinatario_id: destId,
             tipo: "comentario_conteudo",
             titulo: `${meuNome} comentou num conteúdo seu`,
-            descricao: post?.titulo || texto.slice(0, 120),
+            descricao: post?.titulo || "Novo comentário",
             link: `/conteudo/calendario/post/${id}`,
             autor_id: meuId,
             autor_nome: meuNome,
@@ -923,22 +945,6 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     setEnviandoComentario(false);
   }
 
-  function selecionarMencao(nome: string) {
-    const textarea = comentarioRef.current;
-    if (!textarea) return;
-    const pos = textarea.selectionStart ?? novoComentario.length;
-    const antes = novoComentario.slice(0, pos);
-    const depois = novoComentario.slice(pos);
-    const novoAntes = antes.replace(/@([a-zA-ZÀ-ÿ]*)$/, `@${nome} `);
-    setNovoComentario(novoAntes + depois);
-    setMencaoBusca(null);
-    requestAnimationFrame(() => {
-      textarea.focus();
-      textarea.selectionStart = textarea.selectionEnd = novoAntes.length;
-    });
-  }
-
-  const colegasParaMencao = funcionariosComAcesso.filter((f) => mencaoBusca !== null && normalizar(f.nome).includes(normalizar(mencaoBusca)));
   const todosOsNomes = [meuNome, ...colegas.map((c) => c.nome)];
   const statusAtual = statusList.find((s) => s.id === post?.status_id);
 
@@ -1562,6 +1568,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                     comentarios.map((c) => {
                       const nome = c.doCliente ? "Cliente" : nomeDoAutor(c.autor_id!);
                       const fotoAutor = c.doCliente ? null : funcionariosComAcesso.find((f) => f.authUserId === c.autor_id)?.fotoUrl ?? null;
+                      const ehHtml = !c.doCliente && c.texto.trim().startsWith("<");
                       return (
                         <div key={c.id} className="flex items-start gap-2.5">
                           {c.doCliente ? (
@@ -1576,85 +1583,30 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                               <span className={`text-sm font-bold ${c.doCliente ? "text-amber-700" : "text-ink"}`}>{nome}</span>
                               <span className="text-[11px] text-ink/40">{formatarQuando(c.created_at)}</span>
                             </div>
-                            <p className="text-sm text-ink whitespace-pre-wrap break-words">{renderizarTexto(c.texto, todosOsNomes)}</p>
+                            {ehHtml ? (
+                              <div
+                                className="text-sm text-ink break-words rich-text-editor rich-text-editor--leitura"
+                                dangerouslySetInnerHTML={{ __html: c.texto }}
+                              />
+                            ) : (
+                              <p className="text-sm text-ink whitespace-pre-wrap break-words">{renderizarTexto(c.texto, todosOsNomes)}</p>
+                            )}
+                            <AnexosComentario anexos={c.anexos} bucket="conteudo-comentarios-anexos" />
                           </div>
                         </div>
                       );
                     })
                   )}
                 </div>
-                <div className="p-4 border-t border-black/5 shrink-0 relative">
-                  <div className="relative">
-                    <textarea
-                      ref={comentarioRef}
-                      value={novoComentario}
-                      onChange={(e) => {
-                        const valor = e.target.value;
-                        setNovoComentario(valor);
-                        const pos = e.target.selectionStart ?? valor.length;
-                        const antes = valor.slice(0, pos);
-                        const match = antes.match(/@([a-zA-ZÀ-ÿ]*)$/);
-                        setMencaoBusca(match ? match[1] : null);
-                        setIndiceMencaoComentario(0);
-                      }}
-                      onKeyDown={(e) => {
-                        if (mencaoBusca !== null && colegasParaMencao.length > 0) {
-                          if (e.key === "ArrowDown") {
-                            e.preventDefault();
-                            setIndiceMencaoComentario((i) => Math.min(i + 1, colegasParaMencao.length - 1));
-                            return;
-                          }
-                          if (e.key === "ArrowUp") {
-                            e.preventDefault();
-                            setIndiceMencaoComentario((i) => Math.max(i - 1, 0));
-                            return;
-                          }
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            selecionarMencao(colegasParaMencao[indiceMencaoComentario].nome);
-                            return;
-                          }
-                          if (e.key === "Escape") {
-                            e.preventDefault();
-                            setMencaoBusca(null);
-                            return;
-                          }
-                        }
-                        if (e.key === "Enter" && !e.shiftKey && mencaoBusca === null) {
-                          e.preventDefault();
-                          enviarComentario();
-                        }
-                      }}
-                      rows={2}
-                      placeholder="Escreva um comentário... (@ pra mencionar)"
-                      className="input resize-none w-full text-sm overflow-y-auto transition-[height]"
-                    />
-                  </div>
-                  {mencaoBusca !== null && colegasParaMencao.length > 0 && (
-                    <div className="absolute z-20 bottom-20 left-4 right-4 rounded-2xl bg-white border border-black/10 shadow-lg py-1 max-h-48 overflow-y-auto">
-                      {colegasParaMencao.map((c, i) => (
-                        <button
-                          key={c.id}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onMouseEnter={() => setIndiceMencaoComentario(i)}
-                          onClick={() => selecionarMencao(c.nome)}
-                          className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2.5 transition-colors ${
-                            i === indiceMencaoComentario ? "bg-surface" : "hover:bg-surface/60"
-                          }`}
-                        >
-                          <Avatar nome={c.nome} fotoUrl={c.fotoUrl} tamanho={26} />
-                          <span className="font-semibold text-ink">{c.nome}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <button
-                    onClick={enviarComentario}
-                    disabled={enviandoComentario || !novoComentario.trim()}
-                    className="mt-2 rounded-full bg-ink text-white px-4 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50"
-                  >
-                    Comentar
-                  </button>
+                <div className="p-4 border-t border-black/5 shrink-0">
+                  <CaixaComentario
+                    valorHtml={novoComentario}
+                    onChangeHtml={setNovoComentario}
+                    onEnviar={enviarComentario}
+                    enviando={enviandoComentario}
+                    mencionaveis={funcionariosComAcesso.filter((f) => f.authUserId).map((f) => ({ id: f.authUserId!, nome: f.nome, fotoUrl: f.fotoUrl }))}
+                    referenciaveis={referenciaveis}
+                  />
                 </div>
               </>
             ) : abaLateral === "historico" ? (
