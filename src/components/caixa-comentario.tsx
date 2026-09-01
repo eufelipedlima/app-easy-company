@@ -98,7 +98,19 @@ export function CaixaComentario({
   const temConteudo = valorHtml.replace(/<[^>]*>/g, "").trim().length > 0 || anexosPendentes.length > 0;
 
   return (
-    <div className="rounded-2xl border border-black/10 bg-white overflow-hidden focus-within:border-forest/40 transition-colors">
+    <div
+      className="rounded-2xl border border-black/10 bg-white overflow-hidden focus-within:border-forest/40 transition-colors"
+      onKeyDown={(e) => {
+        // Enter envia o comentário (Shift+Enter quebra linha); se o editor
+        // já tratou essa tecla pra outra coisa (escolher uma @menção, por
+        // exemplo), ele mesmo já chamou preventDefault — nesse caso a
+        // gente não interfere.
+        if (e.key === "Enter" && !e.shiftKey && !e.defaultPrevented) {
+          e.preventDefault();
+          aoEnviar();
+        }
+      }}
+    >
       <RichTextEditor
         valorHtml={valorHtml}
         onChange={onChangeHtml}
@@ -118,7 +130,7 @@ export function CaixaComentario({
                 <span className="text-ink/50">{iconePorTipo(a.arquivo.type)}</span>
               )}
               <span className="max-w-[100px] truncate text-ink/70">{a.arquivo.name}</span>
-              <button onClick={() => removerPendente(a.chave)} className="text-ink/30 hover:text-red-600 shrink-0">
+              <button onMouseDown={(e) => e.preventDefault()} onClick={() => removerPendente(a.chave)} className="text-ink/30 hover:text-red-600 shrink-0">
                 <X size={12} />
               </button>
             </div>
@@ -138,6 +150,7 @@ export function CaixaComentario({
           className="hidden"
         />
         <button
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => inputArquivoRef.current?.click()}
           title="Anexar arquivo ou imagem"
           className="h-8 w-8 rounded-full flex items-center justify-center text-ink/40 hover:text-ink hover:bg-surface transition-colors shrink-0"
@@ -147,6 +160,7 @@ export function CaixaComentario({
 
         {gravando ? (
           <button
+            onMouseDown={(e) => e.preventDefault()}
             onClick={pararGravacao}
             className="flex items-center gap-1.5 rounded-full bg-red-50 text-red-600 px-3 py-1.5 text-xs font-bold shrink-0"
           >
@@ -155,6 +169,7 @@ export function CaixaComentario({
           </button>
         ) : (
           <button
+            onMouseDown={(e) => e.preventDefault()}
             onClick={iniciarGravacao}
             title="Gravar um áudio"
             className="h-8 w-8 rounded-full flex items-center justify-center text-ink/40 hover:text-ink hover:bg-surface transition-colors shrink-0"
@@ -164,10 +179,11 @@ export function CaixaComentario({
         )}
 
         <button
+          onMouseDown={(e) => e.preventDefault()}
           onClick={aoEnviar}
           disabled={enviando || !temConteudo}
           className="ml-auto rounded-full bg-forest text-white h-8 w-8 flex items-center justify-center hover:brightness-110 transition disabled:opacity-30 shrink-0"
-          title="Enviar comentário"
+          title="Enviar comentário (Enter)"
         >
           <Send size={14} />
         </button>

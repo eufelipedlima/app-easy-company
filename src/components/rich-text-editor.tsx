@@ -183,15 +183,29 @@ export function RichTextEditor({
   const montadoRef = useRef(false);
   const selecaoSalvaRef = useRef<Range | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const ultimoValorEmitidoRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!montadoRef.current && editorRef.current) {
       editorRef.current.innerHTML = valorHtml || "";
+      ultimoValorEmitidoRef.current = valorHtml || "";
       montadoRef.current = true;
       setTransborda(editorRef.current.scrollHeight > ALTURA_COLAPSADA + 20);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Se o valor mudar por FORA (por exemplo, limpando a caixa depois de
+  // enviar um comentário), sincroniza o conteúdo visível. Não faz isso
+  // quando a mudança veio da própria digitação (comparando com o último
+  // valor que a gente mesmo emitiu) — senão o cursor pularia a cada tecla.
+  useEffect(() => {
+    if (!montadoRef.current || !editorRef.current) return;
+    if (valorHtml === ultimoValorEmitidoRef.current) return;
+    editorRef.current.innerHTML = valorHtml || "";
+    ultimoValorEmitidoRef.current = valorHtml || "";
+    setTransborda(editorRef.current.scrollHeight > ALTURA_COLAPSADA + 20);
+  }, [valorHtml]);
 
   useEffect(() => {
     try {
@@ -421,6 +435,7 @@ export function RichTextEditor({
 
   function handleInput() {
     if (!editorRef.current) return;
+    ultimoValorEmitidoRef.current = editorRef.current.innerHTML;
     onChange(editorRef.current.innerHTML);
     setTransborda(editorRef.current.scrollHeight > ALTURA_COLAPSADA + 20);
     verificarComandoBarra();
