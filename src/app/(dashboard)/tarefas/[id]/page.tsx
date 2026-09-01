@@ -11,7 +11,7 @@ import { BuscaCliente } from "@/components/busca-cliente";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { CaixaComentario, AnexosComentario } from "@/components/caixa-comentario";
 import { Cronometro, formatarDuracaoLonga } from "@/components/cronometro";
-import { Eye, Download, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Eye, Download, X, ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react";
 import { iconeHistorico, comValoresDestacados, segundosPorPessoaDoHistorico } from "@/lib/historico-visual";
 import { DndContext, PointerSensor, useSensor, useSensors, useDraggable, useDroppable, type DragEndEvent } from "@dnd-kit/core";
 
@@ -53,6 +53,7 @@ interface Comentario {
   autor_id: string;
   texto: string;
   created_at: string;
+  editado_em: string | null;
   anexos: AnexoComentarioItem[];
 }
 
@@ -248,6 +249,9 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   const [seletorResponsavelAberto, setSeletorResponsavelAberto] = useState(false);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [erroComentarios, setErroComentarios] = useState<string | null>(null);
+  const [editandoComentarioId, setEditandoComentarioId] = useState<string | null>(null);
+  const [textoEditado, setTextoEditado] = useState("");
+  const [salvandoEdicaoComentario, setSalvandoEdicaoComentario] = useState(false);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusAberto, setStatusAberto] = useState(false);
@@ -454,7 +458,9 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     const supabase = createClient();
     const { data, error } = await supabase
       .from("tarefas_comentarios")
-      .select("id, autor_id, texto, created_at, anexos:tarefas_comentarios_anexos ( id, arquivo_path, arquivo_nome, arquivo_tipo )")
+      .select(
+        "id, autor_id, texto, created_at, editado_em, anexos:tarefas_comentarios_anexos ( id, arquivo_path, arquivo_nome, arquivo_tipo )"
+      )
       .eq("tarefa_id", id)
       .order("created_at");
     if (error) {
@@ -937,6 +943,51 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     } finally {
       setEnviandoComentario(false);
     }
+  }
+
+  // Só 10 minutos pra excluir, pra não deixar sumir conversa que outros já
+  // podem ter visto/respondido muito tempo depois — editar não tem esse
+  // limite, mas fica marcado como "(editado)".
+  const JANELA_EXCLUSAO_MS = 10 * 60 * 1000;
+  function podeExcluirComentario(c: Comentario) {
+    return c.autor_id === meuId && Date.now() - new Date(c.created_at).getTime() < JANELA_EXCLUSAO_MS;
+  }
+
+  function iniciarEdicaoComentario(c: Comentario) {
+    setEditandoComentarioId(c.id);
+    setTextoEditado(c.texto);
+  }
+
+  async function salvarEdicaoComentario(comentarioId: string) {
+    if (!textoEditado.replace(/<[^>]*>/g, "").trim()) return;
+    setSalvandoEdicaoComentario(true);
+    const supabase = createClient();
+    const agora = new Date().toISOString();
+    const { error } = await supabase
+      .from("tarefas_comentarios")
+      .update({ texto: textoEditado, editado_em: agora })
+      .eq("id", comentarioId);
+    setSalvandoEdicaoComentario(false);
+    if (error) {
+      window.alert("Não foi possível salvar a edição: " + error.message);
+      return;
+    }
+    setComentarios((atual) => atual.map((c) => (c.id === comentarioId ? { ...c, texto: textoEditado, editado_em: agora } : c)));
+    setEditandoComentarioId(null);
+  }
+
+  async function excluirComentario(c: Comentario) {
+    if (!window.confirm("Excluir esse comentário? Não tem como desfazer.")) return;
+    const supabase = createClient();
+    if (c.anexos.length > 0) {
+      await supabase.storage.from("tarefas-comentarios-anexos").remove(c.anexos.map((a) => a.arquivo_path));
+    }
+    const { error } = await supabase.from("tarefas_comentarios").delete().eq("id", c.id);
+    if (error) {
+      window.alert("Não foi possível excluir: " + error.message);
+      return;
+    }
+    setComentarios((atual) => atual.filter((item) => item.id !== c.id));
   }
 
   async function excluirTarefa() {
@@ -1520,15 +1571,56 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                       const nome = nomeDoAutor(c.autor_id);
                       const fotoAutor = funcionariosComAcesso.find((f) => f.authUserId === c.autor_id)?.fotoUrl ?? null;
                       const ehHtml = c.texto.trim().startsWith("<");
+                      const ehMeu = c.autor_id === meuId;
+                      const editando = editandoComentarioId === c.id;
                       return (
-                        <div key={c.id} className="flex items-start gap-2.5">
+                        <div key={c.id} className="group/comentario flex items-start gap-2.5">
                           <Avatar nome={nome} fotoUrl={fotoAutor} tamanho={30} />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-baseline gap-2">
                               <span className="text-sm font-bold text-ink">{nome}</span>
-                              <span className="text-[11px] text-ink/40">{formatarQuando(c.created_at)}</span>
+                              <span className="text-[11px] text-ink/40">
+                                {formatarQuando(c.created_at)}
+                                {c.editado_em && " · editado"}
+                              </span>
+                              {ehMeu && !editando && (
+                                <span className="ml-auto flex items-center gap-0.5 opacity-0 group-hover/comentario:opacity-100 transition-opacity shrink-0">
+                                  <button
+                                    onClick={() => iniciarEdicaoComentario(c)}
+                                    title="Editar"
+                                    className="h-6 w-6 rounded-full flex items-center justify-center text-ink/35 hover:text-ink hover:bg-surface"
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                  {podeExcluirComentario(c) && (
+                                    <button
+                                      onClick={() => excluirComentario(c)}
+                                      title="Excluir (até 10 min depois de enviar)"
+                                      className="h-6 w-6 rounded-full flex items-center justify-center text-ink/35 hover:text-red-600 hover:bg-red-50"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  )}
+                                </span>
+                              )}
                             </div>
-                            {ehHtml ? (
+                            {editando ? (
+                              <div className="mt-1">
+                                <RichTextEditor valorHtml={textoEditado} onChange={setTextoEditado} />
+                                <div className="flex items-center gap-3 mt-1.5">
+                                  <button
+                                    onClick={() => salvarEdicaoComentario(c.id)}
+                                    disabled={salvandoEdicaoComentario}
+                                    className="rounded-full bg-forest text-white px-3 py-1 text-xs font-bold hover:brightness-110 transition disabled:opacity-50"
+                                  >
+                                    Salvar
+                                  </button>
+                                  <button onClick={() => setEditandoComentarioId(null)} className="text-xs font-semibold text-ink/50 hover:text-ink">
+                                    Cancelar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : ehHtml ? (
                               <div
                                 className="text-sm text-ink break-words rich-text-editor rich-text-editor--leitura"
                                 dangerouslySetInnerHTML={{ __html: c.texto }}
@@ -1536,7 +1628,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                             ) : (
                               <p className="text-sm text-ink whitespace-pre-wrap break-words">{renderizarTexto(c.texto, todosOsNomes)}</p>
                             )}
-                            <AnexosComentario anexos={c.anexos} bucket="tarefas-comentarios-anexos" />
+                            {!editando && <AnexosComentario anexos={c.anexos} bucket="tarefas-comentarios-anexos" />}
                           </div>
                         </div>
                       );

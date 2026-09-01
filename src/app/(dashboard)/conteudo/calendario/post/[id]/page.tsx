@@ -14,7 +14,7 @@ import { Cronometro, formatarDuracaoLonga } from "@/components/cronometro";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Eye, Download, X, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { Eye, Download, X, ChevronLeft, ChevronRight, ExternalLink, Pencil, Trash2 } from "lucide-react";
 import { iconeHistorico, comValoresDestacados, segundosPorPessoaDoHistorico } from "@/lib/historico-visual";
 
 interface StatusItem {
@@ -44,6 +44,7 @@ interface Comentario {
   autor_id: string | null;
   texto: string;
   created_at: string;
+  editado_em?: string | null;
   doCliente?: boolean;
   anexos: AnexoComentarioItem[];
 }
@@ -210,6 +211,9 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   const [seletorResponsavelAberto, setSeletorResponsavelAberto] = useState(false);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [erroComentarios, setErroComentarios] = useState<string | null>(null);
+  const [editandoComentarioId, setEditandoComentarioId] = useState<string | null>(null);
+  const [textoEditado, setTextoEditado] = useState("");
+  const [salvandoEdicaoComentario, setSalvandoEdicaoComentario] = useState(false);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusAberto, setStatusAberto] = useState(false);
@@ -473,7 +477,9 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     ] = await Promise.all([
       supabase
         .from("posts_conteudo_comentarios_internos")
-        .select("id, autor_id, texto, created_at, anexos:posts_conteudo_comentarios_internos_anexos ( id, arquivo_path, arquivo_nome, arquivo_tipo )")
+        .select(
+          "id, autor_id, texto, created_at, editado_em, anexos:posts_conteudo_comentarios_internos_anexos ( id, arquivo_path, arquivo_nome, arquivo_tipo )"
+        )
         .eq("post_id", id)
         .order("created_at"),
       supabase.from("posts_conteudo_comentarios").select("id, texto, created_at, autor").eq("post_id", id).order("created_at"),
@@ -973,6 +979,48 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     } finally {
       setEnviandoComentario(false);
     }
+  }
+
+  const JANELA_EXCLUSAO_MS = 10 * 60 * 1000;
+  function podeExcluirComentario(c: Comentario) {
+    return !c.doCliente && c.autor_id === meuId && Date.now() - new Date(c.created_at).getTime() < JANELA_EXCLUSAO_MS;
+  }
+
+  function iniciarEdicaoComentario(c: Comentario) {
+    setEditandoComentarioId(c.id);
+    setTextoEditado(c.texto);
+  }
+
+  async function salvarEdicaoComentario(comentarioId: string) {
+    if (!textoEditado.replace(/<[^>]*>/g, "").trim()) return;
+    setSalvandoEdicaoComentario(true);
+    const supabase = createClient();
+    const agora = new Date().toISOString();
+    const { error } = await supabase
+      .from("posts_conteudo_comentarios_internos")
+      .update({ texto: textoEditado, editado_em: agora })
+      .eq("id", comentarioId);
+    setSalvandoEdicaoComentario(false);
+    if (error) {
+      window.alert("Não foi possível salvar a edição: " + error.message);
+      return;
+    }
+    setComentarios((atual) => atual.map((c) => (c.id === comentarioId ? { ...c, texto: textoEditado, editado_em: agora } : c)));
+    setEditandoComentarioId(null);
+  }
+
+  async function excluirComentario(c: Comentario) {
+    if (!window.confirm("Excluir esse comentário? Não tem como desfazer.")) return;
+    const supabase = createClient();
+    if (c.anexos.length > 0) {
+      await supabase.storage.from("conteudo-comentarios-anexos").remove(c.anexos.map((a) => a.arquivo_path));
+    }
+    const { error } = await supabase.from("posts_conteudo_comentarios_internos").delete().eq("id", c.id);
+    if (error) {
+      window.alert("Não foi possível excluir: " + error.message);
+      return;
+    }
+    setComentarios((atual) => atual.filter((item) => item.id !== c.id));
   }
 
   const todosOsNomes = [meuNome, ...colegas.map((c) => c.nome)];
@@ -1605,8 +1653,10 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                       const nome = c.doCliente ? "Cliente" : nomeDoAutor(c.autor_id!);
                       const fotoAutor = c.doCliente ? null : funcionariosComAcesso.find((f) => f.authUserId === c.autor_id)?.fotoUrl ?? null;
                       const ehHtml = !c.doCliente && c.texto.trim().startsWith("<");
+                      const ehMeu = !c.doCliente && c.autor_id === meuId;
+                      const editando = editandoComentarioId === c.id;
                       return (
-                        <div key={c.id} className="flex items-start gap-2.5">
+                        <div key={c.id} className="group/comentario flex items-start gap-2.5">
                           {c.doCliente ? (
                             <div className="h-[30px] w-[30px] rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold shrink-0 ring-2 ring-white">
                               👤
@@ -1617,9 +1667,48 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                           <div className="flex-1 min-w-0">
                             <div className="flex items-baseline gap-2">
                               <span className={`text-sm font-bold ${c.doCliente ? "text-amber-700" : "text-ink"}`}>{nome}</span>
-                              <span className="text-[11px] text-ink/40">{formatarQuando(c.created_at)}</span>
+                              <span className="text-[11px] text-ink/40">
+                                {formatarQuando(c.created_at)}
+                                {c.editado_em && " · editado"}
+                              </span>
+                              {ehMeu && !editando && (
+                                <span className="ml-auto flex items-center gap-0.5 opacity-0 group-hover/comentario:opacity-100 transition-opacity shrink-0">
+                                  <button
+                                    onClick={() => iniciarEdicaoComentario(c)}
+                                    title="Editar"
+                                    className="h-6 w-6 rounded-full flex items-center justify-center text-ink/35 hover:text-ink hover:bg-surface"
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                  {podeExcluirComentario(c) && (
+                                    <button
+                                      onClick={() => excluirComentario(c)}
+                                      title="Excluir (até 10 min depois de enviar)"
+                                      className="h-6 w-6 rounded-full flex items-center justify-center text-ink/35 hover:text-red-600 hover:bg-red-50"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  )}
+                                </span>
+                              )}
                             </div>
-                            {ehHtml ? (
+                            {editando ? (
+                              <div className="mt-1">
+                                <RichTextEditor valorHtml={textoEditado} onChange={setTextoEditado} />
+                                <div className="flex items-center gap-3 mt-1.5">
+                                  <button
+                                    onClick={() => salvarEdicaoComentario(c.id)}
+                                    disabled={salvandoEdicaoComentario}
+                                    className="rounded-full bg-forest text-white px-3 py-1 text-xs font-bold hover:brightness-110 transition disabled:opacity-50"
+                                  >
+                                    Salvar
+                                  </button>
+                                  <button onClick={() => setEditandoComentarioId(null)} className="text-xs font-semibold text-ink/50 hover:text-ink">
+                                    Cancelar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : ehHtml ? (
                               <div
                                 className="text-sm text-ink break-words rich-text-editor rich-text-editor--leitura"
                                 dangerouslySetInnerHTML={{ __html: c.texto }}
@@ -1627,7 +1716,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                             ) : (
                               <p className="text-sm text-ink whitespace-pre-wrap break-words">{renderizarTexto(c.texto, todosOsNomes)}</p>
                             )}
-                            <AnexosComentario anexos={c.anexos} bucket="conteudo-comentarios-anexos" />
+                            {!editando && <AnexosComentario anexos={c.anexos} bucket="conteudo-comentarios-anexos" />}
                           </div>
                         </div>
                       );
