@@ -466,7 +466,10 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
 
   const carregarComentarios = useCallback(async () => {
     const supabase = createClient();
-    const [{ data: internos }, { data: doCliente }] = await Promise.all([
+    const [
+      { data: internos, error: erroInternos },
+      { data: doCliente },
+    ] = await Promise.all([
       supabase
         .from("posts_conteudo_comentarios_internos")
         .select("id, autor_id, texto, created_at, anexos:posts_conteudo_comentarios_internos_anexos ( id, arquivo_path, arquivo_nome, arquivo_tipo )")
@@ -474,6 +477,10 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
         .order("created_at"),
       supabase.from("posts_conteudo_comentarios").select("id, texto, created_at, autor").eq("post_id", id).order("created_at"),
     ]);
+    if (erroInternos) {
+      console.error("Erro ao carregar comentários:", erroInternos);
+      return;
+    }
     const listaInternos: Comentario[] = ((internos as unknown as Omit<Comentario, "doCliente">[]) ?? []).map((c) => ({ ...c, doCliente: false }));
     const listaCliente: Comentario[] = ((doCliente ?? []) as { id: string; texto: string; created_at: string; autor: string }[]).map((c) => ({
       id: `cliente-${c.id}`,
@@ -877,14 +884,22 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   async function enviarComentario(arquivos: File[]) {
     if ((!novoComentario.replace(/<[^>]*>/g, "").trim() && arquivos.length === 0) || !meuId) return;
     setEnviandoComentario(true);
-    const supabase = createClient();
-    const texto = novoComentario;
-    const { data: comentarioInserido, error } = await supabase
-      .from("posts_conteudo_comentarios_internos")
-      .insert({ post_id: id, autor_id: meuId, texto })
-      .select("id")
-      .single();
-    if (!error && comentarioInserido) {
+    try {
+      const supabase = createClient();
+      const texto = novoComentario;
+      const { data: comentarioInserido, error } = await supabase
+        .from("posts_conteudo_comentarios_internos")
+        .insert({ post_id: id, autor_id: meuId, texto })
+        .select("id")
+        .single();
+      if (error || !comentarioInserido) {
+        window.alert("Não foi possível enviar o comentário: " + (error?.message ?? "erro desconhecido"));
+        return;
+      }
+
+      setNovoComentario("");
+      carregarComentarios();
+
       for (const arquivo of arquivos) {
         const caminho = `${id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${sanearNomeArquivo(arquivo.name)}`;
         const { error: erroUpload } = await supabase.storage.from("conteudo-comentarios-anexos").upload(caminho, arquivo);
@@ -898,8 +913,8 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
           });
         }
       }
+      if (arquivos.length > 0) carregarComentarios();
 
-      setNovoComentario("");
       const mencionados = colegas.filter((c) => {
         const authId = funcionariosComAcesso.find((f) => f.id === c.id)?.authUserId;
         return authId && texto.includes(`data-mencao-id="${authId}"`);
@@ -940,9 +955,12 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
           }))
         );
       }
-      carregarComentarios();
+    } catch (err) {
+      console.error("Erro ao enviar comentário:", err);
+      window.alert("Algo deu errado ao enviar o comentário. Tenta de novo.");
+    } finally {
+      setEnviandoComentario(false);
     }
-    setEnviandoComentario(false);
   }
 
   const todosOsNomes = [meuNome, ...colegas.map((c) => c.nome)];

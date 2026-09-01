@@ -156,6 +156,7 @@ export function RichTextEditor({
   mencionaveis,
   referenciaveis,
   toolbarSempreAberta,
+  aoPressionarEnter,
 }: {
   valorHtml: string;
   onChange: (html: string) => void;
@@ -165,6 +166,11 @@ export function RichTextEditor({
   mencionaveis?: { id: string; nome: string; fotoUrl?: string | null }[];
   referenciaveis?: { id: string; titulo: string; tipo: "tarefa" | "conteudo"; clienteNome?: string | null }[];
   toolbarSempreAberta?: boolean;
+  /** Se passado, Enter (sem Shift) chama isso em vez de quebrar linha —
+   * pra caixas de comentário, onde Enter costuma enviar e Shift+Enter
+   * quebra linha. Não interfere quando um menu de @menção/#referência/
+   * comando está aberto (Enter continua escolhendo o item ali). */
+  aoPressionarEnter?: () => void;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -638,7 +644,13 @@ export function RichTextEditor({
       }
       return;
     }
-    if (!menu) return;
+    if (!menu) {
+      if (aoPressionarEnter && e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        aoPressionarEnter();
+      }
+      return;
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setIndiceSelecionado((i) => Math.min(i + 1, Math.max(itensFiltrados.length - 1, 0)));

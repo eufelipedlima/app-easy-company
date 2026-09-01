@@ -451,11 +451,15 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
   const carregarComentarios = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("tarefas_comentarios")
       .select("id, autor_id, texto, created_at, anexos:tarefas_comentarios_anexos ( id, arquivo_path, arquivo_nome, arquivo_tipo )")
       .eq("tarefa_id", id)
       .order("created_at");
+    if (error) {
+      console.error("Erro ao carregar comentários:", error);
+      return;
+    }
     setComentarios((data as unknown as Comentario[]) ?? []);
   }, [id]);
 
@@ -843,14 +847,25 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   async function enviarComentario(arquivos: File[]) {
     if ((!novoComentario.replace(/<[^>]*>/g, "").trim() && arquivos.length === 0) || !meuId) return;
     setEnviandoComentario(true);
-    const supabase = createClient();
-    const texto = novoComentario;
-    const { data: comentarioInserido, error } = await supabase
-      .from("tarefas_comentarios")
-      .insert({ tarefa_id: id, autor_id: meuId, texto })
-      .select("id")
-      .single();
-    if (!error && comentarioInserido) {
+    try {
+      const supabase = createClient();
+      const texto = novoComentario;
+      const { data: comentarioInserido, error } = await supabase
+        .from("tarefas_comentarios")
+        .insert({ tarefa_id: id, autor_id: meuId, texto })
+        .select("id")
+        .single();
+      if (error || !comentarioInserido) {
+        window.alert("Não foi possível enviar o comentário: " + (error?.message ?? "erro desconhecido"));
+        return;
+      }
+
+      // Limpa o campo e atualiza a lista assim que o comentário em si já
+      // está salvo — o resto (anexos, notificações) roda depois, sem
+      // deixar a pessoa esperando pra ver o comentário aparecer.
+      setNovoComentario("");
+      carregarComentarios();
+
       for (const arquivo of arquivos) {
         const caminho = `${id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${sanearNomeArquivo(arquivo.name)}`;
         const { error: erroUpload } = await supabase.storage.from("tarefas-comentarios-anexos").upload(caminho, arquivo);
@@ -864,8 +879,8 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
           });
         }
       }
+      if (arquivos.length > 0) carregarComentarios();
 
-      setNovoComentario("");
       const mencionados = colegas.filter((c) => {
         const authId = funcionariosComAcesso.find((f) => f.id === c.id)?.authUserId;
         return authId && texto.includes(`data-mencao-id="${authId}"`);
@@ -904,9 +919,12 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
           }))
         );
       }
-      carregarComentarios();
+    } catch (err) {
+      console.error("Erro ao enviar comentário:", err);
+      window.alert("Algo deu errado ao enviar o comentário. Tenta de novo.");
+    } finally {
+      setEnviandoComentario(false);
     }
-    setEnviandoComentario(false);
   }
 
   async function excluirTarefa() {

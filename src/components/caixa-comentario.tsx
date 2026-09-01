@@ -98,25 +98,14 @@ export function CaixaComentario({
   const temConteudo = valorHtml.replace(/<[^>]*>/g, "").trim().length > 0 || anexosPendentes.length > 0;
 
   return (
-    <div
-      className="rounded-2xl border border-black/10 bg-white overflow-hidden focus-within:border-forest/40 transition-colors"
-      onKeyDown={(e) => {
-        // Enter envia o comentário (Shift+Enter quebra linha); se o editor
-        // já tratou essa tecla pra outra coisa (escolher uma @menção, por
-        // exemplo), ele mesmo já chamou preventDefault — nesse caso a
-        // gente não interfere.
-        if (e.key === "Enter" && !e.shiftKey && !e.defaultPrevented) {
-          e.preventDefault();
-          aoEnviar();
-        }
-      }}
-    >
+    <div className="rounded-2xl border border-black/10 bg-white overflow-hidden focus-within:border-forest/40 transition-colors">
       <RichTextEditor
         valorHtml={valorHtml}
         onChange={onChangeHtml}
         placeholder={placeholder ?? "Escreva um comentário... (@ pra mencionar, # pra referenciar)"}
         mencionaveis={mencionaveis}
         referenciaveis={referenciaveis}
+        aoPressionarEnter={aoEnviar}
       />
 
       {anexosPendentes.length > 0 && (
