@@ -903,20 +903,29 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
       setNovoComentario("");
       carregarComentarios();
 
+      let erroAnexoMsg: string | null = null;
       for (const arquivo of arquivos) {
         const caminho = `${id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${sanearNomeArquivo(arquivo.name)}`;
         const { error: erroUpload } = await supabase.storage.from("conteudo-comentarios-anexos").upload(caminho, arquivo);
-        if (!erroUpload) {
-          await supabase.from("posts_conteudo_comentarios_internos_anexos").insert({
-            comentario_id: comentarioInserido.id,
-            arquivo_path: caminho,
-            arquivo_nome: arquivo.name,
-            arquivo_tipo: arquivo.type,
-            tamanho_bytes: arquivo.size,
-          });
+        if (erroUpload) {
+          console.error("Erro ao subir anexo do comentário:", erroUpload);
+          erroAnexoMsg = `Não deu pra anexar "${arquivo.name}": ${erroUpload.message}`;
+          continue;
+        }
+        const { error: erroAnexo } = await supabase.from("posts_conteudo_comentarios_internos_anexos").insert({
+          comentario_id: comentarioInserido.id,
+          arquivo_path: caminho,
+          arquivo_nome: arquivo.name,
+          arquivo_tipo: arquivo.type,
+          tamanho_bytes: arquivo.size,
+        });
+        if (erroAnexo) {
+          console.error("Erro ao salvar anexo do comentário:", erroAnexo);
+          erroAnexoMsg = `Não deu pra salvar o anexo "${arquivo.name}": ${erroAnexo.message}`;
         }
       }
-      if (arquivos.length > 0) carregarComentarios();
+      if (arquivos.length > 0) await carregarComentarios();
+      if (erroAnexoMsg) setErroComentarios(erroAnexoMsg);
 
       const mencionados = colegas.filter((c) => {
         const authId = funcionariosComAcesso.find((f) => f.id === c.id)?.authUserId;
