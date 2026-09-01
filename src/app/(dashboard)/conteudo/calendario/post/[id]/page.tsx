@@ -209,6 +209,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
   const [responsaveis, setResponsaveis] = useState<Responsavel[]>([]);
   const [seletorResponsavelAberto, setSeletorResponsavelAberto] = useState(false);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
+  const [erroComentarios, setErroComentarios] = useState<string | null>(null);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusAberto, setStatusAberto] = useState(false);
@@ -479,8 +480,10 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
     ]);
     if (erroInternos) {
       console.error("Erro ao carregar comentários:", erroInternos);
+      setErroComentarios(erroInternos.message);
       return;
     }
+    setErroComentarios(null);
     const listaInternos: Comentario[] = ((internos as unknown as Omit<Comentario, "doCliente">[]) ?? []).map((c) => ({ ...c, doCliente: false }));
     const listaCliente: Comentario[] = ((doCliente ?? []) as { id: string; texto: string; created_at: string; autor: string }[]).map((c) => ({
       id: `cliente-${c.id}`,
@@ -1580,6 +1583,12 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
             {abaLateral === "comentarios" ? (
               <>
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                  {erroComentarios && (
+                    <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2.5">
+                      <p className="font-semibold">Não deu pra carregar os comentários.</p>
+                      <p className="font-mono mt-1 opacity-80">{erroComentarios}</p>
+                    </div>
+                  )}
                   {comentarios.length === 0 ? (
                     <p className="text-sm text-ink/40">Nenhum comentário ainda.</p>
                   ) : (

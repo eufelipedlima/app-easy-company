@@ -247,6 +247,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   const [responsaveis, setResponsaveis] = useState<Responsavel[]>([]);
   const [seletorResponsavelAberto, setSeletorResponsavelAberto] = useState(false);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
+  const [erroComentarios, setErroComentarios] = useState<string | null>(null);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusAberto, setStatusAberto] = useState(false);
@@ -458,8 +459,10 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       .order("created_at");
     if (error) {
       console.error("Erro ao carregar comentários:", error);
+      setErroComentarios(error.message);
       return;
     }
+    setErroComentarios(null);
     setComentarios((data as unknown as Comentario[]) ?? []);
   }, [id]);
 
@@ -1495,6 +1498,12 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
             {abaLateral === "comentarios" ? (
               <>
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                  {erroComentarios && (
+                    <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2.5">
+                      <p className="font-semibold">Não deu pra carregar os comentários.</p>
+                      <p className="font-mono mt-1 opacity-80">{erroComentarios}</p>
+                    </div>
+                  )}
                   {comentarios.length === 0 ? (
                     <p className="text-sm text-ink/40">Nenhum comentário ainda.</p>
                   ) : (
