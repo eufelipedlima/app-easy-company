@@ -64,11 +64,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   // Move o post pro status equivalente ("Agendamento" ao aprovar, "Em alteração"
-  // ao pedir ajuste), se existir um cadastrado com nome parecido
+  // ao pedir ajuste), se existir um cadastrado com nome parecido — sempre
+  // dentro da área "conteudo" (cada área tem sua própria lista de status).
   const termoBusca = acao === "aprovar" ? "%agend%" : "%altera%";
   const { data: statusAlvo } = await supabase
     .from("status_conteudo")
     .select("id")
+    .eq("area", "conteudo")
     .ilike("nome", termoBusca)
     .order("ordem")
     .limit(1)

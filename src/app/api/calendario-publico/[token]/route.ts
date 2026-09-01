@@ -28,7 +28,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const inicio = new Date(anoNum, mesNum, 1).toISOString().slice(0, 10);
   const fim = new Date(anoNum, mesNum + 1, 0).toISOString().slice(0, 10);
 
-  const { data: statusVisiveis } = await supabase.from("status_conteudo").select("id").eq("visivel_cliente", true);
+  const { data: statusVisiveis } = await supabase.from("status_conteudo").select("id").eq("area", "conteudo").eq("visivel_cliente", true);
   const idsStatusVisiveis = (statusVisiveis ?? []).map((s) => s.id);
 
   const { data: posts, error: postsError } = await supabase
