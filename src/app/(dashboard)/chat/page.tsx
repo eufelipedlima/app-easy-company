@@ -1222,6 +1222,7 @@ export default function ChatPage() {
                         placeholder="Escreva uma mensagem... (@ pra mencionar)"
                         mencionaveis={colegas.map((c) => ({ id: c.authUserId, nome: c.nome, fotoUrl: c.fotoUrl }))}
                         aoPressionarEnter={() => enviarMensagem()}
+                        toolbarSempreAberta
                       />
                     </div>
                     <button
