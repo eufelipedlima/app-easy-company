@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { comLinks } from "@/lib/linkify";
 import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { normalizar } from "@/lib/normalizar";
+import { RichTextEditor } from "@/components/rich-text-editor";
 
 interface Canal {
   id: string;
@@ -326,7 +327,6 @@ export default function ChatPage() {
   const [adicionarParticipanteAberto, setAdicionarParticipanteAberto] = useState(false);
   const [configCanalAberto, setConfigCanalAberto] = useState(false);
   const [mostrarEmoji, setMostrarEmoji] = useState(false);
-  const [mencaoBusca, setMencaoBusca] = useState<string | null>(null);
   const [buscaConversa, setBuscaConversa] = useState("");
   const [filtroConversa, setFiltroConversa] = useState<"tudo" | "nao_lidas" | "canais" | "pessoas">("tudo");
   const [respondendoA, setRespondendoA] = useState<Mensagem | null>(null);
@@ -334,7 +334,6 @@ export default function ChatPage() {
   const [seletorReacaoAberto, setSeletorReacaoAberto] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const canalAtivo = canais.find((c) => c.id === canalAtivoId) ?? null;
   const canalAtivoIdRef = useRef<string | null>(null);
@@ -620,12 +619,12 @@ export default function ChatPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [mensagens]);
 
-  async function enviarMensagem(e: React.FormEvent) {
-    e.preventDefault();
-    if (!texto.trim() || !canalAtivoId || !meuId) return;
+  async function enviarMensagem(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!texto.replace(/<[^>]*>/g, "").trim() || !canalAtivoId || !meuId) return;
     setEnviando(true);
     const supabase = createClient();
-    const textoEnviado = texto.trim();
+    const textoEnviado = texto;
     const { error } = await supabase.from("chat_mensagens").insert({
       canal_id: canalAtivoId,
       autor_id: meuId,
@@ -637,14 +636,14 @@ export default function ChatPage() {
       setRespondendoA(null);
 
       // Notifica quem foi @mencionado na mensagem
-      const mencionados = colegas.filter((c) => textoEnviado.includes(`@${c.nome}`));
+      const mencionados = colegas.filter((c) => c.authUserId && textoEnviado.includes(`data-mencao-id="${c.authUserId}"`));
       if (mencionados.length > 0) {
         await supabase.from("notificacoes").insert(
           mencionados.map((c) => ({
             destinatario_id: c.authUserId,
             tipo: "mencao_chat",
             titulo: `${meuNome} te mencionou`,
-            descricao: textoEnviado.slice(0, 120),
+            descricao: "Nova mensagem",
             link: canalAtivoId ? `/chat?canal=${canalAtivoId}` : "/chat",
             autor_id: meuId,
             autor_nome: meuNome,
@@ -783,64 +782,9 @@ export default function ChatPage() {
   }
 
   function inserirEmoji(emoji: string) {
-    const textarea = textareaRef.current;
-    if (!textarea) {
-      setTexto((t) => t + emoji);
-      return;
-    }
-    const inicio = textarea.selectionStart ?? texto.length;
-    const fim = textarea.selectionEnd ?? texto.length;
-    const novoTexto = texto.slice(0, inicio) + emoji + texto.slice(fim);
-    setTexto(novoTexto);
-    requestAnimationFrame(() => {
-      textarea.focus();
-      textarea.selectionStart = textarea.selectionEnd = inicio + emoji.length;
-    });
+    setTexto((t) => t + emoji);
   }
 
-  function aplicarFormatacao(marcador: string) {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const inicio = textarea.selectionStart ?? texto.length;
-    const fim = textarea.selectionEnd ?? texto.length;
-    const selecionado = texto.slice(inicio, fim);
-    const textoFinal = selecionado || (marcador === "**" ? "negrito" : "itálico");
-    const novoTexto = `${texto.slice(0, inicio)}${marcador}${textoFinal}${marcador}${texto.slice(fim)}`;
-    setTexto(novoTexto);
-    requestAnimationFrame(() => {
-      textarea.focus();
-      textarea.selectionStart = inicio + marcador.length;
-      textarea.selectionEnd = inicio + marcador.length + textoFinal.length;
-    });
-  }
-
-  function inserirDivisoria() {
-    const textarea = textareaRef.current;
-    const sufixo = texto && !texto.endsWith("\n") ? "\n" : "";
-    const novoTexto = `${texto}${sufixo}---\n`;
-    setTexto(novoTexto);
-    requestAnimationFrame(() => {
-      textarea?.focus();
-    });
-  }
-
-  const colegasParaMencao = colegas.filter((c) => mencaoBusca !== null && normalizar(c.nome).includes(normalizar(mencaoBusca)));
-
-  function selecionarMencao(nome: string) {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const posicaoCursor = textarea.selectionStart ?? texto.length;
-    const antesDoCursor = texto.slice(0, posicaoCursor);
-    const depoisDoCursor = texto.slice(posicaoCursor);
-    const novoAntes = antesDoCursor.replace(/@([a-zA-ZÀ-ÿ]*)$/, `@${nome} `);
-    const novoTexto = novoAntes + depoisDoCursor;
-    setTexto(novoTexto);
-    setMencaoBusca(null);
-    requestAnimationFrame(() => {
-      textarea.focus();
-      textarea.selectionStart = textarea.selectionEnd = novoAntes.length;
-    });
-  }
 
   const totalNaoLidas = canais.reduce((s, c) => s + c.naoLidas, 0);
   const canaisFiltrados = canais
@@ -948,6 +892,12 @@ export default function ChatPage() {
 
               return (
                 <>
+                  {pessoas.length > 0 && filtroConversa === "tudo" && (
+                    <div className="mb-1">
+                      <p className="px-5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white/30">Pessoas</p>
+                      {pessoas.map(LinhaCanal)}
+                    </div>
+                  )}
                   {grupos.length > 0 && (
                     <div className="mb-1">
                       <p className="px-5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white/30">Canais da Agência</p>
@@ -958,12 +908,6 @@ export default function ChatPage() {
                     <div className="mb-1">
                       <p className="px-5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white/30">Clientes</p>
                       {clientes.map(LinhaCanal)}
-                    </div>
-                  )}
-                  {pessoas.length > 0 && filtroConversa === "tudo" && (
-                    <div className="mb-1">
-                      <p className="px-5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white/30">Pessoas</p>
-                      {pessoas.map(LinhaCanal)}
                     </div>
                   )}
                 </>
@@ -1093,6 +1037,11 @@ export default function ChatPage() {
                           <PlayerAudio url={m.audio_url} duracao={m.audio_duracao} />
                         ) : m.arquivo_url ? (
                           <CardArquivoChat url={m.arquivo_url} nome={m.arquivo_nome} tipo={m.arquivo_tipo} tamanho={m.arquivo_tamanho} />
+                        ) : m.texto.trim().startsWith("<") ? (
+                          <div
+                            className="text-sm text-ink break-words leading-relaxed rich-text-editor rich-text-editor--leitura"
+                            dangerouslySetInnerHTML={{ __html: m.texto }}
+                          />
                         ) : (
                           <p className="text-sm text-ink whitespace-pre-wrap break-words leading-relaxed">
                             {renderizarMensagem(m.texto, todosOsNomes)}
@@ -1150,10 +1099,7 @@ export default function ChatPage() {
                             )}
                           </div>
                           <button
-                            onClick={() => {
-                              setRespondendoA(m);
-                              textareaRef.current?.focus();
-                            }}
+                            onClick={() => setRespondendoA(m)}
                             className="h-7 w-7 rounded-full hover:bg-surface flex items-center justify-center text-ink/50 text-sm"
                             title="Responder"
                           >
@@ -1208,32 +1154,6 @@ export default function ChatPage() {
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center gap-0.5 mb-2">
-                    <button
-                      type="button"
-                      onClick={() => aplicarFormatacao("**")}
-                      className="h-7 w-7 rounded-lg text-xs font-bold text-ink/50 hover:bg-surface hover:text-ink"
-                      title="Negrito"
-                    >
-                      B
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => aplicarFormatacao("_")}
-                      className="h-7 w-7 rounded-lg text-xs italic font-bold text-ink/50 hover:bg-surface hover:text-ink"
-                      title="Itálico"
-                    >
-                      I
-                    </button>
-                    <button
-                      type="button"
-                      onClick={inserirDivisoria}
-                      className="h-7 w-7 rounded-lg text-xs font-bold text-ink/50 hover:bg-surface hover:text-ink"
-                      title="Linha divisória"
-                    >
-                      ―
-                    </button>
-                  </div>
                   <div className="flex items-center gap-2">
                     <div className="relative shrink-0">
                       <button
@@ -1295,47 +1215,18 @@ export default function ChatPage() {
                         <line x1="8" y1="22" x2="16" y2="22" />
                       </svg>
                     </button>
-                    <div className="relative flex-1">
-                      <textarea
-                        ref={textareaRef}
-                        value={texto}
-                        onChange={(e) => {
-                          const valor = e.target.value;
-                          setTexto(valor);
-                          const posicaoCursor = e.target.selectionStart ?? valor.length;
-                          const antesDoCursor = valor.slice(0, posicaoCursor);
-                          const match = antesDoCursor.match(/@([a-zA-ZÀ-ÿ]*)$/);
-                          setMencaoBusca(match ? match[1] : null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey && mencaoBusca === null) {
-                            e.preventDefault();
-                            enviarMensagem(e);
-                          }
-                          if (e.key === "Escape") setMencaoBusca(null);
-                        }}
-                        rows={1}
-                        placeholder="Escreva uma mensagem..."
-                        className="input resize-none w-full !py-2.5"
+                    <div className="flex-1 rounded-2xl border border-black/10 focus-within:border-forest/40 transition-colors overflow-hidden">
+                      <RichTextEditor
+                        valorHtml={texto}
+                        onChange={setTexto}
+                        placeholder="Escreva uma mensagem... (@ pra mencionar)"
+                        mencionaveis={colegas.map((c) => ({ id: c.authUserId, nome: c.nome, fotoUrl: c.fotoUrl }))}
+                        aoPressionarEnter={() => enviarMensagem()}
                       />
-                      {mencaoBusca !== null && colegasParaMencao.length > 0 && (
-                        <div className="absolute z-20 bottom-14 left-0 w-64 rounded-2xl bg-white border border-black/10 shadow-lg py-1 max-h-48 overflow-y-auto">
-                          {colegasParaMencao.map((c) => (
-                            <button
-                              key={c.authUserId}
-                              type="button"
-                              onClick={() => selecionarMencao(c.nome)}
-                              className="w-full text-left px-4 py-2 text-sm hover:bg-surface"
-                            >
-                              {c.nome}
-                            </button>
-                          ))}
-                        </div>
-                      )}
                     </div>
                     <button
                       type="submit"
-                      disabled={enviando || !texto.trim()}
+                      disabled={enviando || !texto.replace(/<[^>]*>/g, "").trim()}
                       className="shrink-0 rounded-full bg-forest text-white px-5 h-10 text-sm font-semibold hover:brightness-110 transition-colors disabled:opacity-50"
                     >
                       Enviar
