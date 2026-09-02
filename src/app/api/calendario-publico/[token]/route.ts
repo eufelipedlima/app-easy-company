@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// Nunca guarda essa resposta em cache — o calendário do cliente precisa
+// sempre refletir o estado atual do banco (status, aprovações, etc), não
+// uma versão antiga guardada de uma visita anterior.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const { searchParams } = new URL(request.url);
@@ -64,5 +70,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const nomeCliente = clienteInfo.papeis?.pessoas?.nome ?? "Cliente";
   const fotoCliente = clienteInfo.papeis?.pessoas?.foto_url ?? null;
 
-  return NextResponse.json({ nomeCliente, fotoCliente, posts: postsComMidia });
+  return NextResponse.json(
+    { nomeCliente, fotoCliente, posts: postsComMidia },
+    { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+  );
 }
