@@ -8,6 +8,7 @@ import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { CaixaComentario, AnexosComentario } from "@/components/caixa-comentario";
+import { ehTextoRico } from "@/lib/texto-rico";
 import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { BuscaCliente } from "@/components/busca-cliente";
 import { Cronometro, formatarDuracaoLonga } from "@/components/cronometro";
@@ -1652,7 +1653,7 @@ export default function PostDetalhePage({ params }: { params: Promise<{ id: stri
                     comentarios.map((c) => {
                       const nome = c.doCliente ? "Cliente" : nomeDoAutor(c.autor_id!);
                       const fotoAutor = c.doCliente ? null : funcionariosComAcesso.find((f) => f.authUserId === c.autor_id)?.fotoUrl ?? null;
-                      const ehHtml = !c.doCliente && c.texto.trim().startsWith("<");
+                      const ehHtml = !c.doCliente && ehTextoRico(c.texto);
                       const ehMeu = !c.doCliente && c.autor_id === meuId;
                       const editando = editandoComentarioId === c.id;
                       return (

@@ -6,6 +6,7 @@ import { comLinks } from "@/lib/linkify";
 import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { normalizar } from "@/lib/normalizar";
 import { RichTextEditor } from "@/components/rich-text-editor";
+import { ehTextoRico } from "@/lib/texto-rico";
 
 interface Canal {
   id: string;
@@ -1080,7 +1081,7 @@ export default function ChatPage() {
                           <PlayerAudio url={m.audio_url} duracao={m.audio_duracao} />
                         ) : m.arquivo_url ? (
                           <CardArquivoChat url={m.arquivo_url} nome={m.arquivo_nome} tipo={m.arquivo_tipo} tamanho={m.arquivo_tamanho} />
-                        ) : m.texto.trim().startsWith("<") ? (
+                        ) : ehTextoRico(m.texto) ? (
                           <div
                             className="text-sm text-ink break-words leading-relaxed rich-text-editor rich-text-editor--leitura"
                             dangerouslySetInnerHTML={{ __html: m.texto }}

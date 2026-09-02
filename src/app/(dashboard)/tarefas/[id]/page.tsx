@@ -10,6 +10,7 @@ import { corDoStatus } from "@/lib/status-conteudo";
 import { BuscaCliente } from "@/components/busca-cliente";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { CaixaComentario, AnexosComentario } from "@/components/caixa-comentario";
+import { ehTextoRico } from "@/lib/texto-rico";
 import { Cronometro, formatarDuracaoLonga } from "@/components/cronometro";
 import { Eye, Download, X, ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react";
 import { iconeHistorico, comValoresDestacados, segundosPorPessoaDoHistorico } from "@/lib/historico-visual";
@@ -1570,7 +1571,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
                     comentarios.map((c) => {
                       const nome = nomeDoAutor(c.autor_id);
                       const fotoAutor = funcionariosComAcesso.find((f) => f.authUserId === c.autor_id)?.fotoUrl ?? null;
-                      const ehHtml = c.texto.trim().startsWith("<");
+                      const ehHtml = ehTextoRico(c.texto);
                       const ehMeu = c.autor_id === meuId;
                       const editando = editandoComentarioId === c.id;
                       return (
