@@ -272,6 +272,32 @@ function PlayerAudio({ url, duracao }: { url: string; duracao: number | null }) 
   );
 }
 
+// Tira as tags do texto rico (negrito, listas, etc) pra virar uma prévia
+// simples de texto — usada na barra lateral, onde só cabe uma linha.
+function textoParaPrevia(texto: string | null): string {
+  if (!texto) return "";
+  return texto
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatarHoraSidebar(iso: string): string {
+  const data = new Date(iso);
+  const hoje = new Date();
+  if (data.toDateString() === hoje.toDateString()) {
+    return data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  }
+  const ontem = new Date();
+  ontem.setDate(ontem.getDate() - 1);
+  if (data.toDateString() === ontem.toDateString()) return "Ontem";
+  return data.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
 function renderizarMensagem(texto: string, todosOsNomes: string[]) {
   if (texto.trim() === "---") {
     return <hr className="border-t border-current/20 my-1" />;
@@ -440,7 +466,7 @@ export default function ChatPage() {
           .order("created_at", { ascending: false })
           .limit(1);
         const ultima = ultimasMsgs?.[0];
-        const previaUltima = ultima?.audio_url ? "🎤 Áudio" : ultima?.arquivo_url ? `📎 ${ultima.arquivo_nome ?? "Arquivo"}` : ultima?.texto ?? null;
+        const previaUltima = ultima?.audio_url ? "🎤 Áudio" : ultima?.arquivo_url ? `📎 ${ultima.arquivo_nome ?? "Arquivo"}` : textoParaPrevia(ultima?.texto ?? null) || null;
 
         const minhaLeitura = leituraPorCanal.get(c.id) ?? new Date(0).toISOString();
         const { count } = await supabase
@@ -579,7 +605,7 @@ export default function ChatPage() {
               c.id === nova.canal_id
                 ? {
                     ...c,
-                    ultimaMensagem: nova.texto,
+                    ultimaMensagem: nova.audio_url ? "🎤 Áudio" : nova.arquivo_url ? `📎 ${nova.arquivo_nome ?? "Arquivo"}` : textoParaPrevia(nova.texto) || null,
                     ultimaMensagemHora: nova.created_at,
                     naoLidas: !éMinha && nova.canal_id !== canalAtivoIdRef.current ? c.naoLidas + 1 : c.naoLidas,
                   }
@@ -858,35 +884,52 @@ export default function ChatPage() {
               const pessoas = canaisFiltrados.filter((c) => c.tipo === "dm");
               const agrupar = filtroConversa === "tudo" || filtroConversa === "canais";
 
-              const LinhaCanal = (c: CanalComInfo) => (
-                <button
-                  key={c.id}
-                  onClick={() => abrirCanal(c.id)}
-                  className={`w-full text-left mx-2 mb-0.5 px-3 py-2.5 rounded-xl transition-colors flex items-start gap-2.5 ${
-                    canalAtivoId === c.id ? "bg-white/15" : "hover:bg-white/5"
-                  }`}
-                  style={{ width: "calc(100% - 1rem)" }}
-                >
-                  {c.tipo === "dm" ? (
-                    <Avatar nome={c.nomeExibicao} fotoUrl={c.fotoUrl} tamanho={32} />
-                  ) : (
-                    <span className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center text-sm shrink-0">
-                      {c.tipo === "cliente" ? "🏢" : "#"}
-                    </span>
-                  )}
-                  <span className="flex-1 min-w-0">
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold text-white truncate">{c.nomeExibicao}</span>
-                      {c.naoLidas > 0 && (
-                        <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5">
-                          {c.naoLidas}
+              const LinhaCanal = (c: CanalComInfo) => {
+                const ativo = canalAtivoId === c.id;
+                const naoLida = c.naoLidas > 0;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => abrirCanal(c.id)}
+                    className={`relative w-full text-left px-4 py-3 flex items-start gap-3 border-b border-white/[0.06] transition-colors ${
+                      ativo ? "bg-white/10" : "hover:bg-white/5"
+                    }`}
+                  >
+                    {ativo && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-mint rounded-r-full" />}
+                    {c.tipo === "dm" ? (
+                      <Avatar nome={c.nomeExibicao} fotoUrl={c.fotoUrl} tamanho={38} />
+                    ) : (
+                      <span
+                        className={`h-[38px] w-[38px] rounded-full ${corAvatar(c.nomeExibicao)} flex items-center justify-center text-sm shrink-0 text-white`}
+                      >
+                        {c.tipo === "cliente" ? "🏢" : "#"}
+                      </span>
+                    )}
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-center justify-between gap-2">
+                        <span className={`text-sm truncate ${naoLida ? "font-bold text-white" : "font-semibold text-white/85"}`}>
+                          {c.nomeExibicao}
                         </span>
-                      )}
+                        {c.ultimaMensagemHora && (
+                          <span className={`text-[10px] shrink-0 ${naoLida ? "text-mint font-bold" : "text-white/30"}`}>
+                            {formatarHoraSidebar(c.ultimaMensagemHora)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="flex items-center justify-between gap-2 mt-0.5">
+                        <span className={`block text-xs truncate ${naoLida ? "text-white/70 font-medium" : "text-white/40"}`}>
+                          {c.ultimaMensagem || "Nenhuma mensagem ainda"}
+                        </span>
+                        {naoLida && (
+                          <span className="shrink-0 rounded-full bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] text-center">
+                            {c.naoLidas}
+                          </span>
+                        )}
+                      </span>
                     </span>
-                    {c.ultimaMensagem && <span className="block text-xs text-white/50 truncate mt-0.5">{c.ultimaMensagem}</span>}
-                  </span>
-                </button>
-              );
+                  </button>
+                );
+              };
 
               if (!agrupar) return canaisFiltrados.map(LinhaCanal);
 
@@ -1222,7 +1265,6 @@ export default function ChatPage() {
                         placeholder="Escreva uma mensagem... (@ pra mencionar)"
                         mencionaveis={colegas.map((c) => ({ id: c.authUserId, nome: c.nome, fotoUrl: c.fotoUrl }))}
                         aoPressionarEnter={() => enviarMensagem()}
-                        toolbarSempreAberta
                       />
                     </div>
                     <button
