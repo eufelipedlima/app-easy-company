@@ -668,12 +668,12 @@ export function RichTextEditor({
     }
   }
 
-  const botao = "h-7 min-w-7 px-2 rounded-lg text-xs font-bold text-ink/60 hover:bg-white transition-colors";
-  const divisor = <span className="w-px h-4 bg-black/10 mx-0.5" />;
+  const botao = "h-8 min-w-8 px-2 rounded-lg text-xs font-bold text-ink/60 hover:bg-black/5 hover:text-ink transition-colors";
+  const divisor = <span className="w-px h-5 bg-black/10 shrink-0" />;
 
   return (
     <div ref={wrapperRef} className="relative">
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-1.5">
         {!toolbarSempreAberta && (
           <button
             type="button"
@@ -695,7 +695,7 @@ export function RichTextEditor({
           toolbarAberta ? "max-h-[500px] opacity-100 mb-2 overflow-visible" : "max-h-0 opacity-0 overflow-hidden"
         }`}
       >
-        <div className="flex items-center gap-0.5 rounded-full bg-surface w-fit p-1 flex-wrap">
+        <div className="flex items-center gap-1 w-full flex-wrap pb-2 mb-1.5 border-b border-black/5">
           <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("bold")} className={botao} title="Negrito">
             B
           </button>
