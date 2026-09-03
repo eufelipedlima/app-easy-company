@@ -308,6 +308,7 @@ export function RichTextEditor({
 
   function selecionarMencao(pessoa: { id: string; nome: string }) {
     if (!menuMencao) return;
+    editorRef.current?.focus();
     const range = document.createRange();
     range.setStart(menuMencao.textNode, menuMencao.inicio);
     range.setEnd(menuMencao.textNode, menuMencao.fim);
@@ -317,7 +318,6 @@ export function RichTextEditor({
     sel?.removeAllRanges();
     sel?.addRange(range);
     fecharMenuMencao();
-    editorRef.current?.focus();
     document.execCommand(
       "insertHTML",
       false,
@@ -378,6 +378,7 @@ export function RichTextEditor({
 
   function selecionarReferencia(item: { id: string; titulo: string; tipo: "tarefa" | "conteudo" }) {
     if (!menuReferencia) return;
+    editorRef.current?.focus();
     const range = document.createRange();
     range.setStart(menuReferencia.textNode, menuReferencia.inicio);
     range.setEnd(menuReferencia.textNode, menuReferencia.fim);
@@ -387,7 +388,6 @@ export function RichTextEditor({
     sel?.removeAllRanges();
     sel?.addRange(range);
     fecharMenuReferencia();
-    editorRef.current?.focus();
     const href = item.tipo === "tarefa" ? `/tarefas/${item.id}` : `/conteudo/calendario/post/${item.id}`;
     const emoji = item.tipo === "tarefa" ? "📋" : "📅";
     document.execCommand(
@@ -593,6 +593,7 @@ export function RichTextEditor({
 
   function executarComando(item: ComandoItem) {
     if (!menu) return;
+    editorRef.current?.focus();
     const range = document.createRange();
     range.setStart(menu.textNode, menu.inicio);
     range.setEnd(menu.textNode, menu.fim);
@@ -603,7 +604,6 @@ export function RichTextEditor({
     sel?.addRange(range);
     salvarSelecao();
     fecharMenu();
-    editorRef.current?.focus();
     item.executar();
   }
 
