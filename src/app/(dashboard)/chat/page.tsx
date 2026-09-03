@@ -535,11 +535,12 @@ export default function ChatPage() {
         return;
       }
       const supabase = createClient();
-      const { count } = await supabase
-        .from("chat_participantes")
-        .select("id", { count: "exact", head: true })
-        .eq("canal_id", canalAtivoId);
-      setQtdParticipantesAtivo(count ?? 0);
+      const { data, error } = await supabase.from("chat_participantes").select("auth_user_id").eq("canal_id", canalAtivoId);
+      if (error) {
+        console.error("Erro ao contar participantes do canal:", error);
+        return;
+      }
+      setQtdParticipantesAtivo(data?.length ?? 0);
     }
     carregarQtdParticipantes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1009,15 +1010,13 @@ export default function ChatPage() {
                     + Adicionar participante
                   </button>
                 )}
-                {canalAtivo.tipo !== "dm" && (
-                  <button
-                    onClick={() => setConfigCanalAberto(true)}
-                    className="h-8 w-8 rounded-full hover:bg-surface flex items-center justify-center text-ink/50"
-                    title="Configurações do canal"
-                  >
-                    ⋯
-                  </button>
-                )}
+                <button
+                  onClick={() => setConfigCanalAberto(true)}
+                  className="h-8 w-8 rounded-full hover:bg-surface flex items-center justify-center text-ink/50"
+                  title={canalAtivo.tipo === "dm" ? "Opções da conversa" : "Configurações do canal"}
+                >
+                  ⋯
+                </button>
               </div>
             </div>
 
@@ -1515,8 +1514,15 @@ function ConfigCanalModal({
 
   return (
     <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
-      <div className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-ink mb-4">Configurações do canal</h2>
+      <div className="w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto relative" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={onClose}
+          title="Fechar"
+          className="absolute top-4 right-4 h-8 w-8 rounded-full border border-black/10 bg-white hover:bg-surface flex items-center justify-center text-ink/60 hover:text-ink transition-colors shadow-sm"
+        >
+          ✕
+        </button>
+        <h2 className="text-lg font-bold text-ink mb-4 pr-8">{canal.tipo === "dm" ? "Opções da conversa" : "Configurações do canal"}</h2>
 
         {canal.tipo === "grupo" && (
           <label className="block mb-3">
@@ -1525,49 +1531,55 @@ function ConfigCanalModal({
           </label>
         )}
 
-        <label className="block mb-4">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Descrição</span>
-          <textarea
-            value={descricao}
-            onChange={(e) => setDescricao(e.target.value)}
-            className="input"
-            rows={2}
-            placeholder="Do que é esse canal..."
-          />
-        </label>
+        {canal.tipo !== "dm" && (
+          <label className="block mb-4">
+            <span className="block text-sm font-medium text-ink/70 mb-1">Descrição</span>
+            <textarea
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              className="input"
+              rows={2}
+              placeholder="Do que é esse canal..."
+            />
+          </label>
+        )}
 
         {erro && <p className="text-sm text-red-600 mb-2">{erro}</p>}
         {sucesso && <p className="text-sm text-forest font-semibold mb-2">Salvo!</p>}
 
-        <button
-          onClick={salvar}
-          disabled={salvando}
-          className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50 mb-6"
-        >
-          {salvando ? "Salvando..." : "Salvar alterações"}
-        </button>
+        {canal.tipo !== "dm" && (
+          <button
+            onClick={salvar}
+            disabled={salvando}
+            className="rounded-full bg-ink text-white px-5 py-2 text-sm font-semibold hover:bg-forest transition-colors disabled:opacity-50 mb-6"
+          >
+            {salvando ? "Salvando..." : "Salvar alterações"}
+          </button>
+        )}
 
-        <div className="mb-6">
-          <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Membros ({membros.length})</p>
-          <div className="rounded-2xl border border-black/5 overflow-hidden">
-            {membros.map((m) => (
-              <div key={m.authUserId} className="flex items-center justify-between px-4 py-2.5 border-b border-black/5 last:border-0">
-                <div className="flex items-center gap-2">
-                  <Avatar nome={m.nome} fotoUrl={m.fotoUrl} tamanho={28} />
-                  <div>
-                    <p className="text-sm font-semibold text-ink">{m.nome}</p>
-                    {m.cargo && <p className="text-xs text-ink/40">{m.cargo}</p>}
+        {canal.tipo !== "dm" && (
+          <div className="mb-6">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">Membros ({membros.length})</p>
+            <div className="rounded-2xl border border-black/5 overflow-hidden">
+              {membros.map((m) => (
+                <div key={m.authUserId} className="flex items-center justify-between px-4 py-2.5 border-b border-black/5 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <Avatar nome={m.nome} fotoUrl={m.fotoUrl} tamanho={28} />
+                    <div>
+                      <p className="text-sm font-semibold text-ink">{m.nome}</p>
+                      {m.cargo && <p className="text-xs text-ink/40">{m.cargo}</p>}
+                    </div>
                   </div>
+                  {m.authUserId !== meuId && (
+                    <button onClick={() => removerMembro(m.authUserId)} className="text-xs font-semibold text-ink/40 hover:text-red-600">
+                      Remover
+                    </button>
+                  )}
                 </div>
-                {m.authUserId !== meuId && (
-                  <button onClick={() => removerMembro(m.authUserId)} className="text-xs font-semibold text-ink/40 hover:text-red-600">
-                    Remover
-                  </button>
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex items-center gap-3 pt-3 border-t border-black/5">
           <button
@@ -1578,17 +1590,20 @@ function ConfigCanalModal({
           </button>
           {!temMensagens && (
             <button onClick={excluir} className="text-sm font-semibold text-red-500 hover:text-red-700 ml-auto">
-              Excluir canal
+              Excluir {canal.tipo === "dm" ? "conversa" : "canal"}
             </button>
           )}
         </div>
         {temMensagens && (
           <p className="text-xs text-ink/40 mt-2">
-            Esse canal já tem mensagens, então só é possível arquivar (o histórico fica guardado).
+            Essa conversa já tem mensagens, então só é possível arquivar (o histórico fica guardado).
           </p>
         )}
 
-        <button onClick={onClose} className="mt-4 text-sm font-semibold text-ink/60 hover:text-ink">
+        <button
+          onClick={onClose}
+          className="mt-5 w-full rounded-full border-2 border-black/10 text-ink font-semibold text-sm py-2.5 hover:bg-surface transition-colors"
+        >
           Fechar
         </button>
       </div>
