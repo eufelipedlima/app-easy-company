@@ -7,7 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { tocarSomCaixaEntrada, tocarSomMensagemPrivada, tocarSomMensagemGrupo } from "@/lib/sons";
 import { BarraCronometro } from "@/components/barra-cronometro";
-import { Users, Users2, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, Share2, ShieldCheck, UserCircle, ListChecks, Home, Menu, X, GraduationCap, FolderKanban } from "lucide-react";
+import { Users, Users2, FileText, ChevronDown, ChevronUp, ChevronsLeft, LogOut, Repeat, Package, BarChart3, DollarSign, Receipt, Settings, UserCheck, Briefcase, HardHat, Landmark, Wrench, Wallet, Compass, Building2, FileBarChart, AlertTriangle, Calendar, Share2, ShieldCheck, UserCircle, ListChecks, Home, Menu, X, GraduationCap, FolderKanban, MessageCircle } from "lucide-react";
 
 interface SubItem {
   href: string;
@@ -28,6 +28,11 @@ const MENU: Grupo[] = [
     label: "Início",
     icon: <Home size={18} />,
     href: "/inicio",
+  },
+  {
+    label: "Chat",
+    icon: <MessageCircle size={18} />,
+    href: "/chat",
   },
   {
     label: "Central de Clientes",
@@ -479,7 +484,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {menuVisivel.map((grupo) => {
             if (grupo.href) {
               const ativo = pathname?.startsWith(grupo.href);
-              const badge = grupo.label === "Início" && chatNaoLidas + caixaEntradaNaoLidas > 0 ? chatNaoLidas + caixaEntradaNaoLidas : null;
+              const badge =
+                grupo.label === "Chat" && chatNaoLidas > 0
+                  ? chatNaoLidas
+                  : grupo.label === "Início" && caixaEntradaNaoLidas > 0
+                  ? caixaEntradaNaoLidas
+                  : null;
               return (
                 <ComDicaLateral key={grupo.label} ativa={!expandidoVisual} texto={grupo.label}>
                   <Link
