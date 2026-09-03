@@ -406,12 +406,13 @@ export default function ContratosRecorrentesPage() {
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink/30 text-sm">🔍</span>
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/35 text-base pointer-events-none">🔍</span>
             <input
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Buscar contrato, cliente ou serviço..."
-              className="input pl-9 w-72"
+              style={{ paddingLeft: "2.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}
+              className="input w-80"
             />
           </div>
           <div className="relative">
@@ -533,15 +534,15 @@ export default function ContratosRecorrentesPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left border-b border-black/5">
+              <tr className="text-left bg-mint/50 border-b-2 border-mint">
                 {colunas
                   .filter((c) => c.visivel)
                   .map((c) => (
-                    <th key={c.key} className="px-3 py-3 font-bold text-forest text-xs uppercase tracking-wide">
+                    <th key={c.key} className="px-3 py-4 font-bold text-forest text-xs uppercase tracking-wide">
                       {COLUNAS_DISPONIVEIS.find((d) => d.key === c.key)?.label}
                     </th>
                   ))}
-                <th className="px-3 py-3 font-bold text-forest text-xs uppercase tracking-wide">Ações</th>
+                <th className="px-3 py-4 font-bold text-forest text-xs uppercase tracking-wide">Ações</th>
               </tr>
             </thead>
             <tbody>
