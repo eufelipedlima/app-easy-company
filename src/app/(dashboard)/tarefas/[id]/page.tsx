@@ -12,7 +12,7 @@ import { RichTextEditor } from "@/components/rich-text-editor";
 import { CaixaComentario, AnexosComentario } from "@/components/caixa-comentario";
 import { ehTextoRico } from "@/lib/texto-rico";
 import { Cronometro, formatarDuracaoLonga } from "@/components/cronometro";
-import { Eye, Download, X, ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { Eye, Download, X, ChevronLeft, ChevronRight, Pencil, Trash2, GripVertical } from "lucide-react";
 import { iconeHistorico, comValoresDestacados, segundosPorPessoaDoHistorico } from "@/lib/historico-visual";
 import { DndContext, PointerSensor, useSensor, useSensors, useDraggable, useDroppable, type DragEndEvent } from "@dnd-kit/core";
 
@@ -85,6 +85,7 @@ interface Anexo {
   tamanho_bytes: number | null;
   enviado_por: string | null;
   created_at: string;
+  ordem: number;
   url: string;
 }
 
@@ -241,6 +242,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
   const [meuFotoUrl, setMeuFotoUrl] = useState<string | null>(null);
   const [subtarefas, setSubtarefas] = useState<Subtarefa[]>([]);
   const [anexos, setAnexos] = useState<Anexo[]>([]);
+  const [anexoArrastadoIdx, setAnexoArrastadoIdx] = useState<number | null>(null);
   const [indiceImagemAberta, setIndiceImagemAberta] = useState<number | null>(null);
   const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   const [pastasAbertas, setPastasAbertas] = useState<Set<string>>(new Set());
@@ -485,7 +487,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
 
   const carregarAnexos = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase.from("tarefas_anexos").select("*").eq("tarefa_id", id).order("created_at", { ascending: false });
+    const { data } = await supabase.from("tarefas_anexos").select("*").eq("tarefa_id", id).order("ordem", { ascending: true });
     setAnexos(
       (data ?? []).map((a) => ({
         ...a,
@@ -586,6 +588,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
     if (!arquivos || arquivos.length === 0) return;
     setEnviandoAnexo(true);
     const supabase = createClient();
+    let proximaOrdem = anexos.length > 0 ? Math.max(...anexos.map((a) => a.ordem)) + 1 : 0;
     for (const arquivo of Array.from(arquivos)) {
       const caminho = `${id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${sanearNomeArquivo(arquivo.name)}`;
       const { error } = await supabase.storage.from("tarefas-anexos").upload(caminho, arquivo);
@@ -597,12 +600,23 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
           arquivo_tipo: arquivo.type,
           tamanho_bytes: arquivo.size,
           enviado_por: meuId,
+          ordem: proximaOrdem,
         });
+        proximaOrdem++;
       }
     }
     registrarHistorico(`anexou ${arquivos.length > 1 ? `${arquivos.length} arquivos` : "um arquivo"}`, true, "anexo");
     carregarAnexos();
     setEnviandoAnexo(false);
+  }
+
+  async function reordenarAnexos(indexAntigo: number, indexNovo: number) {
+    const novaLista = [...anexos];
+    const [movido] = novaLista.splice(indexAntigo, 1);
+    novaLista.splice(indexNovo, 0, movido);
+    setAnexos(novaLista);
+    const supabase = createClient();
+    await Promise.all(novaLista.map((a, i) => supabase.from("tarefas_anexos").update({ ordem: i }).eq("id", a.id)));
   }
 
   async function removerAnexo(anexo: Anexo) {
@@ -1368,12 +1382,29 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
               <p className="text-xs text-ink/40">Nenhum anexo ainda.</p>
             ) : (
               <div className="space-y-1.5">
-                {anexos.map((a) => {
+                {anexos.map((a, index) => {
                   const ehImagem = a.arquivo_tipo?.startsWith("image/");
                   const ehPdf = a.arquivo_tipo === "application/pdf";
                   return (
-                    <div key={a.id} className="flex items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      key={a.id}
+                      draggable
+                      onDragStart={() => setAnexoArrastadoIdx(index)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (anexoArrastadoIdx === null || anexoArrastadoIdx === index) return;
+                        reordenarAnexos(anexoArrastadoIdx, index);
+                        setAnexoArrastadoIdx(index);
+                      }}
+                      onDragEnd={() => setAnexoArrastadoIdx(null)}
+                      className={`flex items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2 transition-opacity ${
+                        anexoArrastadoIdx === index ? "opacity-40" : ""
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="cursor-grab active:cursor-grabbing text-ink/25 hover:text-ink/50 shrink-0" title="Arrastar pra reordenar">
+                          <GripVertical size={15} />
+                        </span>
                         {ehImagem ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={a.url} alt={a.arquivo_nome ?? "anexo"} className="h-9 w-9 rounded-lg object-cover shrink-0 border border-black/5" />
