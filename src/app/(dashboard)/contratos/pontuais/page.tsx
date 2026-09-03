@@ -38,6 +38,7 @@ interface Contrato {
         razao_social: string | null;
         documento: string | null;
         email: string | null;
+        foto_url: string | null;
       } | null;
     } | null;
   } | null;
@@ -97,12 +98,43 @@ const COLUNAS_DISPONIVEIS: ColunaDef[] = [
   { key: "status", label: "Status" },
 ];
 
+const CORES_AVATAR = [
+  "bg-red-400", "bg-orange-400", "bg-amber-500", "bg-lime-500", "bg-emerald-500",
+  "bg-teal-500", "bg-sky-500", "bg-indigo-500", "bg-violet-500", "bg-pink-500",
+];
+function corAvatarCliente(nome: string) {
+  let hash = 0;
+  for (let i = 0; i < nome.length; i++) hash = (hash * 31 + nome.charCodeAt(i)) % CORES_AVATAR.length;
+  return CORES_AVATAR[Math.abs(hash) % CORES_AVATAR.length];
+}
+function iniciaisCliente(nome: string) {
+  const partes = nome.trim().split(/\s+/);
+  return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
+}
+
 function renderCelulaContratoPontual(key: string, c: Contrato) {
   switch (key) {
     case "numero":
       return <span className="text-ink/50 font-mono text-xs">{c.numero_contrato ?? "—"}</span>;
-    case "cliente":
-      return <span className="font-semibold text-ink">{c.clientes?.papeis?.pessoas?.nome ?? "—"}</span>;
+    case "cliente": {
+      const nomeCliente = c.clientes?.papeis?.pessoas?.nome ?? "—";
+      const foto = c.clientes?.papeis?.pessoas?.foto_url;
+      return (
+        <span className="flex items-center gap-2.5 min-w-0">
+          {foto ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={foto} alt={nomeCliente} className="h-7 w-7 rounded-full object-cover shrink-0" />
+          ) : (
+            <span
+              className={`h-7 w-7 rounded-full ${corAvatarCliente(nomeCliente)} text-white flex items-center justify-center text-[11px] font-bold shrink-0`}
+            >
+              {iniciaisCliente(nomeCliente)}
+            </span>
+          )}
+          <span className="font-semibold text-ink truncate">{nomeCliente}</span>
+        </span>
+      );
+    }
     case "servico":
       return <span className="text-ink/70">{c.servicos?.nome ?? "—"}</span>;
     case "valor":
@@ -166,7 +198,7 @@ export default function ContratosPontuaisPage() {
          data_encerramento, servico_id, banco_id, plano_conta_id, descricao, comentarios_extras, arquivo_path, arquivo_nome,
          tipo_pagamento, data_pagamento, situacao_pagamento, valor_entrada, quantidade_parcelas, data_primeira_parcela,
          eh_migracao, valor_pago_historico,
-         clientes ( papeis ( pessoas ( nome, razao_social, documento, email ) ) ),
+         clientes ( papeis ( pessoas ( nome, razao_social, documento, email, foto_url ) ) ),
          servicos ( nome ),
          bancos ( nome ),
          planos_conta ( nome )`
@@ -197,7 +229,19 @@ export default function ContratosPontuaisPage() {
     mudarLinhasPorPagina,
   } = useTabelaConfig("contratos_pontuais", COLUNAS_DISPONIVEIS);
 
-  const contratosFiltrados = contratos.filter((c) => filtro === "todos" || c.status === filtro);
+  const [busca, setBusca] = useState("");
+  const contratosFiltrados = contratos
+    .filter((c) => filtro === "todos" || c.status === filtro)
+    .filter((c) => {
+      const termo = normalizar(busca);
+      if (!termo) return true;
+      return (
+        normalizar(c.numero_contrato ?? "").includes(termo) ||
+        normalizar(c.clientes?.papeis?.pessoas?.nome ?? "").includes(termo) ||
+        normalizar(c.servicos?.nome ?? "").includes(termo)
+      );
+    });
+  const [menuAcoesAberto, setMenuAcoesAberto] = useState<string | null>(null);
 
   const totalPaginas = Math.max(Math.ceil(contratosFiltrados.length / linhasPorPagina), 1);
   const paginaSegura = Math.min(paginaAtual, totalPaginas);
@@ -206,31 +250,46 @@ export default function ContratosPontuaisPage() {
   useEffect(() => {
     setPaginaAtual(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtro]);
+  }, [filtro, busca]);
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div className="inline-flex items-center gap-1 rounded-full bg-surface p-1.5 shadow-inner">
-          {(["ativo", "concluido", "arquivado", "todos"] as Filtro[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFiltro(f)}
-              className={`rounded-full px-5 py-2 text-sm font-bold transition-all ${
-                filtro === f
-                  ? "bg-ink text-white shadow-md scale-105"
-                  : "text-ink/50 hover:text-ink hover:bg-white/60"
-              }`}
-            >
-              {f === "todos" ? "Todos" : STATUS_LABEL[f]}
-            </button>
-          ))}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-2">
+          {(["todos", "ativo", "concluido", "arquivado"] as Filtro[]).map((f) => {
+            const qtd = f === "todos" ? contratos.length : contratos.filter((c) => c.status === f).length;
+            const ativo = filtro === f;
+            const cor = f === "ativo" ? "bg-forest" : f === "concluido" ? "bg-sky-500" : f === "arquivado" ? "bg-ink/30" : "bg-ink/50";
+            return (
+              <button
+                key={f}
+                onClick={() => setFiltro(f)}
+                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold border transition-colors ${
+                  ativo ? "border-forest bg-mint text-forest" : "border-black/10 text-ink/60 hover:bg-surface"
+                }`}
+              >
+                <span className={`h-2 w-2 rounded-full shrink-0 ${cor}`} />
+                {f === "todos" ? "Todos" : STATUS_LABEL[f]}
+                <span className={`text-xs font-bold ${ativo ? "text-forest" : "text-ink/35"}`}>{qtd}</span>
+              </button>
+            );
+          })}
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/35 text-base pointer-events-none">🔍</span>
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar contrato, cliente ou serviço..."
+              style={{ paddingLeft: "2.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}
+              className="input w-80"
+            />
+          </div>
+          <div className="relative">
             <button
               onClick={() => setPainelColunasAberto((v) => !v)}
-              className="rounded-full border-2 border-ink/15 text-ink px-4 py-2.5 text-sm font-bold hover:bg-surface transition-colors"
+              className="rounded-xl border-2 border-ink/15 text-ink px-4 py-2.5 text-sm font-bold hover:bg-surface transition-colors"
             >
               ⚙ Colunas
             </button>
@@ -292,7 +351,7 @@ export default function ContratosPontuaisPage() {
           {!painelAberto && !editando && (
             <button
               onClick={() => setPainelAberto(true)}
-              className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+              className="rounded-xl bg-forest text-white px-5 py-2.5 text-sm font-semibold hover:bg-ink transition-colors"
             >
               + Novo contrato pontual
             </button>
@@ -338,7 +397,7 @@ export default function ContratosPontuaisPage() {
         </div>
       )}
 
-      <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
+      <div className="rounded-2xl bg-card border border-black/5 overflow-hidden">
         {loading ? (
           <p className="p-6 text-sm text-ink/50">Carregando...</p>
         ) : contratosFiltrados.length === 0 ? (
@@ -346,15 +405,15 @@ export default function ContratosPontuaisPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-ink/50 border-b border-black/5">
+              <tr className="text-left bg-mint/50 border-b-2 border-mint">
                 {colunas
                   .filter((c) => c.visivel)
                   .map((c) => (
-                    <th key={c.key} className="px-3 py-3 font-medium">
+                    <th key={c.key} className="px-3 py-4 font-bold text-forest text-xs uppercase tracking-wide">
                       {COLUNAS_DISPONIVEIS.find((d) => d.key === c.key)?.label}
                     </th>
                   ))}
-                <th className="px-3 py-3 font-medium"></th>
+                <th className="px-3 py-4 font-bold text-forest text-xs uppercase tracking-wide">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -362,26 +421,67 @@ export default function ContratosPontuaisPage() {
                 <tr
                   key={c.id}
                   onClick={() => setDetalhe(c)}
-                  className="border-b border-black/5 last:border-0 hover:bg-surface/60 cursor-pointer"
+                  className="relative border-b border-black/5 last:border-0 hover:bg-surface/60 cursor-pointer"
                 >
                   {colunas
                     .filter((c2) => c2.visivel)
-                    .map((c2) => (
-                      <td key={c2.key} className="px-3 py-3">
-                        {renderCelulaContratoPontual(c2.key, c)}
+                    .map((c2, i) => (
+                      <td key={c2.key} className={`px-3 py-3 ${i === 0 ? "relative" : ""}`}>
+                        {i === 0 && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-forest" />}
+                        <span className={i === 0 ? "pl-2.5 block" : undefined}>{renderCelulaContratoPontual(c2.key, c)}</span>
                       </td>
                     ))}
                   <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => {
-                        setEditando(c);
-                        setPainelAberto(false);
-                      }}
-                      title="Editar contrato"
-                      className="rounded-full px-3 py-1.5 text-xs font-bold bg-forest text-white hover:bg-ink transition-colors shadow-sm"
-                    >
-                      Editar
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          setEditando(c);
+                          setPainelAberto(false);
+                        }}
+                        title="Editar contrato"
+                        className="h-8 w-8 rounded-lg flex items-center justify-center bg-forest text-white hover:bg-ink transition-colors"
+                      >
+                        ✎
+                      </button>
+                      <div className="relative">
+                        <button
+                          onClick={() => setMenuAcoesAberto(menuAcoesAberto === c.id ? null : c.id)}
+                          title="Mais ações"
+                          className="h-8 w-8 rounded-lg flex items-center justify-center text-ink/40 hover:text-ink hover:bg-surface transition-colors"
+                        >
+                          ⋯
+                        </button>
+                        {menuAcoesAberto === c.id && (
+                          <div
+                            className="absolute right-0 z-10 mt-1 w-44 rounded-xl bg-white border border-black/10 shadow-lg py-1"
+                            onMouseLeave={() => setMenuAcoesAberto(null)}
+                          >
+                            <button
+                              onClick={async () => {
+                                setMenuAcoesAberto(null);
+                                const supabase = createClient();
+                                const { count } = await supabase
+                                  .from("lancamentos")
+                                  .select("id", { count: "exact", head: true })
+                                  .eq("contrato_id", c.id);
+                                if (count && count > 0) {
+                                  window.alert(
+                                    "Esse contrato tem lançamentos vinculados no financeiro, então não pode ser excluído. Mude o status para Concluído ou Arquivado se quiser desativá-lo."
+                                  );
+                                  return;
+                                }
+                                if (!window.confirm("Excluir este contrato? Essa ação não pode ser desfeita.")) return;
+                                await supabase.from("contratos").delete().eq("id", c.id);
+                                carregar();
+                              }}
+                              className="w-full text-left px-3.5 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                            >
+                              Excluir contrato
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -416,17 +516,18 @@ export default function ContratosPontuaisPage() {
             <button
               onClick={() => setPaginaAtual((p) => Math.max(p - 1, 1))}
               disabled={paginaSegura === 1}
-              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
             >
               ← Anterior
             </button>
-            <span className="px-2 text-xs">
-              Página {paginaSegura} de {totalPaginas}
+            <span className="mx-1 h-7 min-w-7 px-2 rounded-lg border-2 border-forest bg-mint text-forest flex items-center justify-center text-xs font-bold">
+              {paginaSegura}
             </span>
+            <span className="text-xs text-ink/40">de {totalPaginas}</span>
             <button
               onClick={() => setPaginaAtual((p) => Math.min(p + 1, totalPaginas))}
               disabled={paginaSegura === totalPaginas}
-              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
             >
               Próxima →
             </button>

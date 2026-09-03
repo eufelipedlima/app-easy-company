@@ -1326,7 +1326,7 @@ function TarefaCardConteudo({
 
   return (
     <div
-      className={`relative group/card rounded-2xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow ${arrastando ? "w-72" : "w-full"} ${
+      className={`relative group/card rounded-xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow ${arrastando ? "w-72" : "w-full"} ${
         arrastando ? "shadow-2xl rotate-2 border-2 border-forest/30" : "border border-black/5 shadow-sm hover:shadow-md"
       }`}
     >
@@ -1335,8 +1335,9 @@ function TarefaCardConteudo({
           <MenuAcoesTarefa tarefa={tarefa} acoes={acoes} />
         </div>
       )}
-      <p className="text-sm font-semibold text-ink truncate pr-5 flex items-center gap-1.5">
-        {tarefa.eh_projeto ? <IconeProjeto /> : <IconeTarefa />} {tarefa.titulo}
+      <p className="text-sm font-semibold text-ink pr-5 flex items-start gap-1.5">
+        <span className="mt-0.5">{tarefa.eh_projeto ? <IconeProjeto /> : <IconeTarefa />}</span>
+        <span className="line-clamp-2">{tarefa.titulo}</span>
       </p>
       {tarefa.eh_projeto &&
         acoes?.progressoProjetos[tarefa.id] &&

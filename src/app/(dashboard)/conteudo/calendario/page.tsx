@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { corDoStatus } from "@/lib/status-conteudo";
 import { corDoCliente } from "@/lib/cor-cliente";
+import { IconeConteudo } from "@/components/icones-tarefa";
 import { EstadoVazio } from "@/components/estado-vazio";
 import { EsqueletoLinha, EsqueletoLista } from "@/components/esqueleto";
 import {
@@ -2541,7 +2542,7 @@ function KanbanCardConteudo({
 
   return (
     <div
-      className={`relative group/card rounded-2xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow ${arrastando ? "w-72" : "w-full"} ${
+      className={`relative group/card rounded-xl bg-white p-3 cursor-grab active:cursor-grabbing transition-shadow ${arrastando ? "w-72" : "w-full"} ${
         arrastando ? "shadow-2xl rotate-2 border-2 border-forest/30" : "border border-black/5 shadow-sm hover:shadow-md"
       }`}
     >
@@ -2555,8 +2556,11 @@ function KanbanCardConteudo({
           <span>↳</span> {tituloPai}
         </p>
       )}
-      <p className="text-sm font-semibold text-ink truncate pr-5">
-        {mostrarTitulo ? post.titulo : nomeCliente(post) || "Sem título"}
+      <p className="text-sm font-semibold text-ink pr-5 flex items-start gap-1.5">
+        <span className="mt-0.5">
+          <IconeConteudo />
+        </span>
+        <span className="line-clamp-2">{mostrarTitulo ? post.titulo : nomeCliente(post) || "Sem título"}</span>
       </p>
       {mostrarCliente && (
         <span className={`inline-block max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-bold mt-1 ${corDoCliente(nomeCliente(post)).cor}`}>
