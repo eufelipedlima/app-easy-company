@@ -1335,7 +1335,7 @@ function TarefaCardConteudo({
           <MenuAcoesTarefa tarefa={tarefa} acoes={acoes} />
         </div>
       )}
-      <p className="text-sm font-semibold text-ink pr-5 flex items-start gap-1.5">
+      <p className="text-[13px] font-semibold text-ink pr-5 flex items-start gap-1.5">
         <span className="mt-0.5">{tarefa.eh_projeto ? <IconeProjeto /> : <IconeTarefa />}</span>
         <span className="line-clamp-2">{tarefa.titulo}</span>
       </p>
