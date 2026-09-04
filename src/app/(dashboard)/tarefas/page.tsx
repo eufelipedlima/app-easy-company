@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
 import { IconeTarefa, IconeProjeto } from "@/components/icones-tarefa";
 import { EsqueletoLinha } from "@/components/esqueleto";
-import { corDoStatus } from "@/lib/status-conteudo";
+import { corDoStatus, statusPadrao } from "@/lib/status-conteudo";
 import { corDoCliente } from "@/lib/cor-cliente";
 import { BuscaCliente } from "@/components/busca-cliente";
 import { AbasVisualizacao } from "@/components/abas-visualizacao";
@@ -985,7 +985,7 @@ export function TarefasPageConteudo({ escopo = "tudo" }: { escopo?: "tudo" | "pr
         <NovaTarefaModal
           clientes={clientes}
           clienteFixoId={clienteFiltroId && clienteFiltroId !== "internas" ? clienteFiltroId : null}
-          statusPadraoId={statusList[0]?.id ?? ""}
+          statusPadraoId={statusPadrao(statusList)?.id ?? ""}
           onClose={() => setNovaAberta(false)}
           onCriada={(id) => router.push(`/tarefas/${id}`)}
         />
@@ -993,7 +993,7 @@ export function TarefasPageConteudo({ escopo = "tudo" }: { escopo?: "tudo" | "pr
       {novoProjetoAberto && (
         <NovoProjetoModal
           clientes={clientes}
-          statusPadraoId={statusList[0]?.id ?? ""}
+          statusPadraoId={statusPadrao(statusList)?.id ?? ""}
           onClose={() => setNovoProjetoAberto(false)}
           onCriado={(id) => router.push(`/tarefas/${id}`)}
         />

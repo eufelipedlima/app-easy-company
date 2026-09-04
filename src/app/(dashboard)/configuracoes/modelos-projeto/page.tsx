@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { statusPadrao } from "@/lib/status-conteudo";
 import { FolderTree, Pencil, Trash2 } from "lucide-react";
 
 interface Modelo {
@@ -45,10 +46,10 @@ export default function ModelosProjetoPage() {
   async function criarModelo() {
     setCriando(true);
     const supabase = createClient();
-    const { data: statusList } = await supabase.from("status_conteudo").select("id").eq("area", "tarefas").order("ordem").limit(1);
+    const { data: statusList } = await supabase.from("status_conteudo").select("id, nome").eq("area", "tarefas").order("ordem");
     const { data: modelo, error } = await supabase
       .from("tarefas")
-      .insert({ titulo: "Novo modelo de projeto", eh_modelo_projeto: true, status_id: statusList?.[0]?.id })
+      .insert({ titulo: "Novo modelo de projeto", eh_modelo_projeto: true, status_id: statusPadrao(statusList ?? [])?.id })
       .select("id")
       .single();
     setCriando(false);

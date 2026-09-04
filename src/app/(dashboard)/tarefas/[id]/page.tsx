@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { comLinks } from "@/lib/linkify";
 import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { normalizar } from "@/lib/normalizar";
-import { corDoStatus } from "@/lib/status-conteudo";
+import { corDoStatus, statusPadrao } from "@/lib/status-conteudo";
 import { BuscaCliente } from "@/components/busca-cliente";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { CaixaComentario, AnexosComentario } from "@/components/caixa-comentario";
@@ -789,7 +789,7 @@ export default function TarefaDetalhePage({ params }: { params: Promise<{ id: st
       titulo: nomeFinal.trim(),
       tarefa_pai_id: paiId,
       cliente_id: tarefa.cliente_id,
-      status_id: statusListSubtarefas[0]?.id ?? statusList[0]?.id,
+      status_id: statusPadrao(statusListSubtarefas)?.id ?? statusPadrao(statusList)?.id,
       eh_pasta: ehPasta ?? false,
       ordem: irmaos.length,
     });

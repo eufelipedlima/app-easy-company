@@ -22,3 +22,12 @@ export const PALETA_CORES: Record<
 export function corDoStatus(chave: string) {
   return PALETA_CORES[chave] ?? PALETA_CORES.cinza;
 }
+
+/** Escolhe o status padrão pra uma tarefa/conteúdo recém-criado — sempre
+ * tenta achar "Ideia" pelo nome, em vez de simplesmente pegar o primeiro
+ * item da lista (que muda se alguém reordenar os status em
+ * Configurações). Se não achar "Ideia" (lista vazia, ou renomeado),
+ * cai pro primeiro item mesmo, como reserva. */
+export function statusPadrao<T extends { id: string; nome: string }>(lista: T[]): T | undefined {
+  return lista.find((s) => s.nome.trim().toLowerCase() === "ideia") ?? lista[0];
+}

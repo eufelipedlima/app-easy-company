@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { corDoStatus } from "@/lib/status-conteudo";
+import { corDoStatus, statusPadrao } from "@/lib/status-conteudo";
 import { corDoCliente } from "@/lib/cor-cliente";
 import { IconeTarefa } from "@/components/icones-tarefa";
 import { ListTree } from "lucide-react";
@@ -609,7 +609,7 @@ export default function PautaPage() {
     const supabase = createClient();
     const { data: nova } = await supabase
       .from("tarefas")
-      .insert({ titulo: "Nova tarefa", data_inicio: dataISO, status_id: statusList[0]?.id, cliente_id: clienteId })
+      .insert({ titulo: "Nova tarefa", data_inicio: dataISO, status_id: statusPadrao(statusList)?.id, cliente_id: clienteId })
       .select("id")
       .single();
     if (nova) {

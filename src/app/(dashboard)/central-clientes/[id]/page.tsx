@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef, use, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { corDoStatus } from "@/lib/status-conteudo";
+import { corDoStatus, statusPadrao } from "@/lib/status-conteudo";
 import { IconeProjeto } from "@/components/icones-tarefa";
 import { normalizar } from "@/lib/normalizar";
 import { DndContext, useDraggable, useDroppable, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -594,10 +594,10 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
     const tituloNovo = window.prompt("Nome da tarefa:");
     if (!tituloNovo || !tituloNovo.trim()) return;
     const supabase = createClient();
-    const { data: statusList } = await supabase.from("status_conteudo").select("id").eq("area", "tarefas").order("ordem").limit(1);
+    const { data: statusList } = await supabase.from("status_conteudo").select("id, nome").eq("area", "tarefas").order("ordem");
     const { data: nova } = await supabase
       .from("tarefas")
-      .insert({ titulo: tituloNovo.trim(), cliente_id: id, status_id: statusList?.[0]?.id })
+      .insert({ titulo: tituloNovo.trim(), cliente_id: id, status_id: statusPadrao(statusList ?? [])?.id })
       .select("id")
       .single();
     if (nova) {
@@ -613,11 +613,11 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
     const tituloNovo = window.prompt("Nome do conteúdo:");
     if (!tituloNovo || !tituloNovo.trim()) return;
     const supabase = createClient();
-    const { data: statusList } = await supabase.from("status_conteudo").select("id").eq("area", "conteudo").order("ordem").limit(1);
+    const { data: statusList } = await supabase.from("status_conteudo").select("id, nome").eq("area", "conteudo").order("ordem");
     const hoje = new Date().toISOString().slice(0, 10);
     const { data: novo } = await supabase
       .from("posts_conteudo")
-      .insert({ titulo: tituloNovo.trim(), cliente_id: id, data_publicacao: hoje, status_id: statusList?.[0]?.id })
+      .insert({ titulo: tituloNovo.trim(), cliente_id: id, data_publicacao: hoje, status_id: statusPadrao(statusList ?? [])?.id })
       .select("id")
       .single();
     if (novo) {
