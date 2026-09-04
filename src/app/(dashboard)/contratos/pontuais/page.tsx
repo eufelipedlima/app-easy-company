@@ -2,10 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { sanearNomeArquivo } from "@/lib/nome-arquivo";
 import { normalizar } from "@/lib/normalizar";
 import { PessoaForm } from "@/components/pessoa-form";
 import { useTabelaConfig, LINHAS_POR_PAGINA_OPCOES, type ColunaDef } from "@/lib/use-tabela-config";
+import {
+  SeletorAnexosContrato,
+  ListaAnexosContrato,
+  subirAnexosContrato,
+  removerAnexoContrato,
+  type AnexoContratoItem,
+} from "@/components/anexos-contrato";
 
 interface Contrato {
   id: string;
@@ -541,7 +547,7 @@ export default function ContratosPontuaisPage() {
           onClick={() => setDetalhe(null)}
         >
           <div
-            className="w-full max-w-md rounded-3xl bg-surface p-5 shadow-2xl max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-3xl rounded-2xl bg-surface p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {(() => {
@@ -594,81 +600,70 @@ export default function ContratosPontuaisPage() {
                     </p>
                   </div>
 
-                  <SecaoDetalhe titulo="Cliente">
-                    <DetalheLinha label={pessoa?.razao_social ? "Razão social" : "Nome"} valor={pessoa?.nome ?? "—"} />
-                    <DetalheLinha label="Documento" valor={pessoa?.documento ?? "—"} />
-                    <DetalheLinha label="E-mail" valor={pessoa?.email ?? "—"} />
-                  </SecaoDetalhe>
+                  <div className="columns-1 lg:columns-2 gap-4">
+                    <SecaoDetalhe titulo="Cliente">
+                      <DetalheLinha label={pessoa?.razao_social ? "Razão social" : "Nome"} valor={pessoa?.nome ?? "—"} />
+                      <DetalheLinha label="Documento" valor={pessoa?.documento ?? "—"} />
+                      <DetalheLinha label="E-mail" valor={pessoa?.email ?? "—"} />
+                    </SecaoDetalhe>
 
-                  <SecaoDetalhe titulo="Período">
-                    <DetalheLinha label="Início" valor={formatarData(detalhe.data_fechamento)} />
-                    {detalhe.status !== "ativo" && (
-                      <DetalheLinha label="Encerramento" valor={formatarData(detalhe.data_encerramento)} />
-                    )}
-                  </SecaoDetalhe>
+                    <SecaoDetalhe titulo="Período">
+                      <DetalheLinha label="Início" valor={formatarData(detalhe.data_fechamento)} />
+                      {detalhe.status !== "ativo" && (
+                        <DetalheLinha label="Encerramento" valor={formatarData(detalhe.data_encerramento)} />
+                      )}
+                    </SecaoDetalhe>
 
-                  <SecaoDetalhe titulo="Pagamento">
-                    <DetalheLinha label="Serviço" valor={detalhe.servicos?.nome ?? "—"} />
-                    <DetalheLinha label="Forma de pagamento" valor={detalhe.forma_pagamento ?? "—"} />
-                    <DetalheLinha
-                      label="Estrutura"
-                      valor={detalhe.tipo_pagamento === "parcelado" ? "Parcelado" : "À vista"}
-                    />
-                    {detalhe.tipo_pagamento === "avista" ? (
-                      <>
-                        <DetalheLinha label="Data de pagamento" valor={formatarData(detalhe.data_pagamento)} />
-                        <DetalheLinha
-                          label="Situação"
-                          valor={detalhe.situacao_pagamento === "pago" ? "Pago" : "Pendente"}
-                        />
-                      </>
-                    ) : (
-                      <>
-                        {detalhe.valor_entrada != null && (
-                          <DetalheLinha label="Entrada" valor={formatarMoeda(detalhe.valor_entrada)} />
+                    <SecaoDetalhe titulo="Pagamento">
+                      <DetalheLinha label="Serviço" valor={detalhe.servicos?.nome ?? "—"} />
+                      <DetalheLinha label="Forma de pagamento" valor={detalhe.forma_pagamento ?? "—"} />
+                      <DetalheLinha
+                        label="Estrutura"
+                        valor={detalhe.tipo_pagamento === "parcelado" ? "Parcelado" : "À vista"}
+                      />
+                      {detalhe.tipo_pagamento === "avista" ? (
+                        <>
+                          <DetalheLinha label="Data de pagamento" valor={formatarData(detalhe.data_pagamento)} />
+                          <DetalheLinha
+                            label="Situação"
+                            valor={detalhe.situacao_pagamento === "pago" ? "Pago" : "Pendente"}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          {detalhe.valor_entrada != null && (
+                            <DetalheLinha label="Entrada" valor={formatarMoeda(detalhe.valor_entrada)} />
+                          )}
+                          <DetalheLinha label="Parcelas" valor={String(detalhe.quantidade_parcelas ?? "—")} />
+                          <DetalheLinha
+                            label="1ª parcela"
+                            valor={formatarData(detalhe.data_primeira_parcela)}
+                          />
+                        </>
+                      )}
+                    </SecaoDetalhe>
+
+                    {(detalhe.descricao || detalhe.comentarios_extras) && (
+                      <SecaoDetalhe titulo="Observações">
+                        {detalhe.descricao && (
+                          <div>
+                            <p className="text-xs text-ink/50 mb-1">Contratado pelo cliente</p>
+                            <p className="text-sm text-ink whitespace-pre-wrap">{detalhe.descricao}</p>
+                          </div>
                         )}
-                        <DetalheLinha label="Parcelas" valor={String(detalhe.quantidade_parcelas ?? "—")} />
-                        <DetalheLinha
-                          label="1ª parcela"
-                          valor={formatarData(detalhe.data_primeira_parcela)}
-                        />
-                      </>
+                        {detalhe.comentarios_extras && (
+                          <div>
+                            <p className="text-xs text-ink/50 mb-1">Comentários extras</p>
+                            <p className="text-sm text-ink whitespace-pre-wrap">{detalhe.comentarios_extras}</p>
+                          </div>
+                        )}
+                      </SecaoDetalhe>
                     )}
-                  </SecaoDetalhe>
 
-                  {(detalhe.descricao || detalhe.comentarios_extras) && (
-                    <SecaoDetalhe titulo="Observações">
-                      {detalhe.descricao && (
-                        <div>
-                          <p className="text-xs text-ink/50 mb-1">Contratado pelo cliente</p>
-                          <p className="text-sm text-ink whitespace-pre-wrap">{detalhe.descricao}</p>
-                        </div>
-                      )}
-                      {detalhe.comentarios_extras && (
-                        <div>
-                          <p className="text-xs text-ink/50 mb-1">Comentários extras</p>
-                          <p className="text-sm text-ink whitespace-pre-wrap">{detalhe.comentarios_extras}</p>
-                        </div>
-                      )}
+                    <SecaoDetalhe titulo="Anexos">
+                      <ListaAnexosContrato contratoId={detalhe.id} />
                     </SecaoDetalhe>
-                  )}
-
-                  {detalhe.arquivo_path && (
-                    <SecaoDetalhe titulo="Arquivo">
-                      <button
-                        onClick={async () => {
-                          const supabase = createClient();
-                          const { data } = await supabase.storage
-                            .from("contratos")
-                            .createSignedUrl(detalhe.arquivo_path!, 60);
-                          if (data?.signedUrl) window.open(data.signedUrl, "_blank");
-                        }}
-                        className="text-sm font-semibold text-forest hover:underline"
-                      >
-                        📄 {detalhe.arquivo_nome ?? "Ver arquivo do contrato"}
-                      </button>
-                    </SecaoDetalhe>
-                  )}
+                  </div>
                 </>
               );
             })()}
@@ -681,7 +676,7 @@ export default function ContratosPontuaisPage() {
 
 function SecaoDetalhe({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
-    <div className="mb-4">
+    <div className="mb-4 break-inside-avoid">
       <p className="text-xs font-bold uppercase tracking-wide text-ink/40 mb-2">{titulo}</p>
       <div className="rounded-2xl bg-card p-4 shadow-sm space-y-2.5">{children}</div>
     </div>
@@ -782,14 +777,27 @@ function ContratoPontualForm({
 
   const [descricao, setDescricao] = useState(contratoEditando?.descricao ?? "");
   const [comentariosExtras, setComentariosExtras] = useState(contratoEditando?.comentarios_extras ?? "");
-  const [arquivo, setArquivo] = useState<File | null>(null);
-  const [arrastandoArquivo, setArrastandoArquivo] = useState(false);
+  const [arquivosNovos, setArquivosNovos] = useState<File[]>([]);
+  const [anexosExistentes, setAnexosExistentes] = useState<AnexoContratoItem[]>([]);
   const [maisOpcoesAberto, setMaisOpcoesAberto] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [saving, setSaving] = useState(false);
   const enviandoRef = useRef(false);
   const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!contratoEditando) {
+      setAnexosExistentes([]);
+      return;
+    }
+    const supabase = createClient();
+    supabase
+      .from("contratos_anexos")
+      .select("id, arquivo_path, arquivo_nome, arquivo_tipo, tamanho_bytes")
+      .eq("contrato_id", contratoEditando.id)
+      .order("created_at")
+      .then(({ data }) => setAnexosExistentes(data ?? []));
+  }, [contratoEditando]);
 
   useEffect(() => {
     carregarPessoas();
@@ -862,34 +870,6 @@ function ContratoPontualForm({
       .single();
     if (clienteError) throw clienteError;
     return novoCliente.id;
-  }
-
-  async function enviarArquivo(contratoId: string, arquivo: File) {
-    const supabase = createClient();
-    const path = `${contratoId}/${Date.now()}-${sanearNomeArquivo(arquivo.name)}`;
-    const { error: uploadError } = await supabase.storage
-      .from("contratos")
-      .upload(path, arquivo, { upsert: true });
-    if (uploadError) throw uploadError;
-
-    await supabase
-      .from("contratos")
-      .update({ arquivo_path: path, arquivo_nome: arquivo.name })
-      .eq("id", contratoId);
-  }
-
-  function handleArquivoSelecionado(file: File | undefined | null) {
-    if (!file) return;
-    if (file.type !== "application/pdf") {
-      setErro("Apenas arquivos PDF são aceitos.");
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setErro("O arquivo deve ter no máximo 10MB.");
-      return;
-    }
-    setErro(null);
-    setArquivo(file);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -969,8 +949,11 @@ function ContratoPontualForm({
           .eq("id", contratoEditando.id);
         if (error) throw error;
 
-        if (arquivo) {
-          await enviarArquivo(contratoEditando.id, arquivo);
+        if (arquivosNovos.length > 0) {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          await subirAnexosContrato(contratoEditando.id, arquivosNovos, user?.id ?? null);
         }
 
         // Ao concluir/arquivar antes da hora, remove parcelas futuras ainda pendentes
@@ -1012,8 +995,11 @@ function ContratoPontualForm({
           .single();
         if (error) throw error;
 
-        if (arquivo && novoContrato) {
-          await enviarArquivo(novoContrato.id, arquivo);
+        if (arquivosNovos.length > 0 && novoContrato) {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          await subirAnexosContrato(novoContrato.id, arquivosNovos, user?.id ?? null);
         }
 
         // Gera o(s) lançamento(s) automaticamente — pulado em contratos de migração,
@@ -1491,34 +1477,15 @@ function ContratoPontualForm({
       {maisOpcoesAberto && (
         <div className="space-y-4 rounded-2xl bg-surface p-4">
           <div>
-            <span className="block text-sm font-semibold text-ink/70 mb-1">Arquivo do contrato (PDF)</span>
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setArrastandoArquivo(true);
+            <span className="block text-sm font-semibold text-ink/70 mb-1">Anexos (contrato assinado, aditivos, cancelamento...)</span>
+            <SeletorAnexosContrato
+              anexosExistentes={anexosExistentes}
+              onRemoverExistente={async (a) => {
+                await removerAnexoContrato(a);
+                setAnexosExistentes((atual) => atual.filter((item) => item.id !== a.id));
               }}
-              onDragLeave={() => setArrastandoArquivo(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setArrastandoArquivo(false);
-                handleArquivoSelecionado(e.dataTransfer.files?.[0]);
-              }}
-              className={`rounded-xl border-2 border-dashed p-4 text-center cursor-pointer transition-colors ${
-                arrastandoArquivo ? "border-forest bg-mint/40" : "border-black/15 hover:border-forest/60"
-              }`}
-            >
-              <p className="font-semibold text-ink text-sm">
-                {arquivo?.name ?? contratoEditando?.arquivo_nome ?? "Arraste o PDF ou clique para selecionar"}
-              </p>
-              <p className="text-xs text-ink/40 mt-1">Máximo 10MB</p>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/pdf"
-              className="hidden"
-              onChange={(e) => handleArquivoSelecionado(e.target.files?.[0])}
+              arquivosNovos={arquivosNovos}
+              onArquivosNovosChange={setArquivosNovos}
             />
           </div>
 
