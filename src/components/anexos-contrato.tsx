@@ -119,19 +119,26 @@ export function SeletorAnexosContrato({
 export function ListaAnexosContrato({ contratoId }: { contratoId: string }) {
   const [anexos, setAnexos] = useState<AnexoContratoItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelado = false;
     async function carregar() {
       setLoading(true);
       const supabase = createClient();
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("contratos_anexos")
         .select("id, arquivo_path, arquivo_nome, arquivo_tipo, tamanho_bytes")
         .eq("contrato_id", contratoId)
         .order("created_at");
       if (!cancelado) {
-        setAnexos(data ?? []);
+        if (error) {
+          console.error("Erro ao carregar anexos do contrato:", error);
+          setErro(error.message);
+        } else {
+          setErro(null);
+          setAnexos(data ?? []);
+        }
         setLoading(false);
       }
     }
@@ -142,7 +149,15 @@ export function ListaAnexosContrato({ contratoId }: { contratoId: string }) {
   }, [contratoId]);
 
   if (loading) return <p className="text-sm text-ink/40">Carregando anexos...</p>;
-  if (anexos.length === 0) return null;
+  if (erro) {
+    return (
+      <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2.5">
+        <p className="font-semibold">Não deu pra carregar os anexos.</p>
+        <p className="font-mono mt-1 opacity-80">{erro}</p>
+      </div>
+    );
+  }
+  if (anexos.length === 0) return <p className="text-sm text-ink/40">Nenhum anexo ainda.</p>;
 
   return (
     <div className="space-y-1.5">

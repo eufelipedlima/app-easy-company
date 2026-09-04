@@ -678,7 +678,7 @@ export default function ContratosRecorrentesPage() {
           onClick={() => setDetalhe(null)}
         >
           <div
-            className="w-full max-w-3xl rounded-2xl bg-surface p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
+            className="w-full max-w-5xl rounded-2xl bg-surface p-7 shadow-2xl max-h-[92vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {(() => {
@@ -824,7 +824,7 @@ export default function ContratosRecorrentesPage() {
                     </div>
                   )}
 
-                  <div className="columns-1 lg:columns-2 gap-4">
+                  <div className="columns-1 lg:columns-2 xl:columns-3 gap-4">
                     <SecaoDetalhe titulo="Cliente">
                       <DetalheLinha label={pessoa?.razao_social ? "Razão social" : "Nome"} valor={pessoa?.nome ?? "—"} />
                       <DetalheLinha label="Documento" valor={pessoa?.documento ?? "—"} />
