@@ -504,7 +504,7 @@ export default function ContratosRecorrentesPage() {
           }}
         >
           <div
-            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-4xl rounded-2xl bg-card p-7 shadow-2xl max-h-[88vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-bold text-ink mb-5">
@@ -754,7 +754,7 @@ export default function ContratosRecorrentesPage() {
                       <p className="text-sm font-bold text-ink">Reajustar valor mensal</p>
                       <div className="grid grid-cols-2 gap-3">
                         <label className="block">
-                          <span className="block text-xs font-medium text-ink/70 mb-1">Novo valor (R$)</span>
+                          <span className="block text-xs font-semibold text-ink/70 mb-1">Novo valor (R$)</span>
                           <input
                             type="number"
                             step="0.01"
@@ -765,7 +765,7 @@ export default function ContratosRecorrentesPage() {
                           />
                         </label>
                         <label className="block">
-                          <span className="block text-xs font-medium text-ink/70 mb-1">Data do reajuste</span>
+                          <span className="block text-xs font-semibold text-ink/70 mb-1">Data do reajuste</span>
                           <input
                             type="date"
                             value={dataReajusteContrato}
@@ -774,7 +774,7 @@ export default function ContratosRecorrentesPage() {
                           />
                         </label>
                         <label className="block col-span-2">
-                          <span className="block text-xs font-medium text-ink/70 mb-1">Motivo (opcional)</span>
+                          <span className="block text-xs font-semibold text-ink/70 mb-1">Motivo (opcional)</span>
                           <select
                             value={motivoReajuste}
                             onChange={(e) => setMotivoReajuste(e.target.value)}
@@ -788,7 +788,7 @@ export default function ContratosRecorrentesPage() {
                           </select>
                         </label>
                         <label className="block col-span-2">
-                          <span className="block text-xs font-medium text-ink/70 mb-1">Observação (opcional)</span>
+                          <span className="block text-xs font-semibold text-ink/70 mb-1">Observação (opcional)</span>
                           <input
                             value={observacaoReajusteContrato}
                             onChange={(e) => setObservacaoReajusteContrato(e.target.value)}
@@ -1372,7 +1372,7 @@ function ContratoRecorrenteForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="relative">
-        <span className="block text-sm font-medium text-ink/70 mb-1">
+        <span className="block text-sm font-semibold text-ink/70 mb-1">
           Cliente<span className="text-forest"> *</span>
         </span>
         <input
@@ -1429,9 +1429,9 @@ function ContratoRecorrenteForm({
         </label>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="relative">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Serviço</span>
+          <span className="block text-sm font-semibold text-ink/70 mb-1">Serviço</span>
           <input
             value={buscaServico}
             onChange={(e) => {
@@ -1483,7 +1483,7 @@ function ContratoRecorrenteForm({
         </div>
 
         <div className="relative">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Banco</span>
+          <span className="block text-sm font-semibold text-ink/70 mb-1">Banco</span>
           <input
             value={buscaBanco}
             onChange={(e) => {
@@ -1528,7 +1528,7 @@ function ContratoRecorrenteForm({
         </div>
 
         <div className="relative">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Plano de conta</span>
+          <span className="block text-sm font-semibold text-ink/70 mb-1">Plano de conta</span>
           <input
             value={buscaPlanoConta}
             onChange={(e) => {
@@ -1703,8 +1703,8 @@ function ContratoRecorrenteForm({
         )}
 
         {editando && status === "encerrado" && (
-          <label className="block col-span-2">
-            <span className="block text-sm font-medium text-ink/70 mb-1">Detalhes da rescisão</span>
+          <label className="block col-span-full">
+            <span className="block text-sm font-semibold text-ink/70 mb-1">Detalhes da rescisão</span>
             <textarea
               value={observacaoEncerramento}
               onChange={(e) => setObservacaoEncerramento(e.target.value)}
@@ -1735,7 +1735,7 @@ function ContratoRecorrenteForm({
       {maisOpcoesAberto && (
         <div className="space-y-4 rounded-2xl bg-surface p-4">
           <div>
-            <span className="block text-sm font-medium text-ink/70 mb-1">Arquivo do contrato (PDF)</span>
+            <span className="block text-sm font-semibold text-ink/70 mb-1">Arquivo do contrato (PDF)</span>
             <div
               onClick={() => fileInputRef.current?.click()}
               onDragOver={(e) => {
@@ -1835,7 +1835,7 @@ function ContratoRecorrenteForm({
 function Campo({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-sm font-medium text-ink/70 mb-1">
+      <span className="block text-sm font-semibold text-ink/70 mb-1">
         {label}
         {required && <span className="text-forest"> *</span>}
       </span>

@@ -375,7 +375,7 @@ export default function ContratosPontuaisPage() {
           }}
         >
           <div
-            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-4xl rounded-2xl bg-card p-7 shadow-2xl max-h-[88vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-bold text-ink mb-5">
@@ -1120,7 +1120,7 @@ function ContratoPontualForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="relative">
-        <span className="block text-sm font-medium text-ink/70 mb-1">
+        <span className="block text-sm font-semibold text-ink/70 mb-1">
           Cliente<span className="text-forest"> *</span>
         </span>
         <input
@@ -1165,9 +1165,9 @@ function ContratoPontualForm({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="relative">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Serviço</span>
+          <span className="block text-sm font-semibold text-ink/70 mb-1">Serviço</span>
           <input
             value={buscaServico}
             onChange={(e) => {
@@ -1219,7 +1219,7 @@ function ContratoPontualForm({
         </div>
 
         <div className="relative">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Banco</span>
+          <span className="block text-sm font-semibold text-ink/70 mb-1">Banco</span>
           <input
             value={buscaBanco}
             onChange={(e) => {
@@ -1264,7 +1264,7 @@ function ContratoPontualForm({
         </div>
 
         <div className="relative">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Plano de conta</span>
+          <span className="block text-sm font-semibold text-ink/70 mb-1">Plano de conta</span>
           <input
             value={buscaPlanoConta}
             onChange={(e) => {
@@ -1365,7 +1365,7 @@ function ContratoPontualForm({
 
         {!ehMigracao && (
           <div>
-            <span className="block text-sm font-medium text-ink/70 mb-1">Pagamento</span>
+            <span className="block text-sm font-semibold text-ink/70 mb-1">Pagamento</span>
             <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
               <button
                 type="button"
@@ -1395,7 +1395,7 @@ function ContratoPontualForm({
               <input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="input" />
             </Campo>
             <div>
-              <span className="block text-sm font-medium text-ink/70 mb-1">Situação</span>
+              <span className="block text-sm font-semibold text-ink/70 mb-1">Situação</span>
               <div className="flex items-center gap-1 rounded-full bg-surface p-1 w-fit">
                 <button
                   type="button"
@@ -1491,7 +1491,7 @@ function ContratoPontualForm({
       {maisOpcoesAberto && (
         <div className="space-y-4 rounded-2xl bg-surface p-4">
           <div>
-            <span className="block text-sm font-medium text-ink/70 mb-1">Arquivo do contrato (PDF)</span>
+            <span className="block text-sm font-semibold text-ink/70 mb-1">Arquivo do contrato (PDF)</span>
             <div
               onClick={() => fileInputRef.current?.click()}
               onDragOver={(e) => {
@@ -1591,7 +1591,7 @@ function ContratoPontualForm({
 function Campo({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-sm font-medium text-ink/70 mb-1">
+      <span className="block text-sm font-semibold text-ink/70 mb-1">
         {label}
         {required && <span className="text-forest"> *</span>}
       </span>
