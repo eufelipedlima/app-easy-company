@@ -226,11 +226,11 @@ export function CorpoListaAgrupavel<T>({
       {grupos.map((grupo) => {
         const colapsado = estado.gruposColapsados.has(grupo.chave);
         return (
-          <div key={grupo.chave} className="rounded-2xl bg-card border border-black/5 overflow-hidden">
+          <div key={grupo.chave} className="rounded-2xl bg-card border border-black/5 overflow-hidden shadow-sm">
             {opcaoAgrupamentoAtiva && (
               <button
                 onClick={() => estado.alternarColapso(grupo.chave)}
-                className="w-full flex items-center gap-2 px-4 py-2.5 bg-surface/50 hover:bg-surface transition-colors text-left"
+                className="w-full flex items-center gap-2 px-4 py-3 bg-surface hover:bg-surface/70 border-b-2 border-black/5 transition-colors text-left"
               >
                 {colapsado ? <ChevronRight size={14} className="text-ink/40" /> : <ChevronDown size={14} className="text-ink/40" />}
                 {grupo.cor ? (
@@ -244,7 +244,7 @@ export function CorpoListaAgrupavel<T>({
             {!colapsado && (
               <>
                 <div
-                  className="grid gap-2 px-4 py-1.5 text-[10px] font-bold uppercase tracking-wide text-ink/35"
+                  className="grid gap-2 pl-5 pr-4 py-3 text-[10px] font-bold uppercase tracking-wide text-forest bg-mint/50 border-b-2 border-mint"
                   style={{ gridTemplateColumns: templateColunas }}
                 >
                   {colunasExibidas.map((c) => (
@@ -252,15 +252,16 @@ export function CorpoListaAgrupavel<T>({
                   ))}
                 </div>
                 {grupo.itens.length === 0 ? (
-                  <p className="px-4 py-4 text-sm text-ink/40">Nada aqui.</p>
+                  <p className="pl-5 pr-4 py-4 text-sm text-ink/40">Nada aqui.</p>
                 ) : (
                   grupo.itens.map((item) => (
                     <button
                       key={chaveId(item)}
                       onClick={() => onAbrir(item)}
-                      className="w-full grid items-center gap-2 px-4 py-2.5 border-t border-black/5 hover:bg-surface/60 transition-colors text-left"
+                      className="relative w-full grid items-center gap-2 pl-5 pr-4 py-3 border-t border-black/5 hover:bg-surface/60 transition-colors text-left"
                       style={{ gridTemplateColumns: templateColunas }}
                     >
+                      <span className="absolute left-1.5 top-2 bottom-2 w-[3px] rounded-full bg-forest/70" />
                       {colunasExibidas.map((c) => (
                         <span key={c.chave} className="min-w-0">
                           {c.render(item)}

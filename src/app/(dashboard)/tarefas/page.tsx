@@ -599,10 +599,10 @@ export function TarefasPageConteudo({ escopo = "tudo" }: { escopo?: "tudo" | "pr
       larguraCss: "1fr",
       ehNome: true,
       render: (t) => (
-        <span className="text-sm text-ink truncate flex items-center gap-1.5">
-          {t.eh_projeto && <IconeProjeto tamanho={13} />}
+        <span className="text-sm font-semibold text-ink truncate flex items-center gap-1.5">
+          {t.eh_projeto ? <IconeProjeto tamanho={13} /> : <IconeTarefa tamanho={13} />}
           <span className="truncate">{t.titulo}</span>
-          {t.descricao && <span className="text-ink/25 text-xs shrink-0">☰</span>}
+          {t.descricao && <span className="text-ink/25 text-xs shrink-0 font-normal">☰</span>}
         </span>
       ),
     },

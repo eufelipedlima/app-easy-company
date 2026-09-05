@@ -699,7 +699,8 @@ export const CalendarioConteudoConteudo = forwardRef<
       larguraCss: "1fr",
       ehNome: true,
       render: (p) => (
-        <span className="text-sm text-ink truncate flex items-center gap-1.5">
+        <span className="text-sm font-semibold text-ink truncate flex items-center gap-1.5">
+          <IconeConteudo tamanho={13} />
           {p.post_pai_id && <span className="text-forest text-xs">↳</span>}
           {p.titulo || "Sem título"}
         </span>
