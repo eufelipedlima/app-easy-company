@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { normalizar } from "@/lib/normalizar";
-import { corDoStatus } from "@/lib/status-conteudo";
+import { corDoStatus, statusPadrao } from "@/lib/status-conteudo";
 import { corDoCliente } from "@/lib/cor-cliente";
 import { IconeConteudo } from "@/components/icones-tarefa";
 import { EstadoVazio } from "@/components/estado-vazio";
@@ -139,6 +139,16 @@ const EMOJIS = [
 function toISODate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+function diffDias(isoA: string, isoB: string): number {
+  const a = new Date(isoA + "T00:00:00");
+  const b = new Date(isoB + "T00:00:00");
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+function somarDias(iso: string, n: number): string {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return toISODate(d);
+}
 
 function formatarDataChip(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
@@ -215,6 +225,16 @@ export const CalendarioConteudoConteudo = forwardRef<
   const [mes, setMes] = useState(hoje.getMonth());
   const [ano, setAno] = useState(hoje.getFullYear());
   const [diaExpandidoId, setDiaExpandidoId] = useState<string | null>(null);
+  const [arrasteInfo, setArrasteInfo] = useState<{
+    postId: string;
+    dataAncora: string;
+    dataInicioOriginal: string;
+    dataPublicacaoOriginal: string;
+  } | null>(null);
+  const [diaAlvoArrastePost, setDiaAlvoArrastePost] = useState<string | null>(null);
+  const diaAlvoArrastePostRef = useRef<string | null>(null);
+  const movimentoArrastePostRef = useRef(false);
+  const suprimirCliqueCartaoRef = useRef(false);
   const [clienteFiltroId, setClienteFiltroId] = useState(clienteFixoId ?? "");
   const [clientes, setClientes] = useState<ClienteOpcao[]>([]);
   const [funcionariosComAcesso, setFuncionariosComAcesso] = useState<Responsavel[]>([]);
@@ -533,7 +553,7 @@ export const CalendarioConteudoConteudo = forwardRef<
       .insert({
         cliente_id: clienteFiltroId && clienteFiltroId !== "internas" ? clienteFiltroId : null,
         data_publicacao: dataISO,
-        status_id: statusList[0]?.id,
+        status_id: statusPadrao(statusList)?.id,
       })
       .select("id")
       .single();
@@ -545,6 +565,82 @@ export const CalendarioConteudoConteudo = forwardRef<
       router.push(`/conteudo/calendario/post/${novo.id}`);
     }
   }
+
+  function iniciarArrastePost(e: React.MouseEvent, post: Post) {
+    e.preventDefault();
+    e.stopPropagation();
+    const dataInicioOriginal = post.data_inicio ?? post.data_publicacao;
+    setArrasteInfo({
+      postId: post.id,
+      dataAncora: dataInicioOriginal,
+      dataInicioOriginal,
+      dataPublicacaoOriginal: post.data_publicacao,
+    });
+  }
+
+  const confirmarArrastePost = useCallback(
+    async (info: NonNullable<typeof arrasteInfo>, diaFinal: string) => {
+      const delta = diffDias(info.dataAncora, diaFinal);
+      const novaDataInicio = somarDias(info.dataInicioOriginal, delta);
+      const novaDataPublicacao = somarDias(info.dataPublicacaoOriginal, delta);
+      if (novaDataInicio === info.dataInicioOriginal && novaDataPublicacao === info.dataPublicacaoOriginal) return;
+
+      setPosts((atual) =>
+        atual.map((p) => (p.id === info.postId ? { ...p, data_inicio: novaDataInicio, data_publicacao: novaDataPublicacao } : p))
+      );
+
+      const supabase = createClient();
+      await supabase
+        .from("posts_conteudo")
+        .update({ data_inicio: novaDataInicio, data_publicacao: novaDataPublicacao })
+        .eq("id", info.postId);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("posts_conteudo_historico").insert({
+          post_id: info.postId,
+          autor_id: user.id,
+          descricao: `mudou a data de publicação pra ${formatarDataChip(novaDataPublicacao)}`,
+        });
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!arrasteInfo) return;
+    function onMove(e: MouseEvent) {
+      movimentoArrastePostRef.current = true;
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const grid = (el as HTMLElement | null)?.closest("[data-semana-grid-conteudo]") as HTMLElement | null;
+      if (!grid) return;
+      const dias: string[] = JSON.parse(grid.dataset.dias || "[]");
+      const rect = grid.getBoundingClientRect();
+      const idx = Math.min(6, Math.max(0, Math.floor(((e.clientX - rect.left) / rect.width) * 7)));
+      diaAlvoArrastePostRef.current = dias[idx] ?? null;
+      setDiaAlvoArrastePost(dias[idx] ?? null);
+    }
+    function onUp() {
+      if (movimentoArrastePostRef.current && diaAlvoArrastePostRef.current && arrasteInfo) {
+        confirmarArrastePost(arrasteInfo, diaAlvoArrastePostRef.current);
+        suprimirCliqueCartaoRef.current = true;
+        setTimeout(() => {
+          suprimirCliqueCartaoRef.current = false;
+        }, 80);
+      }
+      setArrasteInfo(null);
+      setDiaAlvoArrastePost(null);
+      diaAlvoArrastePostRef.current = null;
+      movimentoArrastePostRef.current = false;
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [arrasteInfo, confirmarArrastePost]);
 
   useEffect(() => {
     carregarClientes();
@@ -1128,10 +1224,17 @@ export const CalendarioConteudoConteudo = forwardRef<
                 const mostrarFormato = camposVisiveis.formato && p.formato;
                 const respDoPost = responsaveisPorPost[p.id] ?? [];
                 const mostrarResponsavel = camposVisiveis.responsavel && respDoPost.length > 0;
+                const arrastandoEsse = arrasteInfo?.postId === p.id;
                 return (
                   <button
-                    onClick={() => router.push(`/conteudo/calendario/post/${p.id}`)}
-                    className={`w-full text-left rounded-lg px-1.5 py-1 leading-tight ${corDoStatus(p.status_conteudo?.cor ?? "cinza").cor}`}
+                    onMouseDown={(e) => iniciarArrastePost(e, p)}
+                    onClick={() => {
+                      if (suprimirCliqueCartaoRef.current) return;
+                      router.push(`/conteudo/calendario/post/${p.id}`);
+                    }}
+                    className={`w-full text-left rounded-lg px-1.5 py-1 leading-tight cursor-grab active:cursor-grabbing select-none ${
+                      corDoStatus(p.status_conteudo?.cor ?? "cinza").cor
+                    } ${arrastandoEsse ? "opacity-40" : ""}`}
                   >
                     {tituloPaiPorPost[p.id] && <p className="text-[9px] text-forest font-semibold truncate">↳ {tituloPaiPorPost[p.id]}</p>}
                     <p className="text-[11px] font-semibold truncate">{mostrarTitulo ? p.titulo : p.hora_publicacao?.slice(0, 5) || "Post"}</p>
@@ -1154,16 +1257,26 @@ export const CalendarioConteudoConteudo = forwardRef<
               return semanasMes.map((diasDaSemana, idxSemana) => {
                 const { faixas, qtdLanes } = calcularFaixasSemana(diasDaSemana);
                 const linhasGrid = `auto ${qtdLanes > 0 ? `repeat(${qtdLanes}, auto) ` : ""}minmax(0, 1fr)`;
+                const diasISOSemana = diasDaSemana.map((d) => toISODate(d));
                 return (
-                  <div key={idxSemana} className="grid grid-cols-7" style={{ gridTemplateRows: linhasGrid }}>
+                  <div
+                    key={idxSemana}
+                    className="grid grid-cols-7"
+                    style={{ gridTemplateRows: linhasGrid }}
+                    data-semana-grid-conteudo
+                    data-dias={JSON.stringify(diasISOSemana)}
+                  >
                     {diasDaSemana.map((dia, i) => {
                       const iso = toISODate(dia);
                       const doMes = dia.getMonth() === mes;
+                      const ehAlvo = diaAlvoArrastePost === iso;
                       return (
                         <div
                           key={`cab-${iso}`}
                           style={{ gridColumn: i + 1, gridRow: 1 }}
-                          className={`border-r border-black/5 p-2 pb-1 ${doMes ? "bg-white" : "bg-surface/40"}`}
+                          className={`border-r border-black/5 p-2 pb-1 transition-colors ${
+                            ehAlvo ? "bg-forest/10 ring-2 ring-inset ring-forest/40" : doMes ? "bg-white" : "bg-surface/40"
+                          }`}
                         >
                           <div className="flex items-center justify-between">
                             <span
@@ -1201,12 +1314,15 @@ export const CalendarioConteudoConteudo = forwardRef<
                     {diasDaSemana.map((dia, i) => {
                       const iso = toISODate(dia);
                       const doMes = dia.getMonth() === mes;
+                      const ehAlvo = diaAlvoArrastePost === iso;
                       const postsDoDia = (postsPorDia.get(iso) ?? []).filter((p) => !idsEmFaixa.has(p.id));
                       return (
                         <div
                           key={`itens-${iso}`}
                           style={{ gridColumn: i + 1, gridRow: qtdLanes + 2 }}
-                          className={`min-h-[130px] border-b border-r border-black/5 p-2 pt-0.5 ${doMes ? "bg-white" : "bg-surface/40"}`}
+                          className={`min-h-[130px] border-b border-r border-black/5 p-2 pt-0.5 transition-colors ${
+                            ehAlvo ? "bg-forest/10 ring-2 ring-inset ring-forest/40" : doMes ? "bg-white" : "bg-surface/40"
+                          }`}
                         >
                           <div className="space-y-1">
                             {postsDoDia.slice(0, 3).map((p) => (
@@ -1514,7 +1630,7 @@ function PostModal({
   const [objetivo, setObjetivo] = useState<string>(post?.objetivo ?? "");
   const [formato, setFormato] = useState<string>(post?.formato ?? "");
   const [linkVideo, setLinkVideo] = useState<string>(post?.link_video ?? "");
-  const [statusId, setStatusId] = useState<string>(post?.status_id ?? statusList[0]?.id ?? "");
+  const [statusId, setStatusId] = useState<string>(post?.status_id ?? statusPadrao(statusList)?.id ?? "");
   const [observacoes, setObservacoes] = useState(post?.observacoes_internas ?? "");
   const [midiasExistentes, setMidiasExistentes] = useState<Midia[]>(
     [...(post?.posts_conteudo_midias ?? [])].sort((a, b) => a.ordem - b.ordem)
@@ -1525,7 +1641,7 @@ function PostModal({
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!statusId && statusList[0]) setStatusId(statusList[0].id);
+    if (!statusId && statusList[0]) setStatusId(statusPadrao(statusList)?.id ?? statusList[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusList]);
 

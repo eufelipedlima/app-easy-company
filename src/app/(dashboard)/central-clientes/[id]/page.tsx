@@ -182,7 +182,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
   const [responsaveisPorPost, setResponsaveisPorPost] = useState<Record<string, Responsavel[]>>({});
   const [visualizacaoConteudo, setVisualizacaoConteudo] = useState<"lista" | "kanban" | "calendario">(() => {
     const v = searchParams.get("vConteudo");
-    return v === "lista" || v === "calendario" ? v : "kanban";
+    return v === "lista" || v === "kanban" ? v : "calendario";
   });
   const [mostrarSubconteudos, setMostrarSubconteudos] = useState(false);
   const [docs, setDocs] = useState<DocResumo[]>([]);
