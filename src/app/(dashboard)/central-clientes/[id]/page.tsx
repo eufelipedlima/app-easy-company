@@ -1428,8 +1428,8 @@ function MiniKanbanColuna({
   return (
     <div
       ref={setNodeRef}
-      className={`w-64 shrink-0 rounded-3xl border-2 p-3 min-h-[calc(100vh-280px)] transition-all duration-150 ${cor.colBg} ${
-        isOver ? `${cor.colBorder} scale-[1.02] shadow-lg` : "border-transparent"
+      className={`w-64 shrink-0 rounded-3xl border-2 shadow-sm p-3 min-h-[calc(100vh-280px)] transition-all duration-150 ${cor.colBg} ${
+        isOver ? `${cor.colBorder} scale-[1.02] shadow-lg` : cor.colBorder
       }`}
     >
       <div className="flex items-center gap-2 mb-3 px-1">
