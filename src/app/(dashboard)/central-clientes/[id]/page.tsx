@@ -188,7 +188,8 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
   const [docs, setDocs] = useState<DocResumo[]>([]);
   const [categoriasDocs, setCategoriasDocs] = useState<{ id: string; nome: string; cor: string }[]>([]);
   const [nomesPorAutor, setNomesPorAutor] = useState<Record<string, string>>({});
-  const [statusList, setStatusList] = useState<{ id: string; nome: string; cor: string; ordem: number }[]>([]);
+  const [statusListTarefas, setStatusListTarefas] = useState<{ id: string; nome: string; cor: string; ordem: number }[]>([]);
+  const [statusListConteudo, setStatusListConteudo] = useState<{ id: string; nome: string; cor: string; ordem: number }[]>([]);
 
   // Mantém a aba e a visão escolhidas (Kanban/Lista/Calendário) salvas na
   // própria URL — assim, quando a pessoa entra numa tarefa/conteúdo e
@@ -221,7 +222,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
       data: { user },
     } = await supabase.auth.getUser();
 
-    const [{ data: clienteData }, { data: tarefasData }, { data: postsData }, { data: docsData }, { data: canalData }, { data: funcData }, { data: statusData }] =
+    const [{ data: clienteData }, { data: tarefasData }, { data: postsData }, { data: docsData }, { data: canalData }, { data: funcData }, { data: statusTarefasData }, { data: statusConteudoData }] =
       await Promise.all([
         supabase.from("clientes").select("papeis ( pessoa_id, pessoas ( nome, foto_url ) )").eq("id", id).maybeSingle(),
         supabase
@@ -248,9 +249,11 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
           .order("updated_at", { ascending: false }),
         supabase.from("chat_canais").select("id").eq("tipo", "cliente").eq("cliente_id", id).maybeSingle(),
         supabase.from("funcionarios").select("id, auth_user_id, papeis ( pessoas ( nome, apelido, foto_url ) )").not("auth_user_id", "is", null),
-        supabase.from("status_conteudo").select("id, nome, cor, ordem").order("ordem"),
+        supabase.from("status_conteudo").select("id, nome, cor, ordem").eq("area", "tarefas").order("ordem"),
+        supabase.from("status_conteudo").select("id, nome, cor, ordem").eq("area", "conteudo").order("ordem"),
       ]);
-    setStatusList(statusData ?? []);
+    setStatusListTarefas(statusTarefasData ?? []);
+    setStatusListConteudo(statusConteudoData ?? []);
 
     const clienteInfo = clienteData as unknown as {
       papeis: { pessoa_id: string; pessoas: { nome: string; foto_url: string | null } | null } | null;
@@ -342,7 +345,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
         if (s.eh_pasta) continue;
         if (!progressoTarefasMap[s.tarefa_pai_id]) progressoTarefasMap[s.tarefa_pai_id] = { total: 0, completos: 0 };
         progressoTarefasMap[s.tarefa_pai_id].total++;
-        const st = (statusData ?? []).find((st) => st.id === s.status_id);
+        const st = (statusTarefasData ?? []).find((st) => st.id === s.status_id);
         if (st && normalizar(st.cor) === "verde") progressoTarefasMap[s.tarefa_pai_id].completos++;
       }
       setProgressoTarefas(progressoTarefasMap);
@@ -550,7 +553,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    const nomeStatus = statusList.find((s) => s.id === novoStatusId)?.nome ?? "outro status";
+    const nomeStatus = statusListTarefas.find((s) => s.id === novoStatusId)?.nome ?? "outro status";
     if (user) await supabase.from("tarefas_historico").insert({ tarefa_id: tarefaId, autor_id: user.id, descricao: `mudou o status para "${nomeStatus}"` });
   }
 
@@ -561,7 +564,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    const nomeStatus = statusList.find((s) => s.id === novoStatusId)?.nome ?? "outro status";
+    const nomeStatus = statusListConteudo.find((s) => s.id === novoStatusId)?.nome ?? "outro status";
     if (user) await supabase.from("posts_conteudo_historico").insert({ post_id: postId, autor_id: user.id, descricao: `mudou o status para "${nomeStatus}"` });
   }
 
@@ -795,7 +798,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
                 onClick={() => setFiltroStatusAtivo(null)}
                 className="inline-flex items-center gap-1.5 rounded-full bg-mint text-forest px-3 py-1.5 text-xs font-bold hover:brightness-95 transition"
               >
-                {statusList.find((s) => s.id === filtroStatusAtivo)?.nome} ✕
+                {statusListConteudo.find((s) => s.id === filtroStatusAtivo)?.nome} ✕
               </button>
             )}
             {visualizacaoConteudo === "calendario" && (
@@ -825,7 +828,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
             </div>
             {tarefas.length > 0 && (
               <div className="flex h-2 rounded-full overflow-hidden mb-3 bg-black/5">
-                {statusList.map((s) => {
+                {statusListTarefas.map((s) => {
                   const qtd = tarefas.filter((t) => t.status_id === s.id).length;
                   if (qtd === 0) return null;
                   return (
@@ -840,7 +843,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
               </div>
             )}
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
-              {statusList.map((s) => {
+              {statusListTarefas.map((s) => {
                 const qtd = tarefas.filter((t) => t.status_id === s.id).length;
                 return (
                   <button
@@ -867,7 +870,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
             </div>
             {posts.length > 0 && (
               <div className="flex h-2 rounded-full overflow-hidden mb-3 bg-black/5">
-                {statusList.map((s) => {
+                {statusListConteudo.map((s) => {
                   const qtd = posts.filter((p) => p.status_id === s.id).length;
                   if (qtd === 0) return null;
                   return (
@@ -882,7 +885,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
               </div>
             )}
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
-              {statusList.map((s) => {
+              {statusListConteudo.map((s) => {
                 const qtd = posts.filter((p) => p.status_id === s.id).length;
                 return (
                   <button
@@ -996,7 +999,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
                   onClick={() => setFiltroStatusAtivo(null)}
                   className="inline-flex items-center gap-1.5 rounded-full bg-mint text-forest px-3 py-1.5 text-xs font-bold hover:brightness-95 transition"
                 >
-                  {statusList.find((s) => s.id === filtroStatusAtivo)?.nome} ✕
+                  {statusListTarefas.find((s) => s.id === filtroStatusAtivo)?.nome} ✕
                 </button>
               )}
             </div>
@@ -1008,7 +1011,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
             const tarefasFiltradas = filtroStatusAtivo ? tarefas.filter((t) => t.status_id === filtroStatusAtivo) : tarefas;
             return visualizacaoTarefas === "kanban" ? (
             <MiniKanban
-              statusList={statusList}
+              statusList={statusListTarefas}
               itens={tarefasFiltradas.map((t) => ({
                 id: t.id,
                 titulo: t.titulo,
@@ -1142,7 +1145,7 @@ function CentralClienteDetalheConteudo({ params }: { params: Promise<{ id: strin
             />
           ) : visualizacaoConteudo === "kanban" ? (
             <MiniKanban
-              statusList={statusList}
+              statusList={statusListConteudo}
               itens={postsVisiveis.map((p) => ({
                 id: p.id,
                 titulo: p.titulo || "Sem título",
