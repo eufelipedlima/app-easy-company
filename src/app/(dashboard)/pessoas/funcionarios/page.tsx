@@ -85,10 +85,35 @@ const COLUNAS_DISPONIVEIS: ColunaDef[] = [
   { key: "inicio", label: "Início" },
 ];
 
+const CORES_AVATAR = [
+  "bg-red-400", "bg-orange-400", "bg-amber-500", "bg-lime-500", "bg-emerald-500",
+  "bg-teal-500", "bg-sky-500", "bg-indigo-500", "bg-violet-500", "bg-pink-500",
+];
+function corAvatarPessoa(nome: string) {
+  let hash = 0;
+  for (let i = 0; i < nome.length; i++) hash = (hash * 31 + nome.charCodeAt(i)) % CORES_AVATAR.length;
+  return CORES_AVATAR[Math.abs(hash) % CORES_AVATAR.length];
+}
+function iniciaisPessoa(nome: string) {
+  const partes = nome.trim().split(/\s+/);
+  return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
+}
+
 function renderCelulaFuncionario(key: string, f: Funcionario, custoTotal: number) {
   switch (key) {
-    case "nome":
-      return <span className="font-semibold text-ink">{f.papeis?.pessoas?.nome ?? "—"}</span>;
+    case "nome": {
+      const nome = f.papeis?.pessoas?.nome ?? "—";
+      return (
+        <span className="flex items-center gap-2.5 min-w-0">
+          <span
+            className={`h-7 w-7 rounded-full ${corAvatarPessoa(nome)} text-white flex items-center justify-center text-[11px] font-bold shrink-0`}
+          >
+            {iniciaisPessoa(nome)}
+          </span>
+          <span className="font-semibold text-ink truncate">{nome}</span>
+        </span>
+      );
+    }
     case "cargo":
       return <span className="text-ink/70">{f.cargos?.nome ?? f.cargo ?? "—"}</span>;
     case "contrato":
@@ -110,6 +135,7 @@ export default function FuncionariosPage() {
   const [loading, setLoading] = useState(true);
   const [painelAberto, setPainelAberto] = useState(false);
   const [detalhe, setDetalhe] = useState<Funcionario | null>(null);
+  const [busca, setBusca] = useState("");
 
   const {
     colunas,
@@ -174,9 +200,23 @@ export default function FuncionariosPage() {
     carregar();
   }
 
-  const totalPaginas = Math.max(Math.ceil(funcionarios.length / linhasPorPagina), 1);
+  const funcionariosFiltrados = funcionarios.filter((f) => {
+    const termo = normalizar(busca);
+    if (!termo) return true;
+    return (
+      normalizar(f.papeis?.pessoas?.nome ?? "").includes(termo) ||
+      normalizar(f.cargos?.nome ?? f.cargo ?? "").includes(termo)
+    );
+  });
+
+  useEffect(() => {
+    setPaginaAtual(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busca]);
+
+  const totalPaginas = Math.max(Math.ceil(funcionariosFiltrados.length / linhasPorPagina), 1);
   const paginaSegura = Math.min(paginaAtual, totalPaginas);
-  const paginados = funcionarios.slice((paginaSegura - 1) * linhasPorPagina, paginaSegura * linhasPorPagina);
+  const paginados = funcionariosFiltrados.slice((paginaSegura - 1) * linhasPorPagina, paginaSegura * linhasPorPagina);
 
   return (
     <div>
@@ -187,9 +227,19 @@ export default function FuncionariosPage() {
         </p>
         <div className="flex items-center gap-2 shrink-0">
           <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/35 text-base pointer-events-none">🔍</span>
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar funcionário ou cargo..."
+              style={{ paddingLeft: "2.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}
+              className="input w-64"
+            />
+          </div>
+          <div className="relative">
             <button
               onClick={() => setPainelColunasAberto((v) => !v)}
-              className="rounded-full border-2 border-ink/15 text-ink px-4 py-2.5 text-sm font-bold hover:bg-surface transition-colors"
+              className="rounded-xl border-2 border-ink/15 text-ink px-4 py-2.5 text-sm font-bold hover:bg-surface transition-colors"
             >
               ⚙ Colunas
             </button>
@@ -251,7 +301,7 @@ export default function FuncionariosPage() {
           {!painelAberto && (
             <button
               onClick={() => setPainelAberto(true)}
-              className="shrink-0 rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+              className="shrink-0 rounded-xl bg-forest text-white px-5 py-2.5 text-sm font-semibold hover:bg-ink transition-colors"
             >
               + Novo funcionário
             </button>
@@ -265,7 +315,7 @@ export default function FuncionariosPage() {
           onClick={() => setPainelAberto(false)}
         >
           <div
-            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-4xl rounded-2xl bg-card p-7 shadow-2xl max-h-[88vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-bold text-ink mb-5">Cadastrar funcionário</h2>
@@ -280,19 +330,19 @@ export default function FuncionariosPage() {
         </div>
       )}
 
-      <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
+      <div className="rounded-2xl bg-card border border-black/5 overflow-hidden">
         {loading ? (
           <p className="p-6 text-sm text-ink/50">Carregando...</p>
-        ) : funcionarios.length === 0 ? (
-          <p className="p-6 text-sm text-ink/50">Nenhum funcionário cadastrado ainda.</p>
+        ) : funcionariosFiltrados.length === 0 ? (
+          <p className="p-6 text-sm text-ink/50">Nenhum funcionário encontrado.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-ink/50 border-b border-black/5">
+              <tr className="text-left bg-mint/50 border-b-2 border-mint">
                 {colunas
                   .filter((c) => c.visivel)
                   .map((c) => (
-                    <th key={c.key} className="px-4 py-3 font-medium">
+                    <th key={c.key} className="px-4 py-4 font-bold text-forest text-xs uppercase tracking-wide">
                       {COLUNAS_DISPONIVEIS.find((d) => d.key === c.key)?.label}
                     </th>
                   ))}
@@ -307,9 +357,10 @@ export default function FuncionariosPage() {
                 >
                   {colunas
                     .filter((c) => c.visivel)
-                    .map((c) => (
-                      <td key={c.key} className="px-4 py-3">
-                        {renderCelulaFuncionario(c.key, f, custoTotal(f))}
+                    .map((c, i) => (
+                      <td key={c.key} className={`px-4 py-3 ${i === 0 ? "relative" : ""}`}>
+                        {i === 0 && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-forest" />}
+                        <span className={i === 0 ? "pl-2.5 block" : undefined}>{renderCelulaFuncionario(c.key, f, custoTotal(f))}</span>
                       </td>
                     ))}
                 </tr>
@@ -319,12 +370,12 @@ export default function FuncionariosPage() {
         )}
       </div>
 
-      {funcionarios.length > 0 && (
+      {funcionariosFiltrados.length > 0 && (
         <div className="flex items-center justify-between mt-4 text-sm text-ink/50">
           <div className="flex items-center gap-4">
             <p>
               Mostrando {(paginaSegura - 1) * linhasPorPagina + 1}–
-              {Math.min(paginaSegura * linhasPorPagina, funcionarios.length)} de {funcionarios.length}
+              {Math.min(paginaSegura * linhasPorPagina, funcionariosFiltrados.length)} de {funcionariosFiltrados.length}
             </p>
             <label className="flex items-center gap-2 text-xs">
               Linhas
@@ -345,17 +396,18 @@ export default function FuncionariosPage() {
             <button
               onClick={() => setPaginaAtual((p) => Math.max(p - 1, 1))}
               disabled={paginaSegura === 1}
-              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
             >
               ← Anterior
             </button>
-            <span className="px-2 text-xs">
-              Página {paginaSegura} de {totalPaginas}
+            <span className="mx-1 h-7 min-w-7 px-2 rounded-lg border-2 border-forest bg-mint text-forest flex items-center justify-center text-xs font-bold">
+              {paginaSegura}
             </span>
+            <span className="text-xs text-ink/40">de {totalPaginas}</span>
             <button
               onClick={() => setPaginaAtual((p) => Math.min(p + 1, totalPaginas))}
               disabled={paginaSegura === totalPaginas}
-              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
             >
               Próxima →
             </button>
@@ -601,7 +653,7 @@ function DetalheFuncionario({
   return (
     <div className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-3xl bg-surface p-5 shadow-2xl max-h-[85vh] overflow-y-auto"
+        className="w-full max-w-2xl rounded-2xl bg-surface p-6 shadow-2xl max-h-[88vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-4">
@@ -736,11 +788,11 @@ function DetalheFuncionario({
 
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="block text-xs font-medium text-ink/70 mb-1">Salário anterior</span>
+                <span className="block text-xs font-semibold text-ink/70 mb-1">Salário anterior</span>
                 <input value={formatarMoeda(salarioAtual)} disabled className="input text-sm opacity-60" />
               </label>
               <label className="block">
-                <span className="block text-xs font-medium text-ink/70 mb-1">Novo salário (R$) *</span>
+                <span className="block text-xs font-semibold text-ink/70 mb-1">Novo salário (R$) *</span>
                 <input
                   type="number"
                   step="0.01"
@@ -751,7 +803,7 @@ function DetalheFuncionario({
                 />
               </label>
               <label className="block">
-                <span className="block text-xs font-medium text-ink/70 mb-1">Data *</span>
+                <span className="block text-xs font-semibold text-ink/70 mb-1">Data *</span>
                 <input
                   type="date"
                   value={dataReajuste}
@@ -760,7 +812,7 @@ function DetalheFuncionario({
                 />
               </label>
               <label className="block col-span-2">
-                <span className="block text-xs font-medium text-ink/70 mb-1">Observação</span>
+                <span className="block text-xs font-semibold text-ink/70 mb-1">Observação</span>
                 <input
                   value={observacaoReajuste}
                   onChange={(e) => setObservacaoReajuste(e.target.value)}
@@ -1061,7 +1113,7 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="relative">
-        <span className="block text-sm font-medium text-ink/70 mb-1">
+        <span className="block text-sm font-semibold text-ink/70 mb-1">
           Pessoa<span className="text-forest"> *</span>
         </span>
         <input
@@ -1109,9 +1161,9 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
         </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <label className="block relative">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Cargo</span>
+          <span className="block text-sm font-semibold text-ink/70 mb-1">Cargo</span>
           <input
             value={buscaCargo}
             onChange={(e) => {
@@ -1154,7 +1206,7 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
         </label>
 
         <label className="block">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Tipo de contrato *</span>
+          <span className="block text-sm font-semibold text-ink/70 mb-1">Tipo de contrato *</span>
           <select value={tipoContrato} onChange={(e) => setTipoContrato(e.target.value as "CLT" | "PJ")} className="input">
             <option value="CLT">CLT</option>
             <option value="PJ">PJ</option>
@@ -1162,12 +1214,12 @@ function FuncionarioForm({ onSaved, onCancel }: { onSaved: () => void; onCancel:
         </label>
 
         <label className="block">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Salário bruto (R$) *</span>
+          <span className="block text-sm font-semibold text-ink/70 mb-1">Salário bruto (R$) *</span>
           <input type="number" step="0.01" min="0" value={salario} onChange={(e) => setSalario(e.target.value)} className="input" />
         </label>
 
         <label className="block">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Início do contrato</span>
+          <span className="block text-sm font-semibold text-ink/70 mb-1">Início do contrato</span>
           <input type="date" value={dataAdmissao} onChange={(e) => setDataAdmissao(e.target.value)} className="input" />
         </label>
       </div>

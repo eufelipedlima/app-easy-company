@@ -248,7 +248,7 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Campo label={tipo === "PF" ? "Nome completo" : "Nome fantasia"} required>
           <input
             required
@@ -376,7 +376,7 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
 
       <div>
         <h3 className="text-sm font-semibold text-ink/70 mb-3">Endereço</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <Campo label="Rua">
             <input value={rua} onChange={(e) => setRua(e.target.value)} className="input" />
           </Campo>
@@ -420,7 +420,7 @@ export function PessoaForm({ onSaved, onCancel, nomeInicial, pessoaEditando }: P
           </label>
 
           {temResponsavel && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
               <Campo label="Nome completo" required>
                 <input
                   value={respNome}
@@ -491,7 +491,7 @@ function Campo({
 }) {
   return (
     <label className="block">
-      <span className="block text-sm font-medium text-ink/70 mb-1">
+      <span className="block text-sm font-semibold text-ink/70 mb-1">
         {label}
         {required && <span className="text-forest"> *</span>}
       </span>

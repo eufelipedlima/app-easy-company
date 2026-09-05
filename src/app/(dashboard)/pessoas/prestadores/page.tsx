@@ -26,10 +26,35 @@ const COLUNAS_DISPONIVEIS: ColunaDef[] = [
   { key: "pix", label: "PIX" },
 ];
 
+const CORES_AVATAR = [
+  "bg-red-400", "bg-orange-400", "bg-amber-500", "bg-lime-500", "bg-emerald-500",
+  "bg-teal-500", "bg-sky-500", "bg-indigo-500", "bg-violet-500", "bg-pink-500",
+];
+function corAvatarPessoa(nome: string) {
+  let hash = 0;
+  for (let i = 0; i < nome.length; i++) hash = (hash * 31 + nome.charCodeAt(i)) % CORES_AVATAR.length;
+  return CORES_AVATAR[Math.abs(hash) % CORES_AVATAR.length];
+}
+function iniciaisPessoa(nome: string) {
+  const partes = nome.trim().split(/\s+/);
+  return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase();
+}
+
 function renderCelulaPrestador(key: string, p: Prestador) {
   switch (key) {
-    case "nome":
-      return <span className="font-semibold text-ink">{p.papeis?.pessoas?.nome ?? "—"}</span>;
+    case "nome": {
+      const nome = p.papeis?.pessoas?.nome ?? "—";
+      return (
+        <span className="flex items-center gap-2.5 min-w-0">
+          <span
+            className={`h-7 w-7 rounded-full ${corAvatarPessoa(nome)} text-white flex items-center justify-center text-[11px] font-bold shrink-0`}
+          >
+            {iniciaisPessoa(nome)}
+          </span>
+          <span className="font-semibold text-ink truncate">{nome}</span>
+        </span>
+      );
+    }
     case "tipo_servico":
       return <span className="text-ink/70">{p.tipo_servico ?? "—"}</span>;
     case "contato":
@@ -50,6 +75,8 @@ export default function PrestadoresPage() {
   const [prestadores, setPrestadores] = useState<Prestador[]>([]);
   const [loading, setLoading] = useState(true);
   const [painelAberto, setPainelAberto] = useState(false);
+  const [editando, setEditando] = useState<Prestador | null>(null);
+  const [buscaLista, setBuscaLista] = useState("");
 
   const {
     colunas,
@@ -85,20 +112,45 @@ export default function PrestadoresPage() {
     carregar();
   }
 
-  const totalPaginas = Math.max(Math.ceil(prestadores.length / linhasPorPagina), 1);
+  const prestadoresFiltrados = prestadores.filter((p) => {
+    const termo = normalizar(buscaLista);
+    if (!termo) return true;
+    return (
+      normalizar(p.papeis?.pessoas?.nome ?? "").includes(termo) ||
+      normalizar(p.tipo_servico ?? "").includes(termo)
+    );
+  });
+
+  useEffect(() => {
+    setPaginaAtual(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buscaLista]);
+
+  const totalPaginas = Math.max(Math.ceil(prestadoresFiltrados.length / linhasPorPagina), 1);
   const paginaSegura = Math.min(paginaAtual, totalPaginas);
-  const paginados = prestadores.slice((paginaSegura - 1) * linhasPorPagina, paginaSegura * linhasPorPagina);
+  const paginados = prestadoresFiltrados.slice((paginaSegura - 1) * linhasPorPagina, paginaSegura * linhasPorPagina);
 
   return (
     <div>
-      <div className="flex items-center justify-end gap-2 mb-6">
+      <div className="flex items-center justify-between gap-2 mb-6">
         <div className="relative">
-          <button
-            onClick={() => setPainelColunasAberto((v) => !v)}
-            className="rounded-full border-2 border-ink/15 text-ink px-4 py-2.5 text-sm font-bold hover:bg-surface transition-colors"
-          >
-            ⚙ Colunas
-          </button>
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/35 text-base pointer-events-none">🔍</span>
+          <input
+            value={buscaLista}
+            onChange={(e) => setBuscaLista(e.target.value)}
+            placeholder="Buscar prestador ou tipo de serviço..."
+            style={{ paddingLeft: "2.5rem", paddingTop: "0.75rem", paddingBottom: "0.75rem" }}
+            className="input w-72"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              onClick={() => setPainelColunasAberto((v) => !v)}
+              className="rounded-xl border-2 border-ink/15 text-ink px-4 py-2.5 text-sm font-bold hover:bg-surface transition-colors"
+            >
+              ⚙ Colunas
+            </button>
           {painelColunasAberto && (
             <div
               className="absolute right-0 z-10 mt-2 w-64 rounded-2xl bg-white border border-black/10 shadow-lg p-2"
@@ -154,54 +206,63 @@ export default function PrestadoresPage() {
             </div>
           )}
         </div>
-        {!painelAberto && (
+        {!painelAberto && !editando && (
           <button
             onClick={() => setPainelAberto(true)}
-            className="rounded-full bg-ink text-white px-5 py-2.5 text-sm font-semibold hover:bg-forest transition-colors"
+            className="rounded-xl bg-forest text-white px-5 py-2.5 text-sm font-semibold hover:bg-ink transition-colors"
           >
             + Novo prestador
           </button>
         )}
+        </div>
       </div>
 
-      {painelAberto && (
+      {(painelAberto || editando) && (
         <div
           className="fixed inset-0 z-20 bg-ink/50 flex items-center justify-center p-6"
-          onClick={() => setPainelAberto(false)}
+          onClick={() => {
+            setPainelAberto(false);
+            setEditando(null);
+          }}
         >
           <div
-            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-2xl rounded-2xl bg-card p-7 shadow-2xl max-h-[88vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold text-ink mb-5">Cadastrar prestador de serviço</h2>
+            <h2 className="text-lg font-bold text-ink mb-5">{editando ? "Editar prestador" : "Cadastrar prestador de serviço"}</h2>
             <PrestadorForm
+              prestadorEditando={editando}
               onSaved={() => {
                 setPainelAberto(false);
+                setEditando(null);
                 carregar();
               }}
-              onCancel={() => setPainelAberto(false)}
+              onCancel={() => {
+                setPainelAberto(false);
+                setEditando(null);
+              }}
             />
           </div>
         </div>
       )}
 
-      <div className="rounded-3xl bg-card border border-black/5 overflow-hidden">
+      <div className="rounded-2xl bg-card border border-black/5 overflow-hidden">
         {loading ? (
           <p className="p-6 text-sm text-ink/50">Carregando...</p>
-        ) : prestadores.length === 0 ? (
-          <p className="p-6 text-sm text-ink/50">Nenhum prestador cadastrado ainda.</p>
+        ) : prestadoresFiltrados.length === 0 ? (
+          <p className="p-6 text-sm text-ink/50">Nenhum prestador encontrado.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-ink/50 border-b border-black/5">
+              <tr className="text-left bg-mint/50 border-b-2 border-mint">
                 {colunas
                   .filter((c) => c.visivel)
                   .map((c) => (
-                    <th key={c.key} className="px-4 py-3 font-medium">
+                    <th key={c.key} className="px-4 py-4 font-bold text-forest text-xs uppercase tracking-wide">
                       {COLUNAS_DISPONIVEIS.find((d) => d.key === c.key)?.label}
                     </th>
                   ))}
-                <th className="px-4 py-3 font-medium"></th>
+                <th className="px-4 py-4 font-bold text-forest text-xs uppercase tracking-wide">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -209,18 +270,32 @@ export default function PrestadoresPage() {
                 <tr key={p.id} className="border-b border-black/5 last:border-0 hover:bg-surface/60">
                   {colunas
                     .filter((c) => c.visivel)
-                    .map((c) => (
-                      <td key={c.key} className="px-4 py-3">
-                        {renderCelulaPrestador(c.key, p)}
+                    .map((c, i) => (
+                      <td key={c.key} className={`px-4 py-3 ${i === 0 ? "relative" : ""}`}>
+                        {i === 0 && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-forest" />}
+                        <span className={i === 0 ? "pl-2.5 block" : undefined}>{renderCelulaPrestador(c.key, p)}</span>
                       </td>
                     ))}
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => remover(p.id)}
-                      className="text-xs font-semibold text-ink/40 hover:text-red-600"
-                    >
-                      Desativar
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          setEditando(p);
+                          setPainelAberto(false);
+                        }}
+                        title="Editar"
+                        className="h-8 w-8 rounded-lg flex items-center justify-center bg-forest text-white hover:bg-ink transition-colors"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        onClick={() => remover(p.id)}
+                        title="Desativar"
+                        className="h-8 w-8 rounded-lg flex items-center justify-center text-ink/40 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        🗄
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -229,12 +304,12 @@ export default function PrestadoresPage() {
         )}
       </div>
 
-      {prestadores.length > 0 && (
+      {prestadoresFiltrados.length > 0 && (
         <div className="flex items-center justify-between mt-4 text-sm text-ink/50">
           <div className="flex items-center gap-4">
             <p>
               Mostrando {(paginaSegura - 1) * linhasPorPagina + 1}–
-              {Math.min(paginaSegura * linhasPorPagina, prestadores.length)} de {prestadores.length}
+              {Math.min(paginaSegura * linhasPorPagina, prestadoresFiltrados.length)} de {prestadoresFiltrados.length}
             </p>
             <label className="flex items-center gap-2 text-xs">
               Linhas
@@ -255,17 +330,18 @@ export default function PrestadoresPage() {
             <button
               onClick={() => setPaginaAtual((p) => Math.max(p - 1, 1))}
               disabled={paginaSegura === 1}
-              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
             >
               ← Anterior
             </button>
-            <span className="px-2 text-xs">
-              Página {paginaSegura} de {totalPaginas}
+            <span className="mx-1 h-7 min-w-7 px-2 rounded-lg border-2 border-forest bg-mint text-forest flex items-center justify-center text-xs font-bold">
+              {paginaSegura}
             </span>
+            <span className="text-xs text-ink/40">de {totalPaginas}</span>
             <button
               onClick={() => setPaginaAtual((p) => Math.min(p + 1, totalPaginas))}
               disabled={paginaSegura === totalPaginas}
-              className="rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-surface disabled:opacity-30"
             >
               Próxima →
             </button>
@@ -276,14 +352,23 @@ export default function PrestadoresPage() {
   );
 }
 
-function PrestadorForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
+function PrestadorForm({
+  prestadorEditando,
+  onSaved,
+  onCancel,
+}: {
+  prestadorEditando?: Prestador | null;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const editando = !!prestadorEditando;
   const [pessoas, setPessoas] = useState<PessoaOpcao[]>([]);
   const [pessoaSelecionada, setPessoaSelecionada] = useState<PessoaOpcao | null>(null);
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca] = useState(prestadorEditando?.papeis?.pessoas?.nome ?? "");
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
   const [cadastrandoPessoa, setCadastrandoPessoa] = useState(false);
-  const [tipoServico, setTipoServico] = useState("");
-  const [observacoes, setObservacoes] = useState("");
+  const [tipoServico, setTipoServico] = useState(prestadorEditando?.tipo_servico ?? "");
+  const [observacoes, setObservacoes] = useState(prestadorEditando?.observacoes ?? "");
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -319,7 +404,7 @@ function PrestadorForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!pessoaSelecionada) {
+    if (!editando && !pessoaSelecionada) {
       setErro("Selecione a pessoa.");
       return;
     }
@@ -327,13 +412,21 @@ function PrestadorForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
     setErro(null);
     try {
       const supabase = createClient();
-      const papelId = await garantirPrestadorPapelId(pessoaSelecionada.id);
-      const { error } = await supabase.from("prestadores").insert({
-        papel_id: papelId,
-        tipo_servico: tipoServico || null,
-        observacoes: observacoes || null,
-      });
-      if (error) throw error;
+      if (editando && prestadorEditando) {
+        const { error } = await supabase
+          .from("prestadores")
+          .update({ tipo_servico: tipoServico || null, observacoes: observacoes || null })
+          .eq("id", prestadorEditando.id);
+        if (error) throw error;
+      } else {
+        const papelId = await garantirPrestadorPapelId(pessoaSelecionada!.id);
+        const { error } = await supabase.from("prestadores").insert({
+          papel_id: papelId,
+          tipo_servico: tipoServico || null,
+          observacoes: observacoes || null,
+        });
+        if (error) throw error;
+      }
       onSaved();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao salvar.");
@@ -371,21 +464,22 @@ function PrestadorForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="relative">
-        <span className="block text-sm font-medium text-ink/70 mb-1">
+        <span className="block text-sm font-semibold text-ink/70 mb-1">
           Pessoa<span className="text-forest"> *</span>
         </span>
         <input
+          disabled={editando}
           value={busca}
           onChange={(e) => {
             setBusca(e.target.value);
             setPessoaSelecionada(null);
             setMostrarSugestoes(true);
           }}
-          onFocus={() => setMostrarSugestoes(true)}
-          className="input"
+          onFocus={() => !editando && setMostrarSugestoes(true)}
+          className="input disabled:opacity-60"
           placeholder="Digite o nome..."
         />
-        {mostrarSugestoes && busca && !pessoaSelecionada && (
+        {!editando && mostrarSugestoes && busca && !pessoaSelecionada && (
           <div className="absolute z-10 mt-1 w-full rounded-xl bg-white border border-black/10 shadow-lg max-h-56 overflow-auto">
             {sugestoes.length > 0 ? (
               sugestoes.map((p) => (
@@ -417,7 +511,7 @@ function PrestadorForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label className="block">
-          <span className="block text-sm font-medium text-ink/70 mb-1">Tipo de serviço</span>
+          <span className="block text-sm font-semibold text-ink/70 mb-1">Tipo de serviço</span>
           <input
             value={tipoServico}
             onChange={(e) => setTipoServico(e.target.value)}
@@ -428,7 +522,7 @@ function PrestadorForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
       </div>
 
       <label className="block">
-        <span className="block text-sm font-medium text-ink/70 mb-1">Observações</span>
+        <span className="block text-sm font-semibold text-ink/70 mb-1">Observações</span>
         <textarea
           value={observacoes}
           onChange={(e) => setObservacoes(e.target.value)}
